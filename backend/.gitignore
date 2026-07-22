@@ -1,0 +1,6 @@
+node_modules/
+exports/*.json
+exports/*.csv
+!exports/.gitkeep
+scripts/debug-out/
+.DS_Store

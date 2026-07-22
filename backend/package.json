@@ -1,0 +1,17 @@
+{
+  "name": "lead-generation-backend",
+  "version": "1.0.0",
+  "description": "Free lead generation - find USA businesses with recent 1-star reviews",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
+  },
+  "dependencies": {
+    "cheerio": "^1.0.0",
+    "cors": "^2.8.5",
+    "express": "^4.21.2",
+    "playwright": "^1.50.1"
+  }
+}
