@@ -201,7 +201,8 @@ class _SearchPageState extends State<SearchPage> {
                           if (loading) ...[
                             const SizedBox(height: 16),
                             Text(
-                              'Scraping public maps pages… this can take 1–3 minutes.',
+                              state.progressMessage ??
+                                  'Scraping public maps pages… this can take several minutes.',
                               textAlign: TextAlign.center,
                               style: Theme.of(context).textTheme.bodyMedium,
                             ),

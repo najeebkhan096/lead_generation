@@ -13,12 +13,14 @@ class LeadRepositoryImpl implements LeadRepository {
     required String category,
     required String dateRange,
     bool analyze = false,
+    void Function(String message)? onProgress,
   }) {
     return _remote.searchLeads(
       location: location,
       category: category,
       dateRange: dateRange,
       analyze: analyze,
+      onProgress: onProgress,
     );
   }
 

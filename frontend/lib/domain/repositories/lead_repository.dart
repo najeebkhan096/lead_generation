@@ -6,6 +6,7 @@ abstract class LeadRepository {
     required String category,
     required String dateRange,
     bool analyze = false,
+    void Function(String message)? onProgress,
   });
 
   Future<List<Lead>> getCachedResults();

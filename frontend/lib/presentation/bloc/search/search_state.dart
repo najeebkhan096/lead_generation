@@ -13,6 +13,7 @@ class SearchState extends Equatable {
     this.category = '',
     this.dateRange = '30',
     this.exportMessage,
+    this.progressMessage,
   });
 
   final SearchStatus status;
@@ -22,6 +23,7 @@ class SearchState extends Equatable {
   final String category;
   final String dateRange;
   final String? exportMessage;
+  final String? progressMessage;
 
   SearchState copyWith({
     SearchStatus? status,
@@ -31,8 +33,10 @@ class SearchState extends Equatable {
     String? category,
     String? dateRange,
     String? exportMessage,
+    String? progressMessage,
     bool clearError = false,
     bool clearExport = false,
+    bool clearProgress = false,
   }) {
     return SearchState(
       status: status ?? this.status,
@@ -42,6 +46,8 @@ class SearchState extends Equatable {
       category: category ?? this.category,
       dateRange: dateRange ?? this.dateRange,
       exportMessage: clearExport ? null : (exportMessage ?? this.exportMessage),
+      progressMessage:
+          clearProgress ? null : (progressMessage ?? this.progressMessage),
     );
   }
 
@@ -54,5 +60,6 @@ class SearchState extends Equatable {
         category,
         dateRange,
         exportMessage,
+        progressMessage,
       ];
 }

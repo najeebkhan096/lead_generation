@@ -28,6 +28,7 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
         location: event.location,
         category: event.category,
         dateRange: event.dateRange,
+        progressMessage: 'Starting search…',
         clearError: true,
         clearExport: true,
       ),
@@ -39,12 +40,21 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
         category: event.category,
         dateRange: event.dateRange,
         analyze: event.analyze,
+        onProgress: (message) {
+          emit(
+            state.copyWith(
+              status: SearchStatus.loading,
+              progressMessage: message,
+            ),
+          );
+        },
       );
       emit(
         state.copyWith(
           status: SearchStatus.success,
           leads: leads,
           clearError: true,
+          clearProgress: true,
         ),
       );
     } catch (e) {
@@ -52,6 +62,7 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
         state.copyWith(
           status: SearchStatus.failure,
           error: e.toString().replaceFirst('Exception: ', ''),
+          clearProgress: true,
         ),
       );
     }
