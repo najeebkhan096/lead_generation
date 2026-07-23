@@ -98,6 +98,36 @@ Example search body:
 - Scraping public Google Maps is best-effort; DOM changes or consent walls can reduce yield.
 - Session data lives in memory only — restarting the server clears leads.
 - `ReviewAnalyzer` is heuristic/keyword-based and optional (no paid AI required).
+- After 1-star filtering, leads are checked for WhatsApp; only available numbers are kept.
+
+## Go live (one URL for UI + API)
+
+### Local production-style (same machine)
+
+```bash
+./scripts/build-web.sh
+cd backend && npm start
+```
+
+Open **http://localhost:3001** — Flutter UI and `/api/*` on the same origin.
+
+### Deploy on Render (public URL)
+
+1. Push this repo to GitHub.
+2. In [Render](https://render.com): **New → Blueprint** → connect the repo (uses `render.yaml`).
+3. Wait for the Docker build (Flutter + Playwright). Open the service URL.
+
+Or: **New → Web Service** → Docker → root Dockerfile → health check `/api/health`.
+
+### Temporary public tunnel (your laptop)
+
+With the server already on port 3001:
+
+```bash
+npx localtunnel --port 3001
+```
+
+Use the printed `https://….loca.lt` URL in a browser.
 
 ## Legal / ethics
 

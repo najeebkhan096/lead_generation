@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "start": "node src/index.js",
-    "dev": "node --watch src/index.js"
+    "dev": "node --watch src/index.js",
+    "build:web": "bash ../scripts/build-web.sh"
   },
   "dependencies": {
     "cheerio": "^1.0.0",

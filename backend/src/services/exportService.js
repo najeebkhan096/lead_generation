@@ -25,6 +25,8 @@ export function leadsToCsv(leads) {
   const header = [
     'Business Name',
     'Phone',
+    'Has WhatsApp',
+    'WhatsApp Link',
     'Website',
     'Location',
     'Address',
@@ -39,6 +41,8 @@ export function leadsToCsv(leads) {
     [
       lead.business,
       lead.phone,
+      lead.hasWhatsApp ? 'Yes' : 'No',
+      lead.waLink || '',
       lead.website,
       lead.location,
       lead.address,

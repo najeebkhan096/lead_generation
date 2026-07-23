@@ -97,7 +97,7 @@ class LeadCard extends StatelessWidget {
               ],
             ),
           ),
-          if (lead.phone != null || lead.website != null) ...[
+          if (lead.phone != null || lead.website != null || lead.hasWhatsApp) ...[
             const SizedBox(height: 12),
             Wrap(
               spacing: 16,
@@ -110,6 +110,16 @@ class LeadCard extends StatelessWidget {
                       const Icon(Icons.phone_outlined, size: 16, color: AppTheme.slate),
                       const SizedBox(width: 4),
                       Text(lead.phone!, style: Theme.of(context).textTheme.bodyMedium),
+                      if (lead.hasWhatsApp) ...[
+                        const SizedBox(width: 8),
+                        Text(
+                          'WhatsApp',
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                color: const Color(0xFF128C7E),
+                                fontWeight: FontWeight.w600,
+                              ),
+                        ),
+                      ],
                     ],
                   ),
                 if (lead.website != null && lead.website!.isNotEmpty)
@@ -127,6 +137,16 @@ class LeadCard extends StatelessWidget {
             spacing: 8,
             runSpacing: 8,
             children: [
+              if (lead.hasWhatsApp && lead.waLink != null && lead.waLink!.isNotEmpty)
+                FilledButton.icon(
+                  onPressed: () => _open(lead.waLink),
+                  icon: const Icon(Icons.chat, size: 16),
+                  label: const Text('WhatsApp'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFF25D366),
+                    foregroundColor: Colors.white,
+                  ),
+                ),
               OutlinedButton.icon(
                 onPressed: lead.website == null ? null : () => _open(lead.website),
                 icon: const Icon(Icons.language, size: 16),

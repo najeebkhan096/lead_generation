@@ -77,7 +77,7 @@ class ResultsPage extends StatelessWidget {
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             Text(
-                              'No leads with recent 1-star reviews',
+                              'No leads with WhatsApp-available numbers',
                               style: Theme.of(context).textTheme.headlineMedium,
                               textAlign: TextAlign.center,
                             ),
@@ -107,7 +107,7 @@ class ResultsPage extends StatelessWidget {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            '1-star reviews within last ${state.dateRange} days · in-memory only',
+                            '1-star + WhatsApp · last ${state.dateRange} days · in-memory only',
                             style: Theme.of(context).textTheme.bodyMedium,
                           ),
                           const SizedBox(height: 18),

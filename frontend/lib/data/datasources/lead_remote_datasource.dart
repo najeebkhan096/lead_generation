@@ -10,7 +10,14 @@ class LeadRemoteDataSource {
 
   final http.Client _client;
 
-  Uri _uri(String path) => Uri.parse('${ApiConstants.baseUrl}$path');
+  Uri _uri(String path) {
+    final base = ApiConstants.baseUrl.trim();
+    if (base.isEmpty) {
+      final p = path.startsWith('/') ? path : '/$path';
+      return Uri.parse(p);
+    }
+    return Uri.parse('$base$path');
+  }
 
   Future<List<Lead>> searchLeads({
     required String location,

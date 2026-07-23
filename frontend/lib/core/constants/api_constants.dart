@@ -1,5 +1,8 @@
 class ApiConstants {
-  /// Backend base URL for local development.
+  /// Backend base URL.
+  /// - Local Flutter run: defaults to http://localhost:3001
+  /// - Production (served by Express): build with --dart-define=API_BASE_URL=
+  ///   so requests use the same origin.
   static const String baseUrl = String.fromEnvironment(
     'API_BASE_URL',
     defaultValue: 'http://localhost:3001',

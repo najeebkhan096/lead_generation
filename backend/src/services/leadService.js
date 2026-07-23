@@ -7,6 +7,7 @@ import * as bing from '../scraper/bingScraper.js';
 import * as yelp from '../scraper/yelpScraper.js';
 import { filterRecentOneStarLeads } from './reviewFilter.js';
 import { enrichLeadWithAnalysis } from './reviewAnalyzer.js';
+import { filterLeadsWithWhatsApp } from './whatsappChecker.js';
 import {
   setLeads,
   setStatus,
@@ -72,13 +73,30 @@ export async function findLeads({
 
     let leads = filterRecentOneStarLeads(businesses, { dateRange });
 
+    setProgress({
+      message: `Checking WhatsApp on ${leads.length} lead phones...`,
+      found: 0,
+      processed: businesses.length,
+    });
+
+    leads = await filterLeadsWithWhatsApp(leads, {
+      onProgress: (message, checked, total) => {
+        setProgress({
+          message,
+          found: getStore().leads.length,
+          processed: checked,
+          total,
+        });
+      },
+    });
+
     if (analyze) {
       leads = leads.map(enrichLeadWithAnalysis);
     }
 
     setLeads(leads);
     setProgress({
-      message: `Done. ${leads.length} leads with recent 1-star reviews.`,
+      message: `Done. ${leads.length} leads with WhatsApp-available numbers.`,
       found: leads.length,
       processed: businesses.length,
     });

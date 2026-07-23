@@ -38,6 +38,8 @@ class Lead extends Equatable {
     this.mapsUrl,
     this.rating,
     this.totalReviews,
+    this.hasWhatsApp = false,
+    this.waLink,
     required this.badReview,
   });
 
@@ -51,6 +53,8 @@ class Lead extends Equatable {
   final String? mapsUrl;
   final double? rating;
   final int? totalReviews;
+  final bool hasWhatsApp;
+  final String? waLink;
   final BadReview badReview;
 
   factory Lead.fromJson(Map<String, dynamic> json) {
@@ -65,6 +69,8 @@ class Lead extends Equatable {
       mapsUrl: json['mapsUrl'] as String?,
       rating: (json['rating'] as num?)?.toDouble(),
       totalReviews: (json['totalReviews'] as num?)?.toInt(),
+      hasWhatsApp: json['hasWhatsApp'] == true,
+      waLink: json['waLink'] as String?,
       badReview: BadReview.fromJson(
         (json['badReview'] as Map<String, dynamic>?) ?? const {},
       ),
@@ -77,6 +83,9 @@ class Lead extends Equatable {
       ..writeln('Category: $category')
       ..writeln('Location: $location');
     if (phone != null && phone!.isNotEmpty) buffer.writeln('Phone: $phone');
+    if (waLink != null && waLink!.isNotEmpty) {
+      buffer.writeln('WhatsApp: $waLink');
+    }
     if (website != null && website!.isNotEmpty) {
       buffer.writeln('Website: $website');
     }
@@ -90,5 +99,6 @@ class Lead extends Equatable {
   }
 
   @override
-  List<Object?> get props => [id, business, category, location, badReview];
+  List<Object?> get props =>
+      [id, business, category, location, hasWhatsApp, waLink, badReview];
 }
