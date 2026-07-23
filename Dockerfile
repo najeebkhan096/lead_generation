@@ -8,7 +8,7 @@ RUN flutter config --enable-web \
   && flutter build web --release --dart-define=API_BASE_URL=
 
 # Stage 2: Node + Playwright Chromium
-FROM mcr.microsoft.com/playwright:v1.50.1-jammy
+FROM mcr.microsoft.com/playwright:v1.61.1-jammy
 WORKDIR /app
 
 COPY backend/package.json backend/package-lock.json* ./backend/
