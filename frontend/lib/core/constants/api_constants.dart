@@ -14,4 +14,6 @@ class ApiConstants {
   static const String exportCsv = '/api/export/csv';
   static const String exportJson = '/api/export/json';
   static const String analyze = '/api/search/analyze';
+  static const String saveToDb = '/api/db/save';
+  static const String savedLeads = '/api/db/leads';
 }

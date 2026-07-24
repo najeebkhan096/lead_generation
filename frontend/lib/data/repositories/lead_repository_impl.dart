@@ -9,9 +9,11 @@ class LeadRepositoryImpl implements LeadRepository {
 
   @override
   Future<List<Lead>> searchLeads({
-    required String location,
     required String category,
     required String dateRange,
+    String location = 'All US states',
+    bool nationwide = true,
+    int targetLeadCount = 100,
     bool analyze = false,
     void Function(String message)? onProgress,
   }) {
@@ -19,6 +21,8 @@ class LeadRepositoryImpl implements LeadRepository {
       location: location,
       category: category,
       dateRange: dateRange,
+      nationwide: nationwide,
+      targetLeadCount: targetLeadCount,
       analyze: analyze,
       onProgress: onProgress,
     );
@@ -32,4 +36,7 @@ class LeadRepositoryImpl implements LeadRepository {
 
   @override
   Future<String> exportJson() => _remote.exportJson();
+
+  @override
+  Future<String> saveToDatabase() => _remote.saveToDatabase();
 }

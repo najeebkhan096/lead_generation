@@ -1,0 +1,19 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Mobile app can read leads for outreach. Writes only via Admin SDK (backend).
+    match /leads/{leadId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    match /searches/{searchId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

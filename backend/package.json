@@ -10,9 +10,12 @@
     "build:web": "bash ../scripts/build-web.sh"
   },
   "dependencies": {
+    "better-sqlite3": "^13.0.1",
     "cheerio": "^1.0.0",
     "cors": "^2.8.5",
+    "dotenv": "^17.4.2",
     "express": "^4.21.2",
+    "firebase-admin": "^14.2.0",
     "playwright": "1.61.1"
   }
 }

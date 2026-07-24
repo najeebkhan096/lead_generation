@@ -20,10 +20,13 @@ class LeadRemoteDataSource {
   }
 
   /// Starts search (202) then polls status until done — avoids Render 502 timeouts.
+  /// Nationwide runs can take hours while walking all US states toward 100 leads.
   Future<List<Lead>> searchLeads({
-    required String location,
     required String category,
     required String dateRange,
+    String location = 'All US states',
+    bool nationwide = true,
+    int targetLeadCount = 100,
     bool analyze = false,
     void Function(String message)? onProgress,
   }) async {
@@ -36,7 +39,9 @@ class LeadRemoteDataSource {
             'category': category,
             'dateRange': dateRange,
             'analyze': analyze,
-            'maxResults': 8,
+            'nationwide': nationwide,
+            'targetLeadCount': targetLeadCount,
+            'maxResultsPerState': 16,
           }),
         )
         .timeout(const Duration(seconds: 60));
@@ -48,9 +53,16 @@ class LeadRemoteDataSource {
       throw Exception(body['error'] ?? 'Search failed (${start.statusCode})');
     }
 
-    onProgress?.call('Search started…');
+    onProgress?.call(
+      nationwide
+          ? 'Nationwide search started — scanning all U.S. states…'
+          : 'Search started…',
+    );
 
-    final deadline = DateTime.now().add(const Duration(minutes: 12));
+    // Nationwide scrape + WhatsApp checks can run for several hours.
+    final deadline = DateTime.now().add(
+      Duration(hours: nationwide ? 6 : 1),
+    );
     while (DateTime.now().isBefore(deadline)) {
       await Future<void>.delayed(const Duration(seconds: 2));
 
@@ -65,9 +77,11 @@ class LeadRemoteDataSource {
       final statusBody = jsonDecode(statusRes.body) as Map<String, dynamic>;
       final status = statusBody['status'] as String? ?? '';
       final progress = statusBody['progress'] as Map<String, dynamic>?;
+      final leadCount = (statusBody['leadCount'] as num?)?.toInt() ?? 0;
       final message = progress?['message'] as String?;
       if (message != null && message.isNotEmpty) {
-        onProgress?.call(message);
+        final withCount = leadCount > 0 ? '$message ($leadCount leads so far)' : message;
+        onProgress?.call(withCount);
       }
 
       if (status == 'done') {
@@ -80,7 +94,9 @@ class LeadRemoteDataSource {
       }
     }
 
-    throw Exception('Search timed out. Try again with a smaller date range.');
+    throw Exception(
+      'Search timed out. Nationwide runs can take hours — check results or restart the server.',
+    );
   }
 
   Future<List<Lead>> getResults() async {
@@ -111,6 +127,23 @@ class LeadRemoteDataSource {
       throw Exception(body['error'] ?? 'JSON export failed');
     }
     return response.body;
+  }
+
+  Future<String> saveToDatabase() async {
+    final response = await _client
+        .post(
+          _uri(ApiConstants.saveToDb),
+          headers: {'Content-Type': 'application/json'},
+          body: '{}',
+        )
+        .timeout(const Duration(seconds: 60));
+
+    final body = _tryDecode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['error'] ?? 'Save to Firebase failed');
+    }
+    return (body['message'] as String?) ??
+        'Saved ${(body['total'] as num?)?.toInt() ?? 0} leads to Firebase.';
   }
 
   Map<String, dynamic> _tryDecode(String body) {

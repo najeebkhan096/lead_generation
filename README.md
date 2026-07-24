@@ -1,11 +1,12 @@
 # LeadFinder — Free Reputation Lead Generation
 
-Find USA businesses with **recent 1-star Google reviews** so you can offer reputation management services.
+Find USA businesses with **recent 1-star Google reviews** and a **WhatsApp-available phone** so you can offer reputation management services.
 
 - **No Google Places API**
 - **No paid APIs or scraping services**
-- **No database** (in-memory session + optional local file export)
+- **Firebase Firestore** — search results stay in memory until you click **Save to Firebase**
 - Playwright browser automation on public maps pages
+- **Nationwide by default** — pick a category; searches all 50 U.S. states + D.C. until ~100 WhatsApp leads
 
 ## Stack
 
@@ -19,6 +20,7 @@ Find USA businesses with **recent 1-star Google reviews** so you can offer reput
 ```
 backend/
   src/
+    data/             # US states list
     scraper/          # googleMaps, bing, yelp
     services/         # filter, export, analyzer, lead orchestration
     controllers/
@@ -31,7 +33,9 @@ frontend/
     core/
     domain/
     data/
-    presentation/     # Bloc + Search/Results pages
+    presentation/     # Bloc + Search/Results pages (web search tool)
+
+mobile/               # Flutter iOS/Android — browse Firebase leads by category
 ```
 
 ## Quick start
@@ -65,40 +69,86 @@ flutter run -d chrome --dart-define=API_BASE_URL=http://localhost:3001
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/api/search` | Body: `{ location, category, dateRange, maxResults?, analyze? }` |
+| POST | `/api/search` | Body: `{ category, dateRange, nationwide?, targetLeadCount?, maxResultsPerState?, analyze? }` |
 | GET | `/api/search/status` | Progress / status |
 | GET | `/api/search/results` | In-memory leads |
 | DELETE | `/api/search/results` | Clear session |
 | GET | `/api/export/csv` | Download CSV (+ write `exports/leads.csv`) |
 | GET | `/api/export/json` | Download JSON (+ write `exports/leads.json`) |
+| POST | `/api/db/save` | Persist current session leads to **Firebase Firestore** |
+| GET | `/api/db/leads` | List saved leads from Firestore |
+| GET | `/api/db/searches` | List save batches from Firestore |
 | POST | `/api/search/analyze` | Optional keyword complaint categorization |
 
-`dateRange`: `"7"` \| `"30"` \| `"90"`
+`dateRange`: `"7"` \| `"30"` \| `"90"` \| `"365"`
 
-Example search body:
+### Nationwide search (default)
+
+Omit `location` or set `nationwide: true`. The backend walks every U.S. state (dense metro per state), keeps recent 1★ leads, verifies WhatsApp, and stops at `targetLeadCount` (default **100**).
 
 ```json
 {
-  "location": "New York",
   "category": "Dentist",
-  "dateRange": "30"
+  "dateRange": "30",
+  "nationwide": true,
+  "targetLeadCount": 100
+}
+```
+
+### Single-location search (optional)
+
+```json
+{
+  "location": "Austin, Texas",
+  "category": "Dentist",
+  "dateRange": "30",
+  "nationwide": false
 }
 ```
 
 ## MVP workflow
 
-1. Enter location + category + date range on the Search page
-2. Backend scrapes public Google Maps (Bing/Yelp fallback)
+1. Choose category + date range on the Search page (no state needed)
+2. Backend scrapes Google Maps across U.S. states
 3. Keeps businesses that have **1-star** reviews inside the date window
-4. Results page shows name, rating, review, phone, website
-5. Export CSV / JSON (browser download + `backend/exports/`)
+4. Checks each phone for **WhatsApp availability** — only WA numbers are kept
+5. Stops around **100 leads** (or when all states are done)
+6. Results page shows name, rating, review, phone, WhatsApp link, website
+7. Click **Save to Firebase** to write leads to Firestore (`leads` + `searches` collections) — duplicates match on Maps URL
+8. Export CSV / JSON anytime
+
+## Mobile app (browse leads)
+
+```bash
+cd mobile
+flutter pub get
+flutter run
+```
+
+Shows businesses from Firestore by category. Each card opens **Google Maps** or **WhatsApp**.
+
+## Firebase setup
+
+1. Create a project at [Firebase Console](https://console.firebase.google.com/) and enable **Firestore**.
+2. Project settings → **Service accounts** → **Generate new private key**.
+3. Save the JSON as:
+
+```bash
+backend/firebase-service-account.json
+```
+
+   (This file is gitignored.) Or copy `backend/.env.example` → `backend/.env` and set `FIREBASE_SERVICE_ACCOUNT` / `FIREBASE_PROJECT_ID`.
+
+4. Restart the backend. `/api/health` should show `"firebase": { "configured": true }`.
+
+On Render: add env var `FIREBASE_SERVICE_ACCOUNT` with the full JSON string, plus `FIREBASE_PROJECT_ID`.
 
 ## Notes
 
+- Nationwide runs are **slow** (can take hours) because each listing is opened in a real browser and WhatsApp is checked one by one. Keep the tab open; the UI polls status.
 - Scraping public Google Maps is best-effort; DOM changes or consent walls can reduce yield.
-- Session data lives in memory only — restarting the server clears leads.
+- Unsaved session leads are in memory only — restarting the server clears them. Saved leads live in Firebase.
 - `ReviewAnalyzer` is heuristic/keyword-based and optional (no paid AI required).
-- After 1-star filtering, leads are checked for WhatsApp; only available numbers are kept.
 
 ## Go live (one URL for UI + API)
 

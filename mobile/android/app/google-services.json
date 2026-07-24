@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "3988909442",
+    "project_id": "whatsapplead-a8d9a",
+    "storage_bucket": "whatsapplead-a8d9a.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:3988909442:android:4083700c18ceab983f339b",
+        "android_client_info": {
+          "package_name": "com.example.whats_lead"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBr1QVIIuO0zeOYoAFXYYrF4d44oM62LF8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -10,6 +10,7 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
     on<SearchCleared>(_onCleared);
     on<ExportCsvRequested>(_onExportCsv);
     on<ExportJsonRequested>(_onExportJson);
+    on<SaveToDatabaseRequested>(_onSaveToDatabase);
   }
 
   final LeadRepository _repository;
@@ -39,6 +40,8 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
         location: event.location,
         category: event.category,
         dateRange: event.dateRange,
+        nationwide: event.nationwide,
+        targetLeadCount: event.targetLeadCount,
         analyze: event.analyze,
         onProgress: (message) {
           emit(
@@ -105,6 +108,28 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
       emit(
         state.copyWith(
           exportMessage: e.toString().replaceFirst('Exception: ', ''),
+        ),
+      );
+    }
+  }
+
+  Future<void> _onSaveToDatabase(
+    SaveToDatabaseRequested event,
+    Emitter<SearchState> emit,
+  ) async {
+    if (state.leads.isEmpty) {
+      emit(state.copyWith(saveMessage: 'No leads to save.'));
+      return;
+    }
+    emit(state.copyWith(savingToDb: true, clearSave: true));
+    try {
+      final message = await _repository.saveToDatabase();
+      emit(state.copyWith(savingToDb: false, saveMessage: message));
+    } catch (e) {
+      emit(
+        state.copyWith(
+          savingToDb: false,
+          saveMessage: e.toString().replaceFirst('Exception: ', ''),
         ),
       );
     }

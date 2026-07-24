@@ -9,19 +9,30 @@ abstract class SearchEvent extends Equatable {
 
 class SearchSubmitted extends SearchEvent {
   const SearchSubmitted({
-    required this.location,
     required this.category,
     required this.dateRange,
+    this.location = 'All US states',
+    this.nationwide = true,
+    this.targetLeadCount = 100,
     this.analyze = false,
   });
 
   final String location;
   final String category;
   final String dateRange;
+  final bool nationwide;
+  final int targetLeadCount;
   final bool analyze;
 
   @override
-  List<Object?> get props => [location, category, dateRange, analyze];
+  List<Object?> get props => [
+        location,
+        category,
+        dateRange,
+        nationwide,
+        targetLeadCount,
+        analyze,
+      ];
 }
 
 class SearchCleared extends SearchEvent {
@@ -34,4 +45,8 @@ class ExportCsvRequested extends SearchEvent {
 
 class ExportJsonRequested extends SearchEvent {
   const ExportJsonRequested();
+}
+
+class SaveToDatabaseRequested extends SearchEvent {
+  const SaveToDatabaseRequested();
 }

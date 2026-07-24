@@ -5,6 +5,6 @@ void main() {
   testWidgets('LeadFinder search page loads', (tester) async {
     await tester.pumpWidget(const LeadGenerationApp());
     expect(find.text('LeadFinder'), findsOneWidget);
-    expect(find.text('Find Leads'), findsOneWidget);
+    expect(find.text('Find 100 Leads Nationwide'), findsOneWidget);
   });
 }

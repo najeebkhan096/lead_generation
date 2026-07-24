@@ -2,5 +2,10 @@ node_modules/
 exports/*.json
 exports/*.csv
 !exports/.gitkeep
+data/*.db
+data/*.db-*
+!data/.gitkeep
+firebase-service-account.json
+.env
 scripts/debug-out/
 .DS_Store

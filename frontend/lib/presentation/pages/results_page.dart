@@ -22,10 +22,15 @@ class ResultsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return BlocConsumer<SearchBloc, SearchState>(
-      listenWhen: (p, n) => p.exportMessage != n.exportMessage && n.exportMessage != null,
+      listenWhen: (p, n) =>
+          (p.exportMessage != n.exportMessage && n.exportMessage != null) ||
+          (p.saveMessage != n.saveMessage && n.saveMessage != null),
       listener: (context, state) {
         final bloc = context.read<SearchBloc>();
-        if (bloc.lastExportContent != null && bloc.lastExportFilename != null) {
+        if (bloc.lastExportContent != null &&
+            bloc.lastExportFilename != null &&
+            state.exportMessage != null &&
+            state.exportMessage!.contains('ready')) {
           final isCsv = bloc.lastExportFilename!.endsWith('.csv');
           downloadTextFile(
             bloc.lastExportFilename!,
@@ -33,9 +38,12 @@ class ResultsPage extends StatelessWidget {
             isCsv ? 'text/csv' : 'application/json',
           );
         }
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(state.exportMessage!)),
-        );
+        final message = state.saveMessage ?? state.exportMessage;
+        if (message != null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(message)),
+          );
+        }
       },
       builder: (context, state) {
         final bloc = context.read<SearchBloc>();
@@ -45,6 +53,19 @@ class ResultsPage extends StatelessWidget {
             title: const Text('Results'),
             actions: [
               if (state.leads.isNotEmpty) ...[
+                TextButton.icon(
+                  onPressed: state.savingToDb
+                      ? null
+                      : () => bloc.add(const SaveToDatabaseRequested()),
+                  icon: state.savingToDb
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.storage_outlined, size: 18),
+                  label: Text(state.savingToDb ? 'Saving…' : 'Firebase'),
+                ),
                 TextButton.icon(
                   onPressed: () => _handleExport(context, bloc, csv: true),
                   icon: const Icon(Icons.table_chart_outlined, size: 18),
@@ -83,7 +104,7 @@ class ResultsPage extends StatelessWidget {
                             ),
                             const SizedBox(height: 12),
                             Text(
-                              'Try a different city or category. Google Maps markup can also block review extraction occasionally — re-run the search.',
+                              'Try a different category or date range, then run the nationwide search again.',
                               style: Theme.of(context).textTheme.bodyLarge,
                               textAlign: TextAlign.center,
                             ),
@@ -107,8 +128,40 @@ class ResultsPage extends StatelessWidget {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            '1-star + WhatsApp · last ${state.dateRange} days · in-memory only',
+                            '1-star + WhatsApp · last ${state.dateRange} days · tap Save to Firebase to keep permanently',
                             style: Theme.of(context).textTheme.bodyMedium,
+                          ),
+                          const SizedBox(height: 14),
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: FilledButton.icon(
+                              onPressed: state.savingToDb
+                                  ? null
+                                  : () => bloc.add(const SaveToDatabaseRequested()),
+                              icon: state.savingToDb
+                                  ? const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.white,
+                                      ),
+                                    )
+                                  : const Icon(Icons.cloud_upload_outlined, size: 20),
+                              label: Text(
+                                state.savingToDb
+                                    ? 'Saving to Firebase…'
+                                    : 'Save to Firebase',
+                              ),
+                              style: FilledButton.styleFrom(
+                                backgroundColor: AppTheme.accent,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 18,
+                                  vertical: 14,
+                                ),
+                              ),
+                            ),
                           ),
                           const SizedBox(height: 18),
                           ...state.leads.map((lead) => LeadCard(lead: lead)),

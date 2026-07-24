@@ -19,10 +19,19 @@ export function getStore() {
   return store;
 }
 
-export function setLeads(leads) {
+export function setLeads(leads, { done = true } = {}) {
   store.leads = leads;
-  store.status = 'done';
-  store.error = null;
+  if (done) {
+    store.status = 'done';
+    store.error = null;
+  }
+}
+
+/** Append leads while a nationwide search is still running. */
+export function appendLeads(newLeads) {
+  if (!Array.isArray(newLeads) || !newLeads.length) return store.leads;
+  store.leads = [...store.leads, ...newLeads];
+  return store.leads;
 }
 
 export function clearLeads() {

@@ -15,7 +15,6 @@ class SearchPage extends StatefulWidget {
 }
 
 class _SearchPageState extends State<SearchPage> {
-  final _locationController = TextEditingController(text: 'New York');
   final _formKey = GlobalKey<FormState>();
 
   String _category = 'Dentist';
@@ -38,19 +37,14 @@ class _SearchPageState extends State<SearchPage> {
     '365': 'Last 365 days',
   };
 
-  @override
-  void dispose() {
-    _locationController.dispose();
-    super.dispose();
-  }
-
   void _submit() {
     if (!_formKey.currentState!.validate()) return;
     context.read<SearchBloc>().add(
           SearchSubmitted(
-            location: _locationController.text.trim(),
             category: _category,
             dateRange: _dateRange,
+            nationwide: true,
+            targetLeadCount: 100,
           ),
         );
   }
@@ -98,23 +92,37 @@ class _SearchPageState extends State<SearchPage> {
                           ),
                           const SizedBox(height: 10),
                           Text(
-                            'Find USA businesses with recent 1-star Google reviews — free, no paid APIs, no database.',
+                            'Pick a service — we scan every U.S. state for businesses with recent 1-star reviews and a WhatsApp number. Target: 100 leads.',
                             style: Theme.of(context).textTheme.bodyLarge,
                           ),
                           const SizedBox(height: 36),
                           Text(
-                            'Location',
+                            'Coverage',
                             style: Theme.of(context).textTheme.titleLarge?.copyWith(fontSize: 15),
                           ),
                           const SizedBox(height: 8),
-                          TextFormField(
-                            controller: _locationController,
-                            enabled: !loading,
-                            decoration: const InputDecoration(
-                              hintText: 'New York, California, Texas…',
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFECFDF5),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: const Color(0xFF6EE7B7)),
                             ),
-                            validator: (v) =>
-                                (v == null || v.trim().isEmpty) ? 'Enter a location' : null,
+                            child: Row(
+                              children: [
+                                const Icon(Icons.public, color: AppTheme.accent, size: 20),
+                                const SizedBox(width: 8),
+                                const Expanded(
+                                  child: Text(
+                                    'All 50 U.S. states + D.C. (automatic)',
+                                    style: TextStyle(
+                                      color: AppTheme.accent,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                           const SizedBox(height: 20),
                           Text(
@@ -152,11 +160,13 @@ class _SearchPageState extends State<SearchPage> {
                               children: [
                                 Icon(Icons.star, color: AppTheme.warn, size: 20),
                                 const SizedBox(width: 8),
-                                Text(
-                                  '1 star only',
-                                  style: TextStyle(
-                                    color: AppTheme.warn,
-                                    fontWeight: FontWeight.w700,
+                                const Expanded(
+                                  child: Text(
+                                    '1 star only · WhatsApp number required · up to 100 leads',
+                                    style: TextStyle(
+                                      color: Color(0xFFB45309),
+                                      fontWeight: FontWeight.w700,
+                                    ),
                                   ),
                                 ),
                               ],
@@ -196,13 +206,13 @@ class _SearchPageState extends State<SearchPage> {
                                       color: Colors.white,
                                     ),
                                   )
-                                : const Text('Find Leads'),
+                                : const Text('Find 100 Leads Nationwide'),
                           ),
                           if (loading) ...[
                             const SizedBox(height: 16),
                             Text(
                               state.progressMessage ??
-                                  'Scraping public maps pages… this can take several minutes.',
+                                  'Scanning U.S. states… this can take a long time (hours for 100 leads). Keep this tab open.',
                               textAlign: TextAlign.center,
                               style: Theme.of(context).textTheme.bodyMedium,
                             ),
