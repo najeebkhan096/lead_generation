@@ -1,6 +1,7 @@
 import 'package:equatable/equatable.dart';
 
 import '../../../domain/entities/lead.dart';
+import '../../../domain/entities/search_progress.dart';
 
 enum SearchStatus { initial, loading, success, failure }
 
@@ -13,7 +14,7 @@ class SearchState extends Equatable {
     this.category = '',
     this.dateRange = '30',
     this.exportMessage,
-    this.progressMessage,
+    this.progress,
     this.saveMessage,
     this.savingToDb = false,
   });
@@ -25,7 +26,7 @@ class SearchState extends Equatable {
   final String category;
   final String dateRange;
   final String? exportMessage;
-  final String? progressMessage;
+  final SearchProgress? progress;
   final String? saveMessage;
   final bool savingToDb;
 
@@ -37,7 +38,7 @@ class SearchState extends Equatable {
     String? category,
     String? dateRange,
     String? exportMessage,
-    String? progressMessage,
+    SearchProgress? progress,
     String? saveMessage,
     bool? savingToDb,
     bool clearError = false,
@@ -53,8 +54,7 @@ class SearchState extends Equatable {
       category: category ?? this.category,
       dateRange: dateRange ?? this.dateRange,
       exportMessage: clearExport ? null : (exportMessage ?? this.exportMessage),
-      progressMessage:
-          clearProgress ? null : (progressMessage ?? this.progressMessage),
+      progress: clearProgress ? null : (progress ?? this.progress),
       saveMessage: clearSave ? null : (saveMessage ?? this.saveMessage),
       savingToDb: savingToDb ?? this.savingToDb,
     );
@@ -69,7 +69,7 @@ class SearchState extends Equatable {
         category,
         dateRange,
         exportMessage,
-        progressMessage,
+        progress,
         saveMessage,
         savingToDb,
       ];

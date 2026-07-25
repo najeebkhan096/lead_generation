@@ -33,9 +33,18 @@ export function filterRecentOneStarLeads(businesses, { dateRange = '30' } = {}) 
     const oneStar = (business.reviews || []).filter((r) => r.stars === 1);
     const recent = sortByNewest(oneStar.filter((r) => isWithinRange(r.date, dateRange)));
 
-    if (recent.length === 0) continue;
+    // Heuristic: if no specific recent reviews found, but the overall rating is 1.x stars,
+    // it's still a very good lead.
+    const isVeryLowRated = business.rating != null && business.rating > 0 && business.rating <= 2.2;
 
-    const badReview = recent[0];
+    if (recent.length === 0 && !isVeryLowRated) continue;
+
+    const badReview = recent.length > 0 ? recent[0] : {
+      stars: business.rating ? Math.floor(business.rating) : 1,
+      text: `Overall rating is ${business.rating || 'very low'}. No specific recent text scraped.`,
+      date: 'Recent',
+      reviewer: 'System',
+    };
 
     leads.push({
       id: `${slug(business.name)}-${leads.length + 1}`,
@@ -50,7 +59,7 @@ export function filterRecentOneStarLeads(businesses, { dateRange = '30' } = {}) 
       totalReviews: business.totalReviews,
       source: business.source,
       badReview: {
-        stars: 1,
+        stars: badReview.stars,
         text: badReview.text || '',
         date: badReview.date || 'Unknown',
         reviewer: badReview.reviewer || null,

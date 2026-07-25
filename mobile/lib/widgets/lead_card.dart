@@ -24,7 +24,7 @@ class LeadCard extends StatelessWidget {
     if (!context.mounted) return;
     if (!ok) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No WhatsApp number for this business')),
+        const SnackBar(content: Text('No phone number for WhatsApp')),
       );
     }
   }
@@ -91,13 +91,21 @@ class LeadCard extends StatelessWidget {
               style: Theme.of(context).textTheme.bodyMedium,
             ),
             if (lead.phone != null && lead.phone!.isNotEmpty) ...[
-              const SizedBox(height: 4),
-              Text(
-                lead.phone!,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
-                      color: AppTheme.ink,
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  const Icon(Icons.phone_outlined, size: 18, color: AppTheme.slate),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      lead.phone!,
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
+                            color: AppTheme.ink,
+                          ),
                     ),
+                  ),
+                ],
               ),
             ],
             const SizedBox(height: 10),
@@ -133,34 +141,34 @@ class LeadCard extends StatelessWidget {
             Row(
               children: [
                 Expanded(
-                  child: OutlinedButton.icon(
+                  child: FilledButton.icon(
                     onPressed: lead.mapsUrl == null || lead.mapsUrl!.isEmpty
                         ? null
                         : () => _openMaps(context),
                     icon: const Icon(Icons.map_outlined, size: 18),
-                    label: const Text('Maps'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: AppTheme.accent,
-                      side: const BorderSide(color: AppTheme.accent),
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: FilledButton.icon(
-                    onPressed: lead.whatsAppUrl == null
-                        ? null
-                        : () => _openWhatsApp(context),
-                    icon: const Icon(Icons.chat, size: 18),
-                    label: const Text('WhatsApp'),
+                    label: const Text('Google Maps'),
                     style: FilledButton.styleFrom(
-                      backgroundColor: AppTheme.whatsApp,
+                      backgroundColor: AppTheme.accent,
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 12),
                     ),
                   ),
                 ),
+                if (lead.whatsAppUrl != null) ...[
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => _openWhatsApp(context),
+                      icon: const Icon(Icons.chat, size: 18),
+                      label: const Text('WhatsApp'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppTheme.whatsApp,
+                        side: const BorderSide(color: AppTheme.whatsApp),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                    ),
+                  ),
+                ],
               ],
             ),
           ],

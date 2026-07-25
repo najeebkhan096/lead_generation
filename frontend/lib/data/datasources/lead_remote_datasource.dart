@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 
 import '../../core/constants/api_constants.dart';
 import '../../domain/entities/lead.dart';
+import '../../domain/entities/search_progress.dart';
 
 class LeadRemoteDataSource {
   LeadRemoteDataSource({http.Client? client}) : _client = client ?? http.Client();
@@ -20,7 +21,6 @@ class LeadRemoteDataSource {
   }
 
   /// Starts search (202) then polls status until done — avoids Render 502 timeouts.
-  /// Nationwide runs can take hours while walking all US states toward 100 leads.
   Future<List<Lead>> searchLeads({
     required String category,
     required String dateRange,
@@ -28,7 +28,7 @@ class LeadRemoteDataSource {
     bool nationwide = true,
     int targetLeadCount = 100,
     bool analyze = false,
-    void Function(String message)? onProgress,
+    void Function(SearchProgress progress, List<Lead> liveLeads)? onProgress,
   }) async {
     final start = await _client
         .post(
@@ -47,22 +47,32 @@ class LeadRemoteDataSource {
         .timeout(const Duration(seconds: 60));
 
     if (start.statusCode == 409) {
-      onProgress?.call('Search already running…');
+      onProgress?.call(
+        const SearchProgress(message: 'Search already running…'),
+        const [],
+      );
     } else if (start.statusCode >= 400) {
       final body = _tryDecode(start.body);
       throw Exception(body['error'] ?? 'Search failed (${start.statusCode})');
     }
 
     onProgress?.call(
-      nationwide
-          ? 'Nationwide search started — scanning all U.S. states…'
-          : 'Search started…',
+      SearchProgress(
+        message: nationwide
+            ? 'Nationwide search started — scanning U.S. states…'
+            : 'Search started…',
+        targetCount: targetLeadCount,
+      ),
+      const [],
     );
 
-    // Nationwide scrape + WhatsApp checks can run for several hours.
     final deadline = DateTime.now().add(
-      Duration(hours: nationwide ? 6 : 1),
+      Duration(hours: nationwide ? 3 : 1),
     );
+
+    var lastLeadFetch = -1;
+    var liveLeads = <Lead>[];
+
     while (DateTime.now().isBefore(deadline)) {
       await Future<void>.delayed(const Duration(seconds: 2));
 
@@ -76,16 +86,35 @@ class LeadRemoteDataSource {
 
       final statusBody = jsonDecode(statusRes.body) as Map<String, dynamic>;
       final status = statusBody['status'] as String? ?? '';
-      final progress = statusBody['progress'] as Map<String, dynamic>?;
-      final leadCount = (statusBody['leadCount'] as num?)?.toInt() ?? 0;
-      final message = progress?['message'] as String?;
-      if (message != null && message.isNotEmpty) {
-        final withCount = leadCount > 0 ? '$message ($leadCount leads so far)' : message;
-        onProgress?.call(withCount);
+      final progressMap = statusBody['progress'] as Map<String, dynamic>?;
+      final lastSearch = statusBody['lastSearch'] as Map<String, dynamic>?;
+      final leadCount = (statusBody['leadCount'] as num?)?.toInt() ??
+          (progressMap?['found'] as num?)?.toInt() ??
+          0;
+      final target = (lastSearch?['targetLeadCount'] as num?)?.toInt() ?? targetLeadCount;
+
+      final progress = SearchProgress(
+        message: (progressMap?['message'] as String?) ?? '',
+        leadCount: leadCount,
+        targetCount: target,
+        statesDone: (progressMap?['statesDone'] as num?)?.toInt() ?? 0,
+        statesTotal: (progressMap?['statesTotal'] as num?)?.toInt() ?? 0,
+        businessesScraped: (progressMap?['processed'] as num?)?.toInt() ?? 0,
+      );
+
+      if (leadCount > 0 && leadCount != lastLeadFetch) {
+        lastLeadFetch = leadCount;
+        try {
+          liveLeads = await getResults();
+        } catch (_) {
+          // keep previous list
+        }
       }
 
+      onProgress?.call(progress, liveLeads);
+
       if (status == 'done') {
-        return getResults();
+        return liveLeads.isNotEmpty ? liveLeads : getResults();
       }
       if (status == 'error') {
         throw Exception(
@@ -95,7 +124,7 @@ class LeadRemoteDataSource {
     }
 
     throw Exception(
-      'Search timed out. Nationwide runs can take hours — check results or restart the server.',
+      'Search timed out. Check results or restart the server.',
     );
   }
 

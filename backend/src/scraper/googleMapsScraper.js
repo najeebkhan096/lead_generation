@@ -47,6 +47,11 @@ async function launchBrowser() {
       '--no-sandbox',
       '--disable-dev-shm-usage',
       '--lang=en-US',
+      '--disable-setuid-sandbox',
+      '--disable-infobars',
+      '--window-position=0,0',
+      '--ignore-certifcate-errors',
+      '--ignore-certifcate-errors-spki-list',
     ],
   });
 }
@@ -61,22 +66,22 @@ async function createContext(browser) {
 }
 
 async function dismissConsent(page) {
-  for (const selector of [
-    'button:has-text("Accept all")',
-    'button:has-text("Accept")',
-    'button:has-text("I agree")',
-    'button[aria-label="Accept all"]',
-  ]) {
-    try {
-      const btn = page.locator(selector).first();
-      if (await btn.isVisible({ timeout: 800 })) {
-        await btn.click({ timeout: 1500 });
-        await page.waitForTimeout(500);
-        return;
-      }
-    } catch {
-      // ignore
-    }
+  try {
+    // Look for anything that looks like a big "Accept" button
+    await page.evaluate(() => {
+      const buttons = Array.from(document.querySelectorAll('button'));
+      const accept = buttons.find(b => {
+        const text = (b.textContent || '').toLowerCase();
+        return text.includes('accept all') ||
+               text.includes('i agree') ||
+               text.includes('agree') ||
+               text.includes('accept');
+      });
+      if (accept) accept.click();
+    });
+    await page.waitForTimeout(1000);
+  } catch {
+    // ignore
   }
 }
 
@@ -107,26 +112,44 @@ export async function searchBusinesses(category, location, { maxResults = 10, on
     await dismissConsent(page);
 
     try {
-      await page.waitForSelector('div[role="feed"], a[href*="/maps/place"]', { timeout: 25000 });
+      // Wait for any listing-like link or the feed container
+      await page.waitForSelector('a[href*="/maps/place"], [role="feed"], .m67qEc', { timeout: 25000 });
     } catch {
-      onProgress?.('No results feed found on Google Maps.');
+      onProgress?.('No results found. Google might be showing a different layout or blocking the request.');
       return businesses;
     }
 
-    await scrollResultsFeed(page);
+    // Try to find the scrollable container more broadly
+    await page.evaluate(async () => {
+      const feed = document.querySelector('div[role="feed"]') ||
+                   document.querySelector('.m67qEc') ||
+                   document.querySelector('.section-layout.section-scrollbox');
+      if (feed) {
+        for (let i = 0; i < 3; i++) {
+          feed.scrollTop = feed.scrollHeight;
+          await new Promise(r => setTimeout(r, 800));
+        }
+      }
+    });
 
-    const hrefs = await page.locator('div[role="feed"] a[href*="/maps/place"]').evaluateAll((as) => {
+    const hrefs = await page.evaluate(() => {
       const seen = new Set();
       const out = [];
-      for (const a of as) {
-        if (!a.href || seen.has(a.href)) continue;
-        seen.add(a.href);
-        out.push(a.href);
+      // Look for all links that look like place listings
+      const links = Array.from(document.querySelectorAll('a[href*="/maps/place"]'));
+      for (const a of links) {
+        const href = a.href;
+        if (!href || seen.has(href)) continue;
+        // Avoid clicking mini-links inside a result (like "Website" or "Directions")
+        if (a.querySelector('div.fontHeadlineSmall') || a.getAttribute('aria-label')) {
+          seen.add(href);
+          out.push(href);
+        }
       }
       return out;
     });
 
-    onProgress?.(`Found ${hrefs.length} business listings.`);
+    onProgress?.(`Found ${hrefs.length} potential businesses.`);
     if (!hrefs.length) return businesses;
 
     const limit = Math.min(hrefs.length, maxResults);
@@ -245,77 +268,83 @@ async function extractOneStarReviews(page) {
   const reviews = [];
 
   try {
-    // Click Reviews — prefer button with review count in aria-label
-    const clicked = await page.evaluate(() => {
-      const candidates = [
-        ...document.querySelectorAll('button, div[role="tab"], button[role="tab"]'),
-      ];
-      for (const el of candidates) {
-        const label = `${el.getAttribute('aria-label') || ''} ${el.textContent || ''}`.toLowerCase();
-        if (label.includes('review')) {
-          el.click();
-          return label.slice(0, 80);
-        }
+    // 1. Click the "Reviews" tab
+    await page.evaluate(() => {
+      const tabs = Array.from(document.querySelectorAll('button[role="tab"], .hh706e button'));
+      const reviewTab = tabs.find(t => t.textContent?.toLowerCase().includes('reviews'));
+      if (reviewTab) reviewTab.click();
+    });
+    await page.waitForTimeout(2000);
+
+    // 2. Click Sort button
+    const sortClicked = await page.evaluate(() => {
+      const buttons = Array.from(document.querySelectorAll('button[aria-label*="Sort"], button.g67oK'));
+      const sortBtn = buttons.find(b => {
+        const txt = (b.getAttribute('aria-label') || b.textContent || '').toLowerCase();
+        return txt.includes('sort');
+      });
+      if (sortBtn) {
+        sortBtn.click();
+        return true;
       }
-      return null;
+      return false;
     });
-    if (clicked) await page.waitForTimeout(1500);
 
-    // Sort by lowest rating via DOM (avoids Playwright locator hangs)
-    await page.evaluate(() => {
-      const buttons = [...document.querySelectorAll('button')];
-      const sort = buttons.find((b) => /sort/i.test(b.getAttribute('aria-label') || b.textContent || ''));
-      if (sort) sort.click();
-    });
-    await page.waitForTimeout(600);
-    await page.evaluate(() => {
-      const items = [...document.querySelectorAll('[role="menuitemradio"], [role="menuitem"]')];
-      const lowest = items.find((el) => /lowest/i.test(el.textContent || ''));
-      if (lowest) lowest.click();
-    });
-    await page.waitForTimeout(1500);
+    if (sortClicked) {
+      await page.waitForTimeout(1000);
+      // 3. Select "Lowest rating"
+      await page.evaluate(() => {
+        const options = Array.from(document.querySelectorAll('[role="menuitem"], [role="menuitemradio"], .fx07Cc'));
+        const lowest = options.find(o => o.textContent?.toLowerCase().includes('lowest'));
+        if (lowest) lowest.click();
+      });
+      await page.waitForTimeout(2000);
+    }
 
-    for (let i = 0; i < 5; i++) {
-      await page.mouse.wheel(0, 1600);
-      await page.waitForTimeout(400);
+    // Scroll a bit to load reviews
+    for (let i = 0; i < 3; i++) {
+      await page.mouse.wheel(0, 2000);
+      await page.waitForTimeout(500);
     }
 
     const raw = await page.evaluate(() => {
-      const cards = [...document.querySelectorAll('div.jftiEf')];
+      // Common review card classes
+      const cards = Array.from(document.querySelectorAll('div.jftiEf, .G5u69c, .W_S_o'));
       const seen = new Set();
       const out = [];
 
       for (const root of cards) {
-        const aria =
-          root.querySelector('[aria-label*="star" i]')?.getAttribute('aria-label') ||
-          root.querySelector('span[role="img"]')?.getAttribute('aria-label') ||
-          '';
+        // Try multiple ways to find stars
+        const starEl = root.querySelector('[aria-label*="star" i], .kvS76c, span[role="img"]');
+        const aria = starEl?.getAttribute('aria-label') || '';
         const starMatch = aria.match(/(\d+)\s*stars?/i);
-        if (!starMatch || Number(starMatch[1]) !== 1) continue;
 
-        const reviewer = root.querySelector('div.d4r55')?.textContent?.trim() || null;
-        const date =
-          root.querySelector('span.rsqaWe')?.textContent?.trim() ||
-          root.querySelector('span[class*="rsqa"]')?.textContent?.trim() ||
-          'Unknown';
-        const text =
-          root.querySelector('span.wiI7hc')?.textContent?.trim() ||
-          root.querySelector('span[class*="wiI7"]')?.textContent?.trim() ||
-          '';
+        let stars = starMatch ? Number(starMatch[1]) : null;
+        if (stars === null) {
+          // Fallback check for visual stars if aria-label fails
+          const filledStars = root.querySelectorAll('.vzX5Ic').length; // Some themes
+          if (filledStars > 0) stars = filledStars;
+        }
 
-        const key = `${reviewer}|${date}|${text.slice(0, 60)}`;
+        if (stars !== 1) continue;
+
+        const reviewer = root.querySelector('.d4r55, .TSZ61d')?.textContent?.trim() || 'Anonymous';
+        const date = root.querySelector('.rsqaWe, .DU9u7b')?.textContent?.trim() || 'Unknown';
+        const text = root.querySelector('.wiI7hc, .MyEned')?.textContent?.trim() || '';
+
+        const key = `${reviewer}|${date}|${text.slice(0, 50)}`;
         if (seen.has(key)) continue;
         seen.add(key);
 
         out.push({ stars: 1, reviewer, text, date });
-        if (out.length >= 20) break;
+        if (out.length >= 15) break;
       }
       return out;
     });
 
     reviews.push(...raw);
-  } catch {
-    // optional
+  } catch (err) {
+    console.error('Error extracting reviews:', err);
   }
 
   return reviews;

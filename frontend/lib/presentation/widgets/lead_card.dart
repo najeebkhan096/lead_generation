@@ -17,6 +17,13 @@ class LeadCard extends StatelessWidget {
     await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
+  String? get _whatsAppUrl {
+    if (lead.waLink != null && lead.waLink!.isNotEmpty) return lead.waLink;
+    final digits = (lead.phone ?? '').replaceAll(RegExp(r'\D'), '');
+    if (digits.isEmpty) return null;
+    return 'https://wa.me/$digits';
+  }
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -97,39 +104,31 @@ class LeadCard extends StatelessWidget {
               ],
             ),
           ),
-          if (lead.phone != null || lead.website != null || lead.hasWhatsApp) ...[
+          if (lead.phone != null && lead.phone!.isNotEmpty) ...[
             const SizedBox(height: 12),
-            Wrap(
-              spacing: 16,
-              runSpacing: 6,
+            Row(
               children: [
-                if (lead.phone != null && lead.phone!.isNotEmpty)
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.phone_outlined, size: 16, color: AppTheme.slate),
-                      const SizedBox(width: 4),
-                      Text(lead.phone!, style: Theme.of(context).textTheme.bodyMedium),
-                      if (lead.hasWhatsApp) ...[
-                        const SizedBox(width: 8),
-                        Text(
-                          'WhatsApp',
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                color: const Color(0xFF128C7E),
-                                fontWeight: FontWeight.w600,
-                              ),
-                        ),
-                      ],
-                    ],
-                  ),
-                if (lead.website != null && lead.website!.isNotEmpty)
-                  Text(
-                    lead.website!,
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: AppTheme.accent,
+                const Icon(Icons.phone_outlined, size: 18, color: AppTheme.slate),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    lead.phone!,
+                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                          fontWeight: FontWeight.w700,
+                          color: AppTheme.ink,
                         ),
                   ),
+                ),
               ],
+            ),
+          ],
+          if (lead.website != null && lead.website!.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              lead.website!,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: AppTheme.accent,
+                  ),
             ),
           ],
           const SizedBox(height: 14),
@@ -137,9 +136,20 @@ class LeadCard extends StatelessWidget {
             spacing: 8,
             runSpacing: 8,
             children: [
-              if (lead.hasWhatsApp && lead.waLink != null && lead.waLink!.isNotEmpty)
+              FilledButton.icon(
+                onPressed: lead.mapsUrl == null || lead.mapsUrl!.isEmpty
+                    ? null
+                    : () => _open(lead.mapsUrl),
+                icon: const Icon(Icons.map_outlined, size: 16),
+                label: const Text('Google Maps'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppTheme.accent,
+                  foregroundColor: Colors.white,
+                ),
+              ),
+              if (_whatsAppUrl != null)
                 FilledButton.icon(
-                  onPressed: () => _open(lead.waLink),
+                  onPressed: () => _open(_whatsAppUrl),
                   icon: const Icon(Icons.chat, size: 16),
                   label: const Text('WhatsApp'),
                   style: FilledButton.styleFrom(
@@ -151,11 +161,6 @@ class LeadCard extends StatelessWidget {
                 onPressed: lead.website == null ? null : () => _open(lead.website),
                 icon: const Icon(Icons.language, size: 16),
                 label: const Text('Website'),
-              ),
-              OutlinedButton.icon(
-                onPressed: lead.mapsUrl == null ? null : () => _open(lead.mapsUrl),
-                icon: const Icon(Icons.map_outlined, size: 16),
-                label: const Text('Maps'),
               ),
               OutlinedButton.icon(
                 onPressed: () async {

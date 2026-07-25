@@ -1,5 +1,5 @@
 /**
- * Orchestrates search → scrape → filter → WhatsApp → memory store.
+ * Orchestrates search → scrape → filter → memory store.
  * Supports single-location and nationwide (all US states) searches.
  */
 
@@ -8,7 +8,7 @@ import * as bing from '../scraper/bingScraper.js';
 import * as yelp from '../scraper/yelpScraper.js';
 import { filterRecentOneStarLeads } from './reviewFilter.js';
 import { enrichLeadWithAnalysis } from './reviewAnalyzer.js';
-import { filterLeadsWithWhatsApp } from './whatsappChecker.js';
+import { normalizeUsPhone, waMeLink } from './whatsappChecker.js';
 import { US_STATES, locationQuery, shuffleStates } from '../data/usStates.js';
 import {
   setLeads,
@@ -41,6 +41,19 @@ function dedupeLeads(leads) {
     out.push(lead);
   }
   return out;
+}
+
+/** Normalize phone + build wa.me link. WhatsApp is NOT verified — user checks manually. */
+function enrichLeadContacts(leads) {
+  return leads.map((lead) => {
+    const e164 = normalizeUsPhone(lead.phone);
+    return {
+      ...lead,
+      phone: e164 ? `+${e164}` : lead.phone || null,
+      waLink: waMeLink(e164),
+      hasWhatsApp: false,
+    };
+  });
 }
 
 async function scrapeLocation(category, location, { maxResults, onProgress }) {
@@ -106,23 +119,7 @@ export async function findLeads({
     });
 
     let leads = filterRecentOneStarLeads(businesses, { dateRange });
-
-    setProgress({
-      message: `Checking WhatsApp on ${leads.length} lead phones...`,
-      found: 0,
-      processed: businesses.length,
-    });
-
-    leads = await filterLeadsWithWhatsApp(leads, {
-      onProgress: (message, checked, total) => {
-        setProgress({
-          message,
-          found: getStore().leads.length,
-          processed: checked,
-          total,
-        });
-      },
-    });
+    leads = enrichLeadContacts(leads);
 
     if (analyze) {
       leads = leads.map(enrichLeadWithAnalysis);
@@ -130,7 +127,7 @@ export async function findLeads({
 
     setLeads(leads);
     setProgress({
-      message: `Done. ${leads.length} leads with WhatsApp-available numbers.`,
+      message: `Done. ${leads.length} businesses with recent 1-star reviews.`,
       found: leads.length,
       processed: businesses.length,
     });
@@ -154,7 +151,7 @@ export async function findLeads({
 
 /**
  * Search every US state (dense metro per state) until targetLeadCount
- * WhatsApp-verified 1-star leads are found (default 100).
+ * 1-star leads are found (default 100). No WhatsApp verification.
  */
 export async function findLeadsNationwide({
   category,
@@ -182,7 +179,7 @@ export async function findLeadsNationwide({
     nationwide: true,
   });
   setProgress({
-    message: `Nationwide search: targeting ${target} WhatsApp leads across ${US_STATES.length} states...`,
+    message: `Nationwide search: targeting ${target} businesses across ${US_STATES.length} states...`,
     found: 0,
     processed: 0,
     statesDone: 0,
@@ -209,10 +206,14 @@ export async function findLeadsNationwide({
       });
 
       const onProgress = (message) => {
+        // Look for [X/Y] pattern to update processed count in real-time
+        const scanMatch = message.match(/\[(\d+)\/(\d+)\]/);
+        const currentScannedInState = scanMatch ? parseInt(scanMatch[1], 10) : 0;
+
         setProgress({
           message: `[${entry.state}] ${message}`,
           found: getStore().leads.length,
-          processed: businessesScraped,
+          processed: businessesScraped + currentScannedInState,
           statesDone,
           statesTotal: states.length,
         });
@@ -232,6 +233,7 @@ export async function findLeadsNationwide({
       businessesScraped += businesses.length;
 
       let leads = filterRecentOneStarLeads(businesses, { dateRange });
+      leads = enrichLeadContacts(leads);
       // Tag with state for results clarity
       leads = leads.map((l) => ({
         ...l,
@@ -250,27 +252,7 @@ export async function findLeadsNationwide({
         continue;
       }
 
-      setProgress({
-        message: `${entry.state}: checking WhatsApp on ${leads.length} 1★ lead(s)...`,
-        found: getStore().leads.length,
-        processed: businessesScraped,
-        statesDone,
-        statesTotal: states.length,
-      });
-
-      const waLeads = await filterLeadsWithWhatsApp(leads, {
-        onProgress: (message) => {
-          setProgress({
-            message: `[${entry.state}] ${message}`,
-            found: getStore().leads.length,
-            processed: businessesScraped,
-            statesDone,
-            statesTotal: states.length,
-          });
-        },
-      });
-
-      let enriched = analyze ? waLeads.map(enrichLeadWithAnalysis) : waLeads;
+      let enriched = analyze ? leads.map(enrichLeadWithAnalysis) : leads;
 
       // Re-id against global list length for uniqueness
       const existing = getStore().leads;
@@ -290,8 +272,8 @@ export async function findLeadsNationwide({
       setProgress({
         message:
           found >= target
-            ? `Target reached: ${found} WhatsApp leads (stopped after ${statesDone} states).`
-            : `${entry.state}: +${enriched.length} — total ${found}/${target} WhatsApp leads`,
+            ? `Target reached: ${found} businesses (stopped after ${statesDone} states).`
+            : `${entry.state}: +${enriched.length} — total ${found}/${target} businesses`,
         found,
         processed: businessesScraped,
         statesDone,
@@ -302,7 +284,7 @@ export async function findLeadsNationwide({
     const leads = dedupeLeads(getStore().leads).slice(0, target);
     setLeads(leads);
     setProgress({
-      message: `Done. ${leads.length} WhatsApp leads from ${statesDone} state(s) (target ${target}).`,
+      message: `Done. ${leads.length} businesses from ${statesDone} state(s) (target ${target}). Tap Save to Firebase.`,
       found: leads.length,
       processed: businessesScraped,
       statesDone,

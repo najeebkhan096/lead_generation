@@ -98,13 +98,13 @@ class ResultsPage extends StatelessWidget {
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             Text(
-                              'No leads with WhatsApp-available numbers',
+                              'No businesses found',
                               style: Theme.of(context).textTheme.headlineMedium,
                               textAlign: TextAlign.center,
                             ),
                             const SizedBox(height: 12),
                             Text(
-                              'Try a different category or date range, then run the nationwide search again.',
+                              'Try a different category or date range, then run the search again.',
                               style: Theme.of(context).textTheme.bodyLarge,
                               textAlign: TextAlign.center,
                             ),
@@ -128,7 +128,7 @@ class ResultsPage extends StatelessWidget {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            '1-star + WhatsApp · last ${state.dateRange} days · tap Save to Firebase to keep permanently',
+                            '1-star reviews · last ${state.dateRange} days · phone + Maps · tap Save to Firebase for the mobile app',
                             style: Theme.of(context).textTheme.bodyMedium,
                           ),
                           const SizedBox(height: 14),

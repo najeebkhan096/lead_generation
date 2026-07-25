@@ -1,4 +1,5 @@
 import '../../domain/entities/lead.dart';
+import '../../domain/entities/search_progress.dart';
 import '../../domain/repositories/lead_repository.dart';
 import '../datasources/lead_remote_datasource.dart';
 
@@ -15,7 +16,7 @@ class LeadRepositoryImpl implements LeadRepository {
     bool nationwide = true,
     int targetLeadCount = 100,
     bool analyze = false,
-    void Function(String message)? onProgress,
+    void Function(SearchProgress progress, List<Lead> liveLeads)? onProgress,
   }) {
     return _remote.searchLeads(
       location: location,

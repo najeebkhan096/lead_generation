@@ -22,7 +22,7 @@ function isNationwideRequest(body = {}) {
  * Render free tier kills long HTTP requests (~100s) with 502 —
  * clients must poll GET /api/search/status then GET /api/search/results.
  *
- * Nationwide (default): loops all US states until ~100 WhatsApp 1★ leads.
+ * Nationwide (default): loops all US states until ~100 1★ leads (phone + Maps, no WA check).
  */
 export async function startSearch(req, res) {
   const {

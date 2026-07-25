@@ -1,5 +1,6 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../../domain/entities/search_progress.dart';
 import '../../../domain/repositories/lead_repository.dart';
 import 'search_event.dart';
 import 'search_state.dart';
@@ -29,7 +30,11 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
         location: event.location,
         category: event.category,
         dateRange: event.dateRange,
-        progressMessage: 'Starting search…',
+        leads: const [],
+        progress: SearchProgress(
+          message: 'Starting search…',
+          targetCount: event.targetLeadCount,
+        ),
         clearError: true,
         clearExport: true,
       ),
@@ -43,11 +48,12 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
         nationwide: event.nationwide,
         targetLeadCount: event.targetLeadCount,
         analyze: event.analyze,
-        onProgress: (message) {
+        onProgress: (progress, liveLeads) {
           emit(
             state.copyWith(
               status: SearchStatus.loading,
-              progressMessage: message,
+              progress: progress,
+              leads: liveLeads,
             ),
           );
         },

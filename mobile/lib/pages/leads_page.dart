@@ -71,7 +71,7 @@ class _LeadsList extends StatelessWidget {
               ),
               const SizedBox(height: 8),
               Text(
-                'Run a nationwide search in LeadFinder and tap Save to Firebase.',
+                'Run a search in LeadFinder web and tap Save to Firebase.',
                 style: Theme.of(context).textTheme.bodyLarge,
                 textAlign: TextAlign.center,
               ),

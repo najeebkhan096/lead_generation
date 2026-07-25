@@ -38,7 +38,7 @@ class CategoriesPage extends StatelessWidget {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'Browse Firebase leads by category. Open Maps or WhatsApp for each business.',
+                      'Browse saved businesses by category. Phone, Google Maps, and WhatsApp (you verify manually).',
                       style: Theme.of(context).textTheme.bodyLarge,
                     ),
                   ],
