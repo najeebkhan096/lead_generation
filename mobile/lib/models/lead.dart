@@ -43,6 +43,9 @@ class Lead extends Equatable {
     this.hasWhatsApp = false,
     this.waLink,
     required this.badReview,
+    this.email,
+    this.createdAt,
+    this.updatedAt,
   });
 
   final String id;
@@ -58,6 +61,9 @@ class Lead extends Equatable {
   final bool hasWhatsApp;
   final String? waLink;
   final BadReview badReview;
+  final String? email;
+  final DateTime? createdAt;
+  final DateTime? updatedAt;
 
   factory Lead.fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
     final d = doc.data() ?? <String, dynamic>{};
@@ -77,8 +83,15 @@ class Lead extends Equatable {
       badReview: BadReview.fromMap(
         d['badReview'] as Map<String, dynamic>?,
       ),
+      email: d['email'] as String?,
+      createdAt: (d['createdAt'] as Timestamp?)?.toDate(),
+      updatedAt: (d['updatedAt'] as Timestamp?)?.toDate(),
     );
   }
+
+  /// Best available "date added" for display, preferring the original
+  /// creation time and falling back to the last update time.
+  DateTime? get dateAdded => createdAt ?? updatedAt;
 
   String? get whatsAppUrl {
     if (waLink != null && waLink!.trim().isNotEmpty) return waLink!.trim();

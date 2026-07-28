@@ -7,6 +7,7 @@ import '../bloc/search/search_bloc.dart';
 import '../bloc/search/search_event.dart';
 import '../bloc/search/search_state.dart';
 import 'results_page.dart';
+import 'saved_businesses_page.dart';
 
 class SearchPage extends StatefulWidget {
   const SearchPage({super.key});
@@ -77,9 +78,25 @@ class _SearchPageState extends State<SearchPage> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          Text(
-                            'LeadFinder',
-                            style: Theme.of(context).textTheme.displaySmall,
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  'LeadFinder',
+                                  style: Theme.of(context).textTheme.displaySmall,
+                                ),
+                              ),
+                              IconButton(
+                                tooltip: 'Saved Businesses',
+                                icon: const Icon(Icons.manage_search_rounded, color: AppTheme.accent),
+                                onPressed: () {
+                                  Navigator.of(context).push(
+                                    MaterialPageRoute(builder: (_) => const SavedBusinessesPage()),
+                                  );
+                                },
+                              ),
+                            ],
                           ),
                           const SizedBox(height: 10),
                           Text(

@@ -175,6 +175,22 @@ class LeadRemoteDataSource {
         'Saved ${(body['total'] as num?)?.toInt() ?? 0} leads to Firebase.';
   }
 
+  /// Fetches every business persisted to Firestore via the backend proxy.
+  Future<List<Lead>> getSavedLeads() async {
+    final response = await _client.get(
+      _uri(ApiConstants.savedLeads).replace(queryParameters: {'limit': '500'}),
+    );
+    if (response.statusCode >= 400) {
+      final body = _tryDecode(response.body);
+      throw Exception(body['error'] ?? 'Failed to load saved businesses');
+    }
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    final leadsJson = (body['leads'] as List<dynamic>? ?? []);
+    return leadsJson
+        .map((e) => Lead.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
   Map<String, dynamic> _tryDecode(String body) {
     try {
       return jsonDecode(body) as Map<String, dynamic>;

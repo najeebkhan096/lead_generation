@@ -4,6 +4,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'core/theme/app_theme.dart';
 import 'data/datasources/lead_remote_datasource.dart';
 import 'data/repositories/lead_repository_impl.dart';
+import 'domain/repositories/lead_repository.dart';
 import 'presentation/bloc/search/search_bloc.dart';
 import 'presentation/pages/search_page.dart';
 
@@ -20,7 +21,7 @@ class LeadGenerationApp extends StatelessWidget {
     final remote = LeadRemoteDataSource();
     final repository = LeadRepositoryImpl(remote);
 
-    return RepositoryProvider.value(
+    return RepositoryProvider<LeadRepository>.value(
       value: repository,
       child: BlocProvider(
         create: (_) => SearchBloc(repository),

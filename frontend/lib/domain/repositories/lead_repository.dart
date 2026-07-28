@@ -19,4 +19,6 @@ abstract class LeadRepository {
   Future<String> exportJson();
 
   Future<String> saveToDatabase();
+
+  Future<List<Lead>> getSavedBusinesses();
 }

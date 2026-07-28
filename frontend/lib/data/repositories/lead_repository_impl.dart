@@ -40,4 +40,7 @@ class LeadRepositoryImpl implements LeadRepository {
 
   @override
   Future<String> saveToDatabase() => _remote.saveToDatabase();
+
+  @override
+  Future<List<Lead>> getSavedBusinesses() => _remote.getSavedLeads();
 }

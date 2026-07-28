@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../services/lead_repository.dart';
 import '../theme/app_theme.dart';
 import 'leads_page.dart';
+import 'saved_businesses_page.dart';
 
 class CategoriesPage extends StatelessWidget {
   const CategoriesPage({super.key});
@@ -32,9 +33,27 @@ class CategoriesPage extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      'Lead Outreach',
-                      style: Theme.of(context).textTheme.displaySmall,
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'Lead Outreach',
+                            style: Theme.of(context).textTheme.displaySmall,
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: 'Saved Businesses',
+                          icon: const Icon(Icons.manage_search_rounded, color: AppTheme.accent),
+                          onPressed: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => const SavedBusinessesPage(),
+                              ),
+                            );
+                          },
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 8),
                     Text(

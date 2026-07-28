@@ -15,3 +15,22 @@ Future<bool> openGoogleMaps(String? mapsUrl) async {
   if (mapsUrl == null || mapsUrl.trim().isEmpty) return false;
   return openExternalUrl(mapsUrl);
 }
+
+Future<bool> openPhone(String? phone) async {
+  final digits = (phone ?? '').trim();
+  if (digits.isEmpty) return false;
+  return openExternalUrl('tel:$digits');
+}
+
+Future<bool> openEmail(String? email) async {
+  final trimmed = (email ?? '').trim();
+  if (trimmed.isEmpty) return false;
+  return openExternalUrl('mailto:$trimmed');
+}
+
+Future<bool> openWebsite(String? website) async {
+  final trimmed = (website ?? '').trim();
+  if (trimmed.isEmpty) return false;
+  final hasScheme = trimmed.startsWith('http://') || trimmed.startsWith('https://');
+  return openExternalUrl(hasScheme ? trimmed : 'https://$trimmed');
+}

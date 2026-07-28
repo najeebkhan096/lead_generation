@@ -41,6 +41,8 @@ class Lead extends Equatable {
     this.hasWhatsApp = false,
     this.waLink,
     required this.badReview,
+    this.email,
+    this.savedAt,
   });
 
   final String id;
@@ -56,6 +58,8 @@ class Lead extends Equatable {
   final bool hasWhatsApp;
   final String? waLink;
   final BadReview badReview;
+  final String? email;
+  final DateTime? savedAt;
 
   factory Lead.fromJson(Map<String, dynamic> json) {
     return Lead(
@@ -74,6 +78,8 @@ class Lead extends Equatable {
       badReview: BadReview.fromJson(
         (json['badReview'] as Map<String, dynamic>?) ?? const {},
       ),
+      email: json['email'] as String?,
+      savedAt: DateTime.tryParse((json['savedAt'] as String?) ?? ''),
     );
   }
 
