@@ -1,5 +1,6 @@
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:url_launcher/url_launcher.dart';
 
 import 'backend_controller.dart';
@@ -47,11 +48,18 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _pickBackendFolder() async {
-    final path = await getDirectoryPath(
-      confirmButtonText: 'Use this folder',
-    );
-    if (path != null) {
-      await _controller.setBackendPath(path);
+    try {
+      final path = await getDirectoryPath(
+        confirmButtonText: 'Use this folder',
+      );
+      if (path != null) {
+        await _controller.setBackendPath(path);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not open folder picker: $e')),
+      );
     }
   }
 
@@ -65,6 +73,14 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _openLocalHealth() async {
     await launchUrl(_controller.healthUri);
+  }
+
+  Future<void> _copyToClipboard(String text, String what) async {
+    await Clipboard.setData(ClipboardData(text: text));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Copied $what to clipboard')),
+    );
   }
 
   @override
@@ -166,6 +182,13 @@ class _HomePageState extends State<HomePage> {
               children: [
                 Text('Log', style: Theme.of(context).textTheme.titleSmall),
                 const Spacer(),
+                TextButton.icon(
+                  onPressed: _controller.logLines.isEmpty
+                      ? null
+                      : () => _copyToClipboard(_controller.logLines.join('\n'), 'log'),
+                  icon: const Icon(Icons.copy_rounded, size: 16),
+                  label: const Text('Copy Log'),
+                ),
                 TextButton(
                   onPressed: _controller.clearLog,
                   child: const Text('Clear'),
@@ -217,9 +240,28 @@ class _StatusCard extends StatelessWidget {
               children: [
                 Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
                 if (controller.status == BackendStatus.error && controller.lastError != null)
-                  Text(
-                    controller.lastError!,
-                    style: const TextStyle(color: Color(0xFFB91C1C), fontSize: 12),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: SelectableText(
+                          controller.lastError!,
+                          style: const TextStyle(color: Color(0xFFB91C1C), fontSize: 12),
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: 'Copy error',
+                        icon: const Icon(Icons.copy_rounded, size: 16),
+                        visualDensity: VisualDensity.compact,
+                        onPressed: () async {
+                          await Clipboard.setData(ClipboardData(text: controller.lastError!));
+                          if (!context.mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Copied error to clipboard')),
+                          );
+                        },
+                      ),
+                    ],
                   ),
                 if (controller.status == BackendStatus.running)
                   Text(

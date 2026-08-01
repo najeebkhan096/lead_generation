@@ -28,10 +28,16 @@ class BackendController extends ChangeNotifier {
   static const int port = 3001;
   Uri get healthUri => Uri.parse('http://localhost:$port/api/health');
 
+  /// This project's Firebase Hosting URL — known ahead of time, so the
+  /// "Hosted frontend" field is pre-filled instead of requiring manual entry.
+  /// Still overridable (e.g. once a Render backend URL exists) and whatever
+  /// is chosen is persisted.
+  static const defaultHostedUrl = 'https://whatsapplead-a8d9a.web.app';
+
   Future<void> loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
     backendPath = prefs.getString(_prefsBackendPath) ?? await _guessBackendPath();
-    hostedUrl = prefs.getString(_prefsHostedUrl) ?? '';
+    hostedUrl = prefs.getString(_prefsHostedUrl) ?? defaultHostedUrl;
     notifyListeners();
   }
 
@@ -72,11 +78,35 @@ class BackendController extends ChangeNotifier {
   bool get isBusy =>
       status == BackendStatus.starting || status == BackendStatus.stopping;
 
+  Future<bool> _isCommandAvailable(String command) async {
+    try {
+      final result = await Process.run(command, ['--version'], runInShell: true);
+      return result.exitCode == 0;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<void> start() async {
     if (status == BackendStatus.running || isBusy) return;
 
+    if (backendPath.trim().isEmpty) {
+      lastError = 'No backend folder selected. Pick the backend folder first.';
+      status = BackendStatus.error;
+      notifyListeners();
+      return;
+    }
+
+    final dir = Directory(backendPath);
+    if (!await dir.exists()) {
+      lastError = 'Directory does not exist: $backendPath';
+      status = BackendStatus.error;
+      notifyListeners();
+      return;
+    }
+
     final entry = File('$backendPath/src/index.js');
-    if (backendPath.trim().isEmpty || !await entry.exists()) {
+    if (!await entry.exists()) {
       lastError = 'Can\'t find src/index.js in "$backendPath". Pick the correct backend folder.';
       status = BackendStatus.error;
       notifyListeners();
@@ -89,11 +119,30 @@ class BackendController extends ChangeNotifier {
     _log('▶ Starting node src/index.js in $backendPath …');
 
     try {
+      // Try common paths for node on macOS if 'node' in shell fails
+      String nodeCommand = 'node';
+      if (!await _isCommandAvailable('node')) {
+        const commonPaths = [
+          '/opt/homebrew/bin/node',
+          '/usr/local/bin/node',
+          '/usr/bin/node',
+        ];
+        for (final path in commonPaths) {
+          if (await File(path).exists()) {
+            nodeCommand = path;
+            break;
+          }
+        }
+      }
+
+      // Not runInShell: nodeCommand is already an absolute path when PATH
+      // lookup fails, and running the long-lived server directly (rather
+      // than as a child of a wrapper shell) means Stop's kill() reliably
+      // targets the actual node process instead of possibly just the shell.
       final process = await Process.start(
-        'node',
+        nodeCommand,
         ['src/index.js'],
         workingDirectory: backendPath,
-        runInShell: false,
       );
       _process = process;
 
@@ -104,7 +153,6 @@ class BackendController extends ChangeNotifier {
         _process = null;
         _stopHealthPolling();
         if (status != BackendStatus.stopping) {
-          // Process died on its own (crash, port conflict, etc).
           lastError = 'Backend exited unexpectedly (code $code).';
           status = BackendStatus.error;
         } else {
@@ -117,8 +165,9 @@ class BackendController extends ChangeNotifier {
       status = BackendStatus.running;
       notifyListeners();
       _startHealthPolling();
-    } on ProcessException catch (e) {
-      lastError = 'Could not launch node: ${e.message}. Is Node.js installed and on PATH?';
+    } catch (e) {
+      _log('❌ Error: $e');
+      lastError = 'Could not launch node: $e. Make sure Node.js is installed.';
       status = BackendStatus.error;
       notifyListeners();
     }
@@ -136,14 +185,22 @@ class BackendController extends ChangeNotifier {
     notifyListeners();
     _log('■ Stopping backend…');
 
-    process.kill(ProcessSignal.sigterm);
-    final exited = await process.exitCode
-        .timeout(const Duration(seconds: 5), onTimeout: () {
-      _log('… still running after 5s, forcing kill.');
-      process.kill(ProcessSignal.sigkill);
-      return -9;
-    });
-    _log('Backend stopped (exit code $exited).');
+    try {
+      process.kill(ProcessSignal.sigterm);
+      final exited = await process.exitCode.timeout(
+        const Duration(seconds: 5),
+        onTimeout: () {
+          _log('… still running after 5s, forcing kill.');
+          process.kill(ProcessSignal.sigkill);
+          return -9;
+        },
+      );
+      _log('Backend stopped (exit code $exited).');
+    } catch (e) {
+      _log('❌ Error while stopping: $e');
+    }
+    // The exitCode listener registered in start() sets status/healthOk once
+    // the process actually exits; nothing further to do here.
   }
 
   void _startHealthPolling() {
