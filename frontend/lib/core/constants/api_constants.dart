@@ -16,4 +16,5 @@ class ApiConstants {
   static const String analyze = '/api/search/analyze';
   static const String saveToDb = '/api/db/save';
   static const String savedLeads = '/api/db/leads';
+  static const String checkWhatsApp = '/api/whatsapp/check';
 }

@@ -7,6 +7,7 @@ import { fileURLToPath } from 'url';
 import searchRoutes from './routes/searchRoutes.js';
 import exportRoutes from './routes/exportRoutes.js';
 import dbRoutes from './routes/dbRoutes.js';
+import whatsappRoutes from './routes/whatsappRoutes.js';
 import { initFirebase, getFirebaseStatus } from './firebase/admin.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -35,6 +36,7 @@ app.get('/api/health', (_req, res) => {
 app.use('/api/search', searchRoutes);
 app.use('/api/export', exportRoutes);
 app.use('/api/db', dbRoutes);
+app.use('/api/whatsapp', whatsappRoutes);
 
 if (fs.existsSync(path.join(webRoot, 'index.html'))) {
   app.use(express.static(webRoot, { index: false }));

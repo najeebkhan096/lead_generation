@@ -132,7 +132,7 @@ export async function searchBusinesses(category, location, { maxResults = 10, on
       }
     });
 
-    const hrefs = await page.evaluate(() => {
+    const listings = await page.evaluate(() => {
       const seen = new Set();
       const out = [];
       // Look for all links that look like place listings
@@ -141,25 +141,30 @@ export async function searchBusinesses(category, location, { maxResults = 10, on
         const href = a.href;
         if (!href || seen.has(href)) continue;
         // Avoid clicking mini-links inside a result (like "Website" or "Directions")
-        if (a.querySelector('div.fontHeadlineSmall') || a.getAttribute('aria-label')) {
+        const nameEl = a.querySelector('div.fontHeadlineSmall');
+        const ariaLabel = a.getAttribute('aria-label');
+        if (nameEl || ariaLabel) {
           seen.add(href);
-          out.push(href);
+          out.push({ href, name: (nameEl?.textContent || ariaLabel || '').trim() });
         }
       }
       return out;
     });
 
-    onProgress?.(`Found ${hrefs.length} potential businesses.`);
-    if (!hrefs.length) return businesses;
+    onProgress?.(`Found ${listings.length} potential businesses.`);
+    if (!listings.length) return businesses;
 
-    const limit = Math.min(hrefs.length, maxResults);
+    const limit = Math.min(listings.length, maxResults);
 
     for (let i = 0; i < limit; i++) {
       const placePage = await context.newPage();
+      const listingName = listings[i].name;
       try {
-        onProgress?.(`Opening listing ${i + 1}/${limit}...`);
+        onProgress?.(
+          `Opening listing ${i + 1}/${limit}${listingName ? `: ${listingName}` : ''}...`
+        );
         const business = await withTimeout(
-          scrapeOnePlace(placePage, hrefs[i], category, location),
+          scrapeOnePlace(placePage, listings[i].href, category, location),
           45000,
           `place ${i + 1}`
         );

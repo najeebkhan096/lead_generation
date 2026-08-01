@@ -12,6 +12,7 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
     on<ExportCsvRequested>(_onExportCsv);
     on<ExportJsonRequested>(_onExportJson);
     on<SaveToDatabaseRequested>(_onSaveToDatabase);
+    on<SearchResumeChecked>(_onResumeChecked);
   }
 
   final LeadRepository _repository;
@@ -48,6 +49,91 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
         nationwide: event.nationwide,
         targetLeadCount: event.targetLeadCount,
         analyze: event.analyze,
+        onProgress: (progress, liveLeads) {
+          emit(
+            state.copyWith(
+              status: SearchStatus.loading,
+              progress: progress,
+              leads: liveLeads,
+            ),
+          );
+        },
+      );
+      emit(
+        state.copyWith(
+          status: SearchStatus.success,
+          leads: leads,
+          clearError: true,
+          clearProgress: true,
+        ),
+      );
+    } catch (e) {
+      emit(
+        state.copyWith(
+          status: SearchStatus.failure,
+          error: e.toString().replaceFirst('Exception: ', ''),
+          clearProgress: true,
+        ),
+      );
+    }
+  }
+
+  Future<void> _onResumeChecked(
+    SearchResumeChecked event,
+    Emitter<SearchState> emit,
+  ) async {
+    // Only meaningful before the user has done anything in this session.
+    if (state.status != SearchStatus.initial) return;
+
+    Map<String, dynamic>? snapshot;
+    try {
+      snapshot = await _repository.getSearchSnapshot();
+    } catch (_) {
+      return; // Backend unreachable — just leave the form as-is.
+    }
+    if (snapshot == null) return;
+
+    final lastSearch = snapshot['lastSearch'] as Map<String, dynamic>?;
+    final category = lastSearch?['category'] as String? ?? '';
+    final dateRange = lastSearch?['dateRange'] as String? ?? state.dateRange;
+    final location = lastSearch?['location'] as String? ?? state.location;
+    final status = snapshot['status'] as String? ?? '';
+
+    if (status == 'done') {
+      try {
+        final leads = await _repository.getCachedResults();
+        if (leads.isNotEmpty) {
+          emit(
+            state.copyWith(
+              status: SearchStatus.success,
+              leads: leads,
+              category: category,
+              dateRange: dateRange,
+              location: location,
+            ),
+          );
+        }
+      } catch (_) {
+        // Nothing to resume into — leave the form as-is.
+      }
+      return;
+    }
+
+    if (status != 'searching') return;
+
+    emit(
+      state.copyWith(
+        status: SearchStatus.loading,
+        category: category,
+        dateRange: dateRange,
+        location: location,
+        progress: const SearchProgress(message: 'Reconnecting to running search…'),
+      ),
+    );
+
+    try {
+      final leads = await _repository.resumeSearch(
+        snapshot,
         onProgress: (progress, liveLeads) {
           emit(
             state.copyWith(

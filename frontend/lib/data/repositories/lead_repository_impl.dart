@@ -1,5 +1,6 @@
 import '../../domain/entities/lead.dart';
 import '../../domain/entities/search_progress.dart';
+import '../../domain/entities/whatsapp_check_result.dart';
 import '../../domain/repositories/lead_repository.dart';
 import '../datasources/lead_remote_datasource.dart';
 
@@ -33,6 +34,16 @@ class LeadRepositoryImpl implements LeadRepository {
   Future<List<Lead>> getCachedResults() => _remote.getResults();
 
   @override
+  Future<Map<String, dynamic>?> getSearchSnapshot() => _remote.getSearchSnapshot();
+
+  @override
+  Future<List<Lead>> resumeSearch(
+    Map<String, dynamic> snapshot, {
+    void Function(SearchProgress progress, List<Lead> liveLeads)? onProgress,
+  }) =>
+      _remote.resumeSearch(snapshot, onProgress: onProgress);
+
+  @override
   Future<String> exportCsv() => _remote.exportCsv();
 
   @override
@@ -43,4 +54,8 @@ class LeadRepositoryImpl implements LeadRepository {
 
   @override
   Future<List<Lead>> getSavedBusinesses() => _remote.getSavedLeads();
+
+  @override
+  Future<WhatsAppCheckResult> checkWhatsAppNumber(String phone) =>
+      _remote.checkWhatsApp(phone);
 }

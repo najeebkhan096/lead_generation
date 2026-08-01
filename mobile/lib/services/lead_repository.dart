@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../models/lead.dart';
+import '../models/search_batch.dart';
 
 class LeadRepository {
   LeadRepository({FirebaseFirestore? firestore})
@@ -56,6 +57,21 @@ class LeadRepository {
     } on FirebaseException {
       final snap = await collection.get();
       return snap.docs.map(Lead.fromDoc).toList();
+    }
+  }
+
+  /// Every past search batch, newest first — each saved business carries the
+  /// id of the search batch that found it (`searchId`), so this is how the
+  /// Saved Businesses screen offers a "filter by search" dropdown.
+  Future<List<SavedSearch>> fetchSearches() async {
+    final collection = _db.collection('searches');
+    try {
+      final snap =
+          await collection.orderBy('createdAt', descending: true).limit(100).get();
+      return snap.docs.map(SavedSearch.fromDoc).toList();
+    } on FirebaseException {
+      final snap = await collection.limit(100).get();
+      return snap.docs.map(SavedSearch.fromDoc).toList();
     }
   }
 }

@@ -1,5 +1,6 @@
 import '../entities/lead.dart';
 import '../entities/search_progress.dart';
+import '../entities/whatsapp_check_result.dart';
 
 abstract class LeadRepository {
   Future<List<Lead>> searchLeads({
@@ -14,6 +15,14 @@ abstract class LeadRepository {
 
   Future<List<Lead>> getCachedResults();
 
+  /// Server-side search snapshot, or `null` if nothing is running/finished.
+  Future<Map<String, dynamic>?> getSearchSnapshot();
+
+  Future<List<Lead>> resumeSearch(
+    Map<String, dynamic> snapshot, {
+    void Function(SearchProgress progress, List<Lead> liveLeads)? onProgress,
+  });
+
   Future<String> exportCsv();
 
   Future<String> exportJson();
@@ -21,4 +30,6 @@ abstract class LeadRepository {
   Future<String> saveToDatabase();
 
   Future<List<Lead>> getSavedBusinesses();
+
+  Future<WhatsAppCheckResult> checkWhatsAppNumber(String phone);
 }

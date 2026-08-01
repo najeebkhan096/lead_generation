@@ -46,6 +46,7 @@ class Lead extends Equatable {
     this.email,
     this.createdAt,
     this.updatedAt,
+    this.searchId,
   });
 
   final String id;
@@ -64,6 +65,7 @@ class Lead extends Equatable {
   final String? email;
   final DateTime? createdAt;
   final DateTime? updatedAt;
+  final String? searchId;
 
   factory Lead.fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
     final d = doc.data() ?? <String, dynamic>{};
@@ -86,6 +88,7 @@ class Lead extends Equatable {
       email: d['email'] as String?,
       createdAt: (d['createdAt'] as Timestamp?)?.toDate(),
       updatedAt: (d['updatedAt'] as Timestamp?)?.toDate(),
+      searchId: d['searchId'] as String?,
     );
   }
 

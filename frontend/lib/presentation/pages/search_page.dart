@@ -8,6 +8,7 @@ import '../bloc/search/search_event.dart';
 import '../bloc/search/search_state.dart';
 import 'results_page.dart';
 import 'saved_businesses_page.dart';
+import 'whatsapp_checker_page.dart';
 
 class SearchPage extends StatefulWidget {
   const SearchPage({super.key});
@@ -28,6 +29,15 @@ class _SearchPageState extends State<SearchPage> {
     '90': 'Last 90 days',
     '365': 'Last 365 days',
   };
+
+  @override
+  void initState() {
+    super.initState();
+    // Search progress lives only in the backend's in-memory store, so on a
+    // fresh page load, check whether a search is already running or just
+    // finished server-side instead of silently showing a blank form.
+    context.read<SearchBloc>().add(const SearchResumeChecked());
+  }
 
   void _submit() {
     if (!_formKey.currentState!.validate()) return;
@@ -86,6 +96,15 @@ class _SearchPageState extends State<SearchPage> {
                                   'LeadFinder',
                                   style: Theme.of(context).textTheme.displaySmall,
                                 ),
+                              ),
+                              IconButton(
+                                tooltip: 'WhatsApp Checker',
+                                icon: const Icon(Icons.chat_outlined, color: AppTheme.accent),
+                                onPressed: () {
+                                  Navigator.of(context).push(
+                                    MaterialPageRoute(builder: (_) => const WhatsAppCheckerPage()),
+                                  );
+                                },
                               ),
                               IconButton(
                                 tooltip: 'Saved Businesses',

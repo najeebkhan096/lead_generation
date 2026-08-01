@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import '../../core/constants/api_constants.dart';
 import '../../domain/entities/lead.dart';
 import '../../domain/entities/search_progress.dart';
+import '../../domain/entities/whatsapp_check_result.dart';
 
 class LeadRemoteDataSource {
   LeadRemoteDataSource({http.Client? client}) : _client = client ?? http.Client();
@@ -66,6 +67,53 @@ class LeadRemoteDataSource {
       const [],
     );
 
+    return _pollUntilDone(
+      nationwide: nationwide,
+      targetLeadCount: targetLeadCount,
+      onProgress: onProgress,
+    );
+  }
+
+  /// Checks the server's current search state without starting anything.
+  ///
+  /// Search progress lives only in the backend's in-memory store, so a page
+  /// reload (or the dev server restarting) otherwise loses all visibility
+  /// into a search that's still running or already finished. Returns `null`
+  /// when there's nothing to resume (server is idle).
+  Future<Map<String, dynamic>?> getSearchSnapshot() async {
+    final res = await _client.get(_uri(ApiConstants.status)).timeout(const Duration(seconds: 30));
+    if (res.statusCode >= 400) return null;
+    final body = jsonDecode(res.body) as Map<String, dynamic>;
+    if ((body['status'] as String? ?? 'idle') == 'idle') return null;
+    return body;
+  }
+
+  /// Resumes watching a search already running server-side (from
+  /// [getSearchSnapshot]), or immediately returns its results if it already
+  /// finished.
+  Future<List<Lead>> resumeSearch(
+    Map<String, dynamic> snapshot, {
+    void Function(SearchProgress progress, List<Lead> liveLeads)? onProgress,
+  }) async {
+    final status = snapshot['status'] as String? ?? '';
+    if (status == 'done') return getResults();
+    if (status == 'error') {
+      throw Exception(snapshot['error'] as String? ?? 'Search failed');
+    }
+
+    final lastSearch = snapshot['lastSearch'] as Map<String, dynamic>?;
+    return _pollUntilDone(
+      nationwide: lastSearch?['nationwide'] == true,
+      targetLeadCount: (lastSearch?['targetLeadCount'] as num?)?.toInt() ?? 100,
+      onProgress: onProgress,
+    );
+  }
+
+  Future<List<Lead>> _pollUntilDone({
+    required bool nationwide,
+    required int targetLeadCount,
+    void Function(SearchProgress progress, List<Lead> liveLeads)? onProgress,
+  }) async {
     final deadline = DateTime.now().add(
       Duration(hours: nationwide ? 3 : 1),
     );
@@ -189,6 +237,23 @@ class LeadRemoteDataSource {
     return leadsJson
         .map((e) => Lead.fromJson(e as Map<String, dynamic>))
         .toList();
+  }
+
+  /// Checks whether [phone] is reachable on WhatsApp.
+  Future<WhatsAppCheckResult> checkWhatsApp(String phone) async {
+    final response = await _client
+        .post(
+          _uri(ApiConstants.checkWhatsApp),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'phone': phone}),
+        )
+        .timeout(const Duration(seconds: 40));
+
+    final body = _tryDecode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['error'] ?? 'WhatsApp check failed');
+    }
+    return WhatsAppCheckResult.fromJson(body);
   }
 
   Map<String, dynamic> _tryDecode(String body) {

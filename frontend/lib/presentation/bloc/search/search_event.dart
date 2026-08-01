@@ -50,3 +50,10 @@ class ExportJsonRequested extends SearchEvent {
 class SaveToDatabaseRequested extends SearchEvent {
   const SaveToDatabaseRequested();
 }
+
+/// Checks whether a search is already running or finished server-side (the
+/// backend keeps search state in-memory only, so a page reload otherwise
+/// loses all visibility into it) and resumes showing it if so.
+class SearchResumeChecked extends SearchEvent {
+  const SearchResumeChecked();
+}
