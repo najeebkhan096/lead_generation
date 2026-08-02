@@ -149,9 +149,66 @@ export async function findLeads({
   }
 }
 
+import { saveLeadsToFirebase } from './firebaseLeadStore.js';
+
 /**
- * Search every US state (dense metro per state) until targetLeadCount
- * 1-star leads are found (default 100). No WhatsApp verification.
+ * Search multiple categories sequentially across all US states.
+ */
+export async function findLeadsSequential({
+  categories = [],
+  dateRange = '30',
+  maxResultsPerState = DEFAULT_PER_STATE,
+  analyze = false,
+}) {
+  if (!Array.isArray(categories) || !categories.length) {
+    throw new Error('categories array is required');
+  }
+
+  setStatus('searching');
+  setLastSearch({
+    location: 'All US states',
+    categories,
+    dateRange,
+    nationwide: true,
+    sequential: true,
+  });
+
+  try {
+    for (let i = 0; i < categories.length; i++) {
+      const category = categories[i];
+      setProgress({
+        message: `Sequential search: starting category ${i + 1}/${categories.length} — "${category}"...`,
+        found: 0,
+        processed: 0,
+        statesDone: 0,
+        statesTotal: US_STATES.length,
+      });
+
+      // Clear previous category results from memory before starting new one
+      clearLeads();
+
+      await findLeadsNationwide({
+        category,
+        dateRange,
+        maxResultsPerState,
+        analyze,
+        autoSave: true, // Handle separate storage
+        skipInitialClear: true, // Don't clear what we just set up
+      });
+    }
+
+    setStatus('done');
+    setProgress({ message: `Sequential search finished for ${categories.length} categories. Results saved to Firebase.` });
+  } catch (err) {
+    console.error('Sequential search error:', err);
+    setStatus('error', err.message);
+    setProgress({ message: `Error: ${err.message}` });
+    throw err;
+  }
+}
+
+/**
+ * Search every US state (dense metro per state) until exhaustive.
  */
 export async function findLeadsNationwide({
   category,
@@ -159,6 +216,8 @@ export async function findLeadsNationwide({
   maxResultsPerState = DEFAULT_PER_STATE,
   targetLeadCount = DEFAULT_TARGET_LEADS,
   analyze = false,
+  autoSave = false,
+  skipInitialClear = false,
 }) {
   if (!category?.trim()) {
     throw new Error('category is required');
@@ -167,19 +226,22 @@ export async function findLeadsNationwide({
   const target = Math.max(1, Number(targetLeadCount) || DEFAULT_TARGET_LEADS);
   const perState = Math.max(4, Number(maxResultsPerState) || DEFAULT_PER_STATE);
 
-  clearLeads();
-  setStatus('searching');
-  setLastSearch({
-    location: 'All US states',
-    category,
-    dateRange,
-    maxResultsPerState: perState,
-    targetLeadCount: target,
-    analyze,
-    nationwide: true,
-  });
+  if (!skipInitialClear) {
+    clearLeads();
+    setStatus('searching');
+    setLastSearch({
+      location: 'All US states',
+      category,
+      dateRange,
+      maxResultsPerState: perState,
+      targetLeadCount: target,
+      analyze,
+      nationwide: true,
+    });
+  }
+
   setProgress({
-    message: `Nationwide search: targeting ${target} businesses across ${US_STATES.length} states...`,
+    message: `Nationwide search: scanning "${category}" across ${US_STATES.length} states...`,
     found: 0,
     processed: 0,
     statesDone: 0,
@@ -192,13 +254,11 @@ export async function findLeadsNationwide({
 
   try {
     for (const entry of states) {
-      if (getStore().leads.length >= target) break;
-
       const location = locationQuery(entry);
       statesDone += 1;
 
       setProgress({
-        message: `State ${statesDone}/${states.length}: ${entry.state} — scraping ${category}...`,
+        message: `[${entry.state}] Scanning ${category}... (${statesDone}/${states.length} states)`,
         found: getStore().leads.length,
         processed: businessesScraped,
         statesDone,
@@ -206,7 +266,6 @@ export async function findLeadsNationwide({
       });
 
       const onProgress = (message) => {
-        // Look for [X/Y] pattern to update processed count in real-time
         const scanMatch = message.match(/\[(\d+)\/(\d+)\]/);
         const currentScannedInState = scanMatch ? parseInt(scanMatch[1], 10) : 0;
 
@@ -234,7 +293,6 @@ export async function findLeadsNationwide({
 
       let leads = filterRecentOneStarLeads(businesses, { dateRange });
       leads = enrichLeadContacts(leads);
-      // Tag with state for results clarity
       leads = leads.map((l) => ({
         ...l,
         location: entry.state,
@@ -242,19 +300,11 @@ export async function findLeadsNationwide({
       }));
 
       if (!leads.length) {
-        setProgress({
-          message: `${entry.state}: no recent 1★ leads — continuing (${getStore().leads.length}/${target})`,
-          found: getStore().leads.length,
-          processed: businessesScraped,
-          statesDone,
-          statesTotal: states.length,
-        });
         continue;
       }
 
       let enriched = analyze ? leads.map(enrichLeadWithAnalysis) : leads;
 
-      // Re-id against global list length for uniqueness
       const existing = getStore().leads;
       const existingKeys = new Set(existing.map(leadKey));
       enriched = enriched
@@ -267,24 +317,21 @@ export async function findLeadsNationwide({
       if (enriched.length) {
         appendLeads(enriched);
       }
-
-      const found = getStore().leads.length;
-      setProgress({
-        message:
-          found >= target
-            ? `Target reached: ${found} businesses (stopped after ${statesDone} states).`
-            : `${entry.state}: +${enriched.length} — total ${found}/${target} businesses`,
-        found,
-        processed: businessesScraped,
-        statesDone,
-        statesTotal: states.length,
-      });
     }
 
-    const leads = dedupeLeads(getStore().leads).slice(0, target);
+    const leads = dedupeLeads(getStore().leads);
     setLeads(leads);
+
+    if (autoSave) {
+      try {
+        await saveLeadsToFirebase(leads);
+      } catch (saveErr) {
+        console.error(`Auto-save failed for ${category}:`, saveErr);
+      }
+    }
+
     setProgress({
-      message: `Done. ${leads.length} businesses from ${statesDone} state(s) (target ${target}). Tap Save to Firebase.`,
+      message: `Finished "${category}". Found ${leads.length} leads.`,
       found: leads.length,
       processed: businessesScraped,
       statesDone,
@@ -301,7 +348,6 @@ export async function findLeadsNationwide({
         statesSearched: statesDone,
         businessesScraped,
         leadsFound: leads.length,
-        targetLeadCount: target,
       },
     };
   } catch (err) {

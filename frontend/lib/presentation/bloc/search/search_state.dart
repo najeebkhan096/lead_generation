@@ -12,6 +12,7 @@ class SearchState extends Equatable {
     this.error,
     this.location = '',
     this.category = '',
+    this.categories = const [],
     this.dateRange = '30',
     this.exportMessage,
     this.progress,
@@ -24,6 +25,7 @@ class SearchState extends Equatable {
   final String? error;
   final String location;
   final String category;
+  final List<String> categories;
   final String dateRange;
   final String? exportMessage;
   final SearchProgress? progress;
@@ -36,6 +38,7 @@ class SearchState extends Equatable {
     String? error,
     String? location,
     String? category,
+    List<String>? categories,
     String? dateRange,
     String? exportMessage,
     SearchProgress? progress,
@@ -52,6 +55,7 @@ class SearchState extends Equatable {
       error: clearError ? null : (error ?? this.error),
       location: location ?? this.location,
       category: category ?? this.category,
+      categories: categories ?? this.categories,
       dateRange: dateRange ?? this.dateRange,
       exportMessage: clearExport ? null : (exportMessage ?? this.exportMessage),
       progress: clearProgress ? null : (progress ?? this.progress),
@@ -67,6 +71,7 @@ class SearchState extends Equatable {
         error,
         location,
         category,
+        categories,
         dateRange,
         exportMessage,
         progress,

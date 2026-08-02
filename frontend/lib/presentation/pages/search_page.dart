@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/constants/business_categories.dart';
 import '../../core/theme/app_theme.dart';
 import '../bloc/search/search_bloc.dart';
 import '../bloc/search/search_event.dart';
@@ -19,8 +20,9 @@ class SearchPage extends StatefulWidget {
 
 class _SearchPageState extends State<SearchPage> {
   final _formKey = GlobalKey<FormState>();
+  final _categoryController = TextEditingController();
+  final List<String> _targetServices = [];
 
-  String _category = 'Dentist';
   String _dateRange = '30';
 
   static const _dateRanges = <String, String>{
@@ -39,14 +41,41 @@ class _SearchPageState extends State<SearchPage> {
     context.read<SearchBloc>().add(const SearchResumeChecked());
   }
 
+  @override
+  void dispose() {
+    _categoryController.dispose();
+    super.dispose();
+  }
+
+  void _addService([String? service]) {
+    final s = (service ?? _categoryController.text).trim();
+    if (s.isEmpty) return;
+    if (!_targetServices.contains(s)) {
+      setState(() {
+        _targetServices.add(s);
+        _categoryController.clear();
+      });
+    }
+  }
+
+  void _removeService(String service) {
+    setState(() {
+      _targetServices.remove(service);
+    });
+  }
+
   void _submit() {
-    if (!_formKey.currentState!.validate()) return;
+    if (_targetServices.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Add at least one service to start searching')),
+      );
+      return;
+    }
     context.read<SearchBloc>().add(
           SearchSubmitted(
-            category: _category,
+            categories: List.from(_targetServices),
             dateRange: _dateRange,
             nationwide: true,
-            targetLeadCount: 100,
           ),
         );
   }
@@ -119,7 +148,7 @@ class _SearchPageState extends State<SearchPage> {
                           ),
                           const SizedBox(height: 10),
                           Text(
-                            'Pick a service — we scan every U.S. state for businesses with recent 1-star reviews. You get phone numbers and Google Maps links. Target: 100 leads.',
+                            'Select multiple services to scan across the entire USA. The search will process each service sequentially and auto-save results to Firebase.',
                             style: Theme.of(context).textTheme.bodyLarge,
                           ),
                           const SizedBox(height: 36),
@@ -153,20 +182,111 @@ class _SearchPageState extends State<SearchPage> {
                           ),
                           const SizedBox(height: 20),
                           Text(
-                            'Business Category',
+                            'Business Categories',
                             style: Theme.of(context).textTheme.titleLarge?.copyWith(fontSize: 15),
                           ),
                           const SizedBox(height: 8),
-                          TextFormField(
-                            initialValue: _category,
-                            decoration: const InputDecoration(
-                              hintText: 'e.g. Dentist, Hotel, Restaurant',
-                            ),
-                            enabled: !loading,
-                            onChanged: (v) => _category = v,
-                            validator: (v) =>
-                                (v == null || v.isEmpty) ? 'Enter a category' : null,
+                          Autocomplete<String>(
+                            optionsBuilder: (TextEditingValue textEditingValue) {
+                              if (textEditingValue.text == '') {
+                                return const Iterable<String>.empty();
+                              }
+                              return BusinessCategories.top100.where((String option) {
+                                return option.toLowerCase().contains(textEditingValue.text.toLowerCase());
+                              });
+                            },
+                            onSelected: (String selection) {
+                              _addService(selection);
+                            },
+                            fieldViewBuilder: (context, controller, focusNode, onFieldSubmitted) {
+                              return Row(
+                                children: [
+                                  Expanded(
+                                    child: TextFormField(
+                                      controller: controller,
+                                      focusNode: focusNode,
+                                      decoration: const InputDecoration(
+                                        hintText: 'Select or type a category...',
+                                        isDense: true,
+                                      ),
+                                      enabled: !loading,
+                                      onFieldSubmitted: (v) {
+                                        _addService(v);
+                                        controller.clear();
+                                      },
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  IconButton.filled(
+                                    onPressed: loading ? null : () {
+                                      _addService(controller.text);
+                                      controller.clear();
+                                    },
+                                    icon: const Icon(Icons.add),
+                                    style: IconButton.styleFrom(
+                                      backgroundColor: AppTheme.accent,
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                    ),
+                                  ),
+                                ],
+                              );
+                            },
+                            optionsViewBuilder: (context, onSelected, options) {
+                              return Align(
+                                alignment: Alignment.topLeft,
+                                child: Material(
+                                  elevation: 4.0,
+                                  borderRadius: BorderRadius.circular(10),
+                                  child: Container(
+                                    width: 512,
+                                    constraints: const BoxConstraints(maxHeight: 250),
+                                    child: ListView.builder(
+                                      padding: EdgeInsets.zero,
+                                      shrinkWrap: true,
+                                      itemCount: options.length,
+                                      itemBuilder: (BuildContext context, int index) {
+                                        final String option = options.elementAt(index);
+                                        return InkWell(
+                                          onTap: () => onSelected(option),
+                                          child: Padding(
+                                            padding: const EdgeInsets.all(16.0),
+                                            child: Text(option),
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                  ),
+                                ),
+                              );
+                            },
                           ),
+                          const SizedBox(height: 12),
+                          if (_targetServices.isNotEmpty) ...[
+                            Text(
+                              'Target Services:',
+                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                fontWeight: FontWeight.bold,
+                                color: AppTheme.slate,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: _targetServices.map((service) => Chip(
+                                label: Text(service),
+                                deleteIcon: const Icon(Icons.close, size: 14),
+                                onDeleted: loading ? null : () => _removeService(service),
+                                backgroundColor: Colors.white,
+                                labelStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                  borderSide: const BorderSide(color: AppTheme.line),
+                                ),
+                              )).toList(),
+                            ),
+                            const SizedBox(height: 16),
+                          ],
                           const SizedBox(height: 20),
                           Text(
                             'Review Filter',
@@ -186,7 +306,7 @@ class _SearchPageState extends State<SearchPage> {
                                 const SizedBox(width: 8),
                                 const Expanded(
                                   child: Text(
-                                    '1 star only · phone + Google Maps · up to 100 leads',
+                                    '1 star only · phone + Google Maps · exhaustive scan',
                                     style: TextStyle(
                                       color: Color(0xFFB45309),
                                       fontWeight: FontWeight.w700,
@@ -230,13 +350,13 @@ class _SearchPageState extends State<SearchPage> {
                                       color: Colors.white,
                                     ),
                                   )
-                                : const Text('Find 100 Leads Nationwide'),
+                                : const Text('Start Sequential Search'),
                           ),
                           if (loading) ...[
                             const SizedBox(height: 24),
                             if (state.progress != null) ...[
                               LinearProgressIndicator(
-                                value: state.progress!.leadFraction,
+                                value: state.progress!.statesFraction ?? state.progress!.leadFraction,
                                 backgroundColor: Colors.black.withOpacity(0.06),
                                 color: AppTheme.accent,
                                 minHeight: 8,
@@ -251,7 +371,7 @@ class _SearchPageState extends State<SearchPage> {
                                     style: const TextStyle(fontWeight: FontWeight.bold),
                                   ),
                                   Text(
-                                    'Goal: ${state.progress!.targetCount}',
+                                    'Full USA Scan',
                                     style: TextStyle(color: Colors.grey[600]),
                                   ),
                                 ],

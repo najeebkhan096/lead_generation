@@ -4,7 +4,8 @@ import '../entities/whatsapp_check_result.dart';
 
 abstract class LeadRepository {
   Future<List<Lead>> searchLeads({
-    required String category,
+    String? category,
+    List<String>? categories,
     required String dateRange,
     String location = 'All US states',
     bool nationwide = true,

@@ -15,6 +15,12 @@ frontend/.flutter-plugins-dependencies
 frontend/build/
 frontend/.packages
 
+mobile/.dart_tool/
+mobile/.flutter-plugins
+mobile/.flutter-plugins-dependencies
+mobile/build/
+mobile/.packages
+
 # OS / IDE
 .DS_Store
 .idea/

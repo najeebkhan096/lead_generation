@@ -11,7 +11,8 @@ class LeadRepositoryImpl implements LeadRepository {
 
   @override
   Future<List<Lead>> searchLeads({
-    required String category,
+    String? category,
+    List<String>? categories,
     required String dateRange,
     String location = 'All US states',
     bool nationwide = true,
@@ -22,6 +23,7 @@ class LeadRepositoryImpl implements LeadRepository {
     return _remote.searchLeads(
       location: location,
       category: category,
+      categories: categories,
       dateRange: dateRange,
       nationwide: nationwide,
       targetLeadCount: targetLeadCount,

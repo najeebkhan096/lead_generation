@@ -9,7 +9,8 @@ abstract class SearchEvent extends Equatable {
 
 class SearchSubmitted extends SearchEvent {
   const SearchSubmitted({
-    required this.category,
+    this.category,
+    this.categories,
     required this.dateRange,
     this.location = 'All US states',
     this.nationwide = true,
@@ -18,7 +19,8 @@ class SearchSubmitted extends SearchEvent {
   });
 
   final String location;
-  final String category;
+  final String? category;
+  final List<String>? categories;
   final String dateRange;
   final bool nationwide;
   final int targetLeadCount;
@@ -28,6 +30,7 @@ class SearchSubmitted extends SearchEvent {
   List<Object?> get props => [
         location,
         category,
+        categories,
         dateRange,
         nationwide,
         targetLeadCount,

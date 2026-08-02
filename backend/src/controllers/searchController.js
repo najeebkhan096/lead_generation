@@ -1,4 +1,4 @@
-import { findLeads, findLeadsNationwide, getCurrentLeads } from '../services/leadService.js';
+import { findLeads, findLeadsNationwide, findLeadsSequential, getCurrentLeads } from '../services/leadService.js';
 import { analyzeReview, generateOutreachMessage } from '../services/reviewAnalyzer.js';
 import { clearLeads, setStatus, getStore } from '../utils/memoryStore.js';
 
@@ -28,6 +28,7 @@ export async function startSearch(req, res) {
   const {
     location,
     category,
+    categories,
     dateRange = '30',
     maxResults = 16,
     maxResultsPerState,
@@ -36,9 +37,9 @@ export async function startSearch(req, res) {
     nationwide,
   } = req.body || {};
 
-  if (!category) {
+  if (!category && (!Array.isArray(categories) || !categories.length)) {
     return res.status(400).json({
-      error: 'category is required',
+      error: 'category or categories array is required',
     });
   }
 
@@ -56,6 +57,25 @@ export async function startSearch(req, res) {
   const runNationwide = isNationwideRequest({ location, nationwide });
 
   if (runNationwide) {
+    if (Array.isArray(categories) && categories.length > 0) {
+      findLeadsSequential({
+        categories: categories.map(c => String(c).trim()),
+        dateRange: String(dateRange),
+        maxResultsPerState: Number(maxResultsPerState || maxResults) || 16,
+        analyze: Boolean(analyze),
+      }).catch((err) => {
+        console.error('Background sequential search failed:', err);
+        setStatus('error', err.message || 'Sequential search failed');
+      });
+
+      return res.status(202).json({
+        started: true,
+        sequential: true,
+        categories,
+        message: 'Sequential nationwide search started. Results for each category will be auto-saved to Firebase.',
+      });
+    }
+
     findLeadsNationwide({
       category: String(category).trim(),
       dateRange: String(dateRange),

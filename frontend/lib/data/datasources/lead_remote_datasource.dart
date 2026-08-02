@@ -23,7 +23,8 @@ class LeadRemoteDataSource {
 
   /// Starts search (202) then polls status until done — avoids Render 502 timeouts.
   Future<List<Lead>> searchLeads({
-    required String category,
+    String? category,
+    List<String>? categories,
     required String dateRange,
     String location = 'All US states',
     bool nationwide = true,
@@ -38,6 +39,7 @@ class LeadRemoteDataSource {
           body: jsonEncode({
             'location': location,
             'category': category,
+            'categories': categories,
             'dateRange': dateRange,
             'analyze': analyze,
             'nationwide': nationwide,

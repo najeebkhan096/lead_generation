@@ -29,7 +29,8 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
       state.copyWith(
         status: SearchStatus.loading,
         location: event.location,
-        category: event.category,
+        category: event.category ?? (event.categories?.isNotEmpty == true ? event.categories!.first : ''),
+        categories: event.categories,
         dateRange: event.dateRange,
         leads: const [],
         progress: SearchProgress(
@@ -45,6 +46,7 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
       final leads = await _repository.searchLeads(
         location: event.location,
         category: event.category,
+        categories: event.categories,
         dateRange: event.dateRange,
         nationwide: event.nationwide,
         targetLeadCount: event.targetLeadCount,
@@ -95,6 +97,7 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
 
     final lastSearch = snapshot['lastSearch'] as Map<String, dynamic>?;
     final category = lastSearch?['category'] as String? ?? '';
+    final categories = (lastSearch?['categories'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [];
     final dateRange = lastSearch?['dateRange'] as String? ?? state.dateRange;
     final location = lastSearch?['location'] as String? ?? state.location;
     final status = snapshot['status'] as String? ?? '';
@@ -108,6 +111,7 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
               status: SearchStatus.success,
               leads: leads,
               category: category,
+              categories: categories,
               dateRange: dateRange,
               location: location,
             ),
@@ -125,6 +129,7 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
       state.copyWith(
         status: SearchStatus.loading,
         category: category,
+        categories: categories,
         dateRange: dateRange,
         location: location,
         progress: const SearchProgress(message: 'Reconnecting to running search…'),
