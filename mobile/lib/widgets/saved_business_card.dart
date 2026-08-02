@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/lead.dart';
+import '../services/open_links.dart';
 import '../theme/app_theme.dart';
 import '../utils/date_format.dart';
 
@@ -11,6 +12,16 @@ class SavedBusinessCard extends StatelessWidget {
 
   final Lead lead;
   final VoidCallback onTap;
+
+  Future<void> _openWhatsApp(BuildContext context) async {
+    final ok = await openWhatsApp(lead.whatsAppUrl);
+    if (!context.mounted) return;
+    if (!ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No phone number for WhatsApp')),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -60,6 +71,22 @@ class SavedBusinessCard extends StatelessWidget {
                 _InfoRow(icon: Icons.email_outlined, text: lead.email!),
               if (lead.address != null && lead.address!.isNotEmpty)
                 _InfoRow(icon: Icons.location_on_outlined, text: lead.address!),
+              if (lead.whatsAppUrl != null) ...[
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: () => _openWhatsApp(context),
+                    icon: const Icon(Icons.chat, size: 18),
+                    label: const Text('WhatsApp'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppTheme.whatsApp,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                    ),
+                  ),
+                ),
+              ],
               if (addedOn != null) ...[
                 const SizedBox(height: 8),
                 Text(

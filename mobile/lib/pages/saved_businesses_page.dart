@@ -9,7 +9,8 @@ import 'business_details_page.dart';
 
 typedef _SavedBusinessesData = ({List<Lead> leads, List<SavedSearch> searches});
 
-/// Lists every business saved to Firestore, with search and pull-to-refresh.
+/// Lists every business saved to Firestore, filterable by category and by
+/// search batch, with pull-to-refresh.
 class SavedBusinessesPage extends StatefulWidget {
   const SavedBusinessesPage({super.key});
 
@@ -21,10 +22,8 @@ const _allCategories = 'All';
 
 class _SavedBusinessesPageState extends State<SavedBusinessesPage> {
   final _repo = LeadRepository();
-  final _searchController = TextEditingController();
 
   late Future<_SavedBusinessesData> _future;
-  String _query = '';
   String _selectedCategory = _allCategories;
   String? _selectedSearchId;
 
@@ -32,15 +31,6 @@ class _SavedBusinessesPageState extends State<SavedBusinessesPage> {
   void initState() {
     super.initState();
     _future = _load();
-    _searchController.addListener(() {
-      setState(() => _query = _searchController.text.trim().toLowerCase());
-    });
-  }
-
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
   }
 
   Future<_SavedBusinessesData> _load() async {
@@ -69,19 +59,11 @@ class _SavedBusinessesPageState extends State<SavedBusinessesPage> {
   }
 
   List<Lead> _filter(List<Lead> leads, String category, String? searchId) {
-    var result = category == _allCategories
+    final byCategory = category == _allCategories
         ? leads
         : leads.where((lead) => lead.category == category).toList();
-    if (searchId != null) {
-      result = result.where((lead) => lead.searchId == searchId).toList();
-    }
-    if (_query.isEmpty) return result;
-    return result.where((lead) {
-      return (lead.business.toLowerCase().contains(_query)) ||
-          (lead.phone?.toLowerCase().contains(_query) ?? false) ||
-          (lead.website?.toLowerCase().contains(_query) ?? false) ||
-          (lead.email?.toLowerCase().contains(_query) ?? false);
-    }).toList();
+    if (searchId == null) return byCategory;
+    return byCategory.where((lead) => lead.searchId == searchId).toList();
   }
 
   @override
@@ -90,32 +72,6 @@ class _SavedBusinessesPageState extends State<SavedBusinessesPage> {
       appBar: AppBar(title: const Text('Saved Businesses')),
       body: Column(
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-            child: TextField(
-              controller: _searchController,
-              decoration: InputDecoration(
-                hintText: 'Search by name, phone, website, or email',
-                prefixIcon: const Icon(Icons.search_rounded),
-                suffixIcon: _query.isEmpty
-                    ? null
-                    : IconButton(
-                        icon: const Icon(Icons.clear_rounded),
-                        onPressed: _searchController.clear,
-                      ),
-                filled: true,
-                fillColor: Colors.white,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: AppTheme.line),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: AppTheme.line),
-                ),
-              ),
-            ),
-          ),
           Expanded(
             child: RefreshIndicator(
               onRefresh: _refresh,
@@ -156,7 +112,7 @@ class _SavedBusinessesPageState extends State<SavedBusinessesPage> {
                   return Column(
                     children: [
                       Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
                         child: Column(
                           children: [
                             _CategoryDropdown(
@@ -380,7 +336,7 @@ class _NoResultsState extends StatelessWidget {
         ),
         const SizedBox(height: 8),
         Text(
-          'Try a different name, phone number, website, or email.',
+          'Try a different category or search.',
           style: Theme.of(context).textTheme.bodyLarge,
           textAlign: TextAlign.center,
         ),

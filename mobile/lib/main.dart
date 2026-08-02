@@ -2,7 +2,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 
 import 'firebase_options.dart';
-import 'pages/categories_page.dart';
+import 'pages/saved_businesses_page.dart';
 import 'theme/app_theme.dart';
 
 Future<void> main() async {
@@ -22,7 +22,7 @@ class LeadMobileApp extends StatelessWidget {
       title: 'Lead Outreach',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light(),
-      home: const CategoriesPage(),
+      home: const SavedBusinessesPage(),
     );
   }
 }
