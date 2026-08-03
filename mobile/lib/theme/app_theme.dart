@@ -6,9 +6,14 @@ class AppTheme {
   static const Color slate = Color(0xFF3D4F66);
   static const Color mist = Color(0xFFF0F4F8);
   static const Color accent = Color(0xFF0F766E);
+  static const Color accentSoft = Color(0xFFE6F2F1);
   static const Color warn = Color(0xFFB45309);
+  static const Color warnSoft = Color(0xFFFFF7ED);
   static const Color line = Color(0xFFD6DEE8);
   static const Color whatsApp = Color(0xFF25D366);
+  static const Color success = Color(0xFF15803D);
+  static const Color successSoft = Color(0xFFF0FDF4);
+  static const Color error = Color(0xFFB91C1C);
 
   static ThemeData light() {
     final base = ThemeData(

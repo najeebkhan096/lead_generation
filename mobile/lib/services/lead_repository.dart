@@ -39,4 +39,25 @@ class LeadRepository {
       return snap.docs.map(SavedSearch.fromDoc).toList();
     }
   }
+
+  Future<void> updateFavorite(String leadId, bool isFavorite) async {
+    await _db.collection('leads').doc(leadId).update({
+      'isFavorite': isFavorite,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  Future<void> updateStatus(String leadId, LeadStatus status) async {
+    await _db.collection('leads').doc(leadId).update({
+      'status': status.name,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  Future<void> updateReputationStatus(String leadId, String status) async {
+    await _db.collection('leads').doc(leadId).update({
+      'reputationStatus': status,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
 }

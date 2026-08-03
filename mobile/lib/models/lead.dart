@@ -28,6 +28,8 @@ class BadReview extends Equatable {
   List<Object?> get props => [stars, text, date, reviewer];
 }
 
+enum LeadStatus { lead, contacted, booked, dealDone }
+
 class Lead extends Equatable {
   const Lead({
     required this.id,
@@ -47,6 +49,9 @@ class Lead extends Equatable {
     this.createdAt,
     this.updatedAt,
     this.searchId,
+    this.isFavorite = false,
+    this.status = LeadStatus.lead,
+    this.reputationStatus = '',
   });
 
   final String id;
@@ -66,6 +71,9 @@ class Lead extends Equatable {
   final DateTime? createdAt;
   final DateTime? updatedAt;
   final String? searchId;
+  final bool isFavorite;
+  final LeadStatus status;
+  final String reputationStatus;
 
   factory Lead.fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
     final d = doc.data() ?? <String, dynamic>{};
@@ -89,6 +97,16 @@ class Lead extends Equatable {
       createdAt: (d['createdAt'] as Timestamp?)?.toDate(),
       updatedAt: (d['updatedAt'] as Timestamp?)?.toDate(),
       searchId: d['searchId'] as String?,
+      isFavorite: d['isFavorite'] == true,
+      status: _parseStatus(d['status'] as String?),
+      reputationStatus: (d['reputationStatus'] as String?) ?? '',
+    );
+  }
+
+  static LeadStatus _parseStatus(String? value) {
+    return LeadStatus.values.firstWhere(
+      (e) => e.name == value,
+      orElse: () => LeadStatus.lead,
     );
   }
 
