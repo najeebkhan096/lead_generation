@@ -1,13 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../models/lead.dart';
-import '../services/open_links.dart';
-import '../theme/app_theme.dart';
-import '../utils/date_format.dart';
-
-import 'package:flutter/material.dart';
-
-import '../models/lead.dart';
 import '../services/lead_repository.dart';
 import '../services/open_links.dart';
 import '../theme/app_theme.dart';
@@ -166,7 +159,7 @@ class _BusinessDetailsPageState extends State<BusinessDetailsPage> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.black10),
+        border: Border.all(color: Colors.black.withOpacity(0.1)),
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<LeadStatus>(
@@ -196,8 +189,8 @@ class _BusinessDetailsPageState extends State<BusinessDetailsPage> {
         alignLabelWithHint: true,
         filled: true,
         fillColor: Colors.white,
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Colors.black10)),
-        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Colors.black10)),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: Colors.black.withOpacity(0.1))),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: Colors.black.withOpacity(0.1))),
       ),
     );
   }

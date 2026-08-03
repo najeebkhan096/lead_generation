@@ -1,18 +1,12 @@
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../models/lead.dart';
-import '../models/search_batch.dart';
-import '../services/auth_service.dart';
 import '../services/lead_repository.dart';
 import '../theme/app_theme.dart';
 import '../widgets/saved_business_card.dart';
 import 'business_details_page.dart';
 
-typedef _SavedBusinessesData = ({List<Lead> leads, List<SavedSearch> searches});
-
-/// Lists every business saved to Firestore, filterable by category and by
-/// search batch, with pull-to-refresh.
+/// Lists every business saved to Firestore, filterable by category, with pull-to-refresh.
 class SavedBusinessesPage extends StatefulWidget {
   const SavedBusinessesPage({super.key});
 
