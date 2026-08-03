@@ -1,3 +1,4 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../models/lead.dart';
@@ -17,28 +18,20 @@ class BusinessDetailsPage extends StatefulWidget {
 
 class _BusinessDetailsPageState extends State<BusinessDetailsPage> {
   final _repo = LeadRepository();
-  final _reputationController = TextEditingController();
   late LeadStatus _currentStatus;
   bool _loading = false;
 
   @override
   void initState() {
     super.initState();
-    _reputationController.text = widget.lead.reputationStatus;
     _currentStatus = widget.lead.status;
-  }
-
-  @override
-  void dispose() {
-    _reputationController.dispose();
-    super.dispose();
   }
 
   Future<void> _saveChanges() async {
     setState(() => _loading = true);
+    final user = FirebaseAuth.instance.currentUser;
     try {
-      await _repo.updateStatus(widget.lead.id, _currentStatus);
-      await _repo.updateReputationStatus(widget.lead.id, _reputationController.text);
+      await _repo.updateStatus(widget.lead.id, _currentStatus, user?.uid);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Changes saved')));
         Navigator.pop(context);
@@ -83,23 +76,18 @@ class _BusinessDetailsPageState extends State<BusinessDetailsPage> {
             ),
         ],
       ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 40),
-        children: [
-          _buildInfoCard(context, addedOn),
-          const SizedBox(height: 24),
-          Text('Action & Status', style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 12),
-          _buildStatusPicker(),
-          const SizedBox(height: 16),
-          _buildReputationField(),
-          const SizedBox(height: 24),
-          if (widget.lead.badReview.text.trim().isNotEmpty) ...[
-            Text('Critical Review', style: Theme.of(context).textTheme.titleMedium),
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 40),
+          children: [
+            _buildInfoCard(context, addedOn),
+            const SizedBox(height: 24),
+            Text('Action & Status', style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 12),
-            _buildReviewCard(),
+            _buildStatusPicker(),
+            const SizedBox(height: 24),
           ],
-        ],
+        ),
       ),
     );
   }
@@ -110,7 +98,7 @@ class _BusinessDetailsPageState extends State<BusinessDetailsPage> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.black.withOpacity(0.05)),
+        border: Border.all(color: Colors.black.withValues(alpha: 0.05)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -159,7 +147,7 @@ class _BusinessDetailsPageState extends State<BusinessDetailsPage> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.black.withOpacity(0.1)),
+        border: Border.all(color: Colors.black.withValues(alpha: 0.1)),
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<LeadStatus>(
@@ -175,51 +163,6 @@ class _BusinessDetailsPageState extends State<BusinessDetailsPage> {
             if (val != null) setState(() => _currentStatus = val);
           },
         ),
-      ),
-    );
-  }
-
-  Widget _buildReputationField() {
-    return TextFormField(
-      controller: _reputationController,
-      maxLines: 3,
-      decoration: InputDecoration(
-        labelText: 'Reputation Management Progress',
-        hintText: 'e.g. Sent response, review removed, awaiting customer reply...',
-        alignLabelWithHint: true,
-        filled: true,
-        fillColor: Colors.white,
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: Colors.black.withOpacity(0.1))),
-        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: Colors.black.withOpacity(0.1))),
-      ),
-    );
-  }
-
-  Widget _buildReviewCard() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFFF7ED),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFFED7AA)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.star_rounded, color: AppTheme.warn, size: 18),
-              const SizedBox(width: 4),
-              Text(
-                '${widget.lead.badReview.stars}★ · ${widget.lead.badReview.date}',
-                style: const TextStyle(fontWeight: FontWeight.bold, color: AppTheme.warn),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(widget.lead.badReview.text, style: const TextStyle(height: 1.5)),
-        ],
       ),
     );
   }
@@ -261,7 +204,7 @@ class _DetailRow extends StatelessWidget {
         onTap: onTap,
         child: Row(
           children: [
-            Icon(icon, size: 18, color: AppTheme.slate.withOpacity(0.5)),
+            Icon(icon, size: 18, color: AppTheme.slate.withValues(alpha: 0.5)),
             const SizedBox(width: 12),
             Expanded(
               child: Text(

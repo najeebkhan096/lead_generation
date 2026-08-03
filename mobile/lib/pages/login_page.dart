@@ -38,50 +38,57 @@ class _LoginPageState extends State<LoginPage> {
             colors: [Color(0xFFF0F4F8), Color(0xFFE8F5F3)],
           ),
         ),
-        child: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(32.0),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(Icons.auto_graph_rounded, size: 80, color: AppTheme.accent),
-                const SizedBox(height: 24),
-                Text(
-                  'LeadFinder Mobile',
-                  style: Theme.of(context).textTheme.displaySmall?.copyWith(
-                        fontSize: 32,
-                        fontWeight: FontWeight.bold,
-                      ),
-                ),
-                const SizedBox(height: 12),
-                const Text(
-                  'Sign in to access your business leads and outreach tools.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: AppTheme.slate),
-                ),
-                const SizedBox(height: 48),
-                if (_loading)
-                  const CircularProgressIndicator()
-                else
-                  ElevatedButton.icon(
-                    onPressed: _handleGoogleSignIn,
-                    icon: Image.network(
-                      'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c1/Google_\"G\"_Logo.svg/1200px-Google_\"G\"_Logo.svg.png',
-                      height: 24,
-                    ),
-                    label: const Text('Sign in with Google'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.white,
-                      foregroundColor: AppTheme.ink,
-                      elevation: 2,
-                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        side: const BorderSide(color: Colors.black12),
-                      ),
-                    ),
+        child: SafeArea(
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(32.0),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.auto_graph_rounded, size: 80, color: AppTheme.accent),
+                  const SizedBox(height: 24),
+                  Text(
+                    'LeadFinder Mobile',
+                    style: Theme.of(context).textTheme.displaySmall?.copyWith(
+                          fontSize: 32,
+                          fontWeight: FontWeight.bold,
+                        ),
                   ),
-              ],
+                  const SizedBox(height: 12),
+                  const Text(
+                    'Sign in to access your business leads and outreach tools.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: AppTheme.slate),
+                  ),
+                  const SizedBox(height: 48),
+                  if (_loading)
+                    const CircularProgressIndicator()
+                  else
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: _handleGoogleSignIn,
+                        icon: Image.network(
+                          'https://www.gstatic.com/images/branding/product/2x/googleg_96dp.png',
+                          height: 20,
+                          width: 20,
+                          errorBuilder: (context, error, stackTrace) => const Icon(Icons.login, size: 20),
+                        ),
+                        label: const Text('Sign in with Google'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.white,
+                          foregroundColor: AppTheme.ink,
+                          elevation: 0,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            side: BorderSide(color: AppTheme.slate.withOpacity(0.1)),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
             ),
           ),
         ),

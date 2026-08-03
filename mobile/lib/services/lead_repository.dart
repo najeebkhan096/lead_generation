@@ -25,6 +25,23 @@ class LeadRepository {
     }
   }
 
+  /// Real-time stream of every saved business.
+  Stream<List<Lead>> getLeadsStream() {
+    return _db.collection('leads')
+        .orderBy('updatedAt', descending: true)
+        .snapshots()
+        .map((snap) => snap.docs.map(Lead.fromDoc).toList());
+  }
+
+  /// Real-time stream of past searches.
+  Stream<List<SavedSearch>> getSearchesStream() {
+    return _db.collection('searches')
+        .orderBy('createdAt', descending: true)
+        .limit(100)
+        .snapshots()
+        .map((snap) => snap.docs.map(SavedSearch.fromDoc).toList());
+  }
+
   /// Every past search batch, newest first — each saved business carries the
   /// id of the search batch that found it (`searchId`), so this is how the
   /// Saved Businesses screen offers a "filter by search" dropdown.
@@ -47,17 +64,25 @@ class LeadRepository {
     });
   }
 
-  Future<void> updateStatus(String leadId, LeadStatus status) async {
-    await _db.collection('leads').doc(leadId).update({
+  Future<void> updateStatus(String leadId, LeadStatus status, String? userId) async {
+    final updates = <String, dynamic>{
       'status': status.name,
       'updatedAt': FieldValue.serverTimestamp(),
-    });
+    };
+    if (userId != null && status != LeadStatus.lead) {
+      updates['assignedTo'] = userId;
+    }
+    await _db.collection('leads').doc(leadId).update(updates);
   }
 
-  Future<void> updateReputationStatus(String leadId, String status) async {
-    await _db.collection('leads').doc(leadId).update({
+  Future<void> updateReputationStatus(String leadId, String status, String? userId) async {
+    final updates = <String, dynamic>{
       'reputationStatus': status,
       'updatedAt': FieldValue.serverTimestamp(),
-    });
+    };
+    if (userId != null) {
+      updates['assignedTo'] = userId;
+    }
+    await _db.collection('leads').doc(leadId).update(updates);
   }
 }

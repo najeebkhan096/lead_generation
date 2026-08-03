@@ -18,29 +18,16 @@ const _allCategories = 'All';
 
 class _SavedBusinessesPageState extends State<SavedBusinessesPage> {
   final _repo = LeadRepository();
-
-  late Future<List<Lead>> _future;
   String _selectedCategory = _allCategories;
 
-  @override
-  void initState() {
-    super.initState();
-    _future = _repo.fetchAllLeads();
-  }
-
-  Future<void> _refresh() async {
-    setState(() => _future = _repo.fetchAllLeads());
-    await _future;
-  }
-
-  /// Categories actually present among the saved businesses — not the
-  /// full static category list, since a dropdown option with nothing to
-  /// show would be a dead end.
+  /// Categories actually present among the leads with "New" status.
   List<String> _categoriesFrom(List<Lead> leads) {
     final present = <String>{};
     for (final lead in leads) {
-      final category = lead.category.trim();
-      if (category.isNotEmpty) present.add(category);
+      if (lead.status == LeadStatus.lead) {
+        final category = lead.category.trim();
+        if (category.isNotEmpty) present.add(category);
+      }
     }
     final sorted = present.toList()..sort();
     return [_allCategories, ...sorted];
@@ -53,39 +40,39 @@ class _SavedBusinessesPageState extends State<SavedBusinessesPage> {
         title: const Text('Discover Leads'),
         centerTitle: true,
       ),
-      body: RefreshIndicator(
-        onRefresh: _refresh,
-        child: FutureBuilder<List<Lead>>(
-          future: _future,
+      body: SafeArea(
+        child: StreamBuilder<List<Lead>>(
+          stream: _repo.getLeadsStream(),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
-              return const _ScrollableState(
-                child: Center(child: CircularProgressIndicator()),
-              );
+              return const Center(child: CircularProgressIndicator());
             }
 
             if (snapshot.hasError) {
               return _ScrollableState(
                 child: _ErrorState(
                   message: snapshot.error.toString(),
-                  onRetry: _refresh,
+                  onRetry: () async => setState(() {}),
                 ),
               );
             }
 
-            final leads = snapshot.data ?? const <Lead>[];
+            final allLeads = snapshot.data ?? const <Lead>[];
+            // Only show leads with status 'lead'
+            final newLeads = allLeads.where((l) => l.status == LeadStatus.lead).toList();
 
-            if (leads.isEmpty) {
+            if (newLeads.isEmpty) {
               return const _ScrollableState(child: _EmptyState());
             }
 
-            final categories = _categoriesFrom(leads);
+            final categories = _categoriesFrom(allLeads);
             final effectiveCategory = categories.contains(_selectedCategory)
                 ? _selectedCategory
                 : _allCategories;
+            
             final filtered = effectiveCategory == _allCategories
-                ? leads
-                : leads.where((lead) => lead.category == effectiveCategory).toList();
+                ? newLeads
+                : newLeads.where((lead) => lead.category == effectiveCategory).toList();
 
             return Column(
               children: [
@@ -111,11 +98,11 @@ class _SavedBusinessesPageState extends State<SavedBusinessesPage> {
                                 child: Row(
                                   children: [
                                     Text(
-                                      '${filtered.length} Potential Leads',
+                                      '${filtered.length} New Leads Available',
                                       style: Theme.of(context).textTheme.titleMedium,
                                     ),
                                     const Spacer(),
-                                    Icon(Icons.auto_graph_rounded, size: 16, color: AppTheme.accent.withOpacity(0.5)),
+                                    Icon(Icons.auto_graph_rounded, size: 16, color: AppTheme.accent.withValues(alpha: 0.5)),
                                   ],
                                 ),
                               );
@@ -157,7 +144,7 @@ class _CategoryDropdown extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return DropdownButtonFormField<String>(
-      value: value,
+      initialValue: value,
       icon: const Icon(Icons.expand_more_rounded, color: AppTheme.accent),
       decoration: InputDecoration(
         labelText: 'Filter by Category',
@@ -168,11 +155,11 @@ class _CategoryDropdown extends StatelessWidget {
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide(color: AppTheme.accent.withOpacity(0.1)),
+          borderSide: BorderSide(color: AppTheme.accent.withValues(alpha: 0.1)),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide(color: AppTheme.accent.withOpacity(0.1)),
+          borderSide: BorderSide(color: AppTheme.accent.withValues(alpha: 0.1)),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),

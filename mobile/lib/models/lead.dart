@@ -52,6 +52,7 @@ class Lead extends Equatable {
     this.isFavorite = false,
     this.status = LeadStatus.lead,
     this.reputationStatus = '',
+    this.assignedTo,
   });
 
   final String id;
@@ -74,6 +75,7 @@ class Lead extends Equatable {
   final bool isFavorite;
   final LeadStatus status;
   final String reputationStatus;
+  final String? assignedTo;
 
   factory Lead.fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
     final d = doc.data() ?? <String, dynamic>{};
@@ -100,6 +102,7 @@ class Lead extends Equatable {
       isFavorite: d['isFavorite'] == true,
       status: _parseStatus(d['status'] as String?),
       reputationStatus: (d['reputationStatus'] as String?) ?? '',
+      assignedTo: d['assignedTo'] as String?,
     );
   }
 

@@ -14,23 +14,6 @@ class FavoritesPage extends StatefulWidget {
 
 class _FavoritesPageState extends State<FavoritesPage> {
   final _repo = LeadRepository();
-  late Future<List<Lead>> _future;
-
-  @override
-  void initState() {
-    super.initState();
-    _future = _load();
-  }
-
-  Future<List<Lead>> _load() async {
-    final leads = await _repo.fetchAllLeads();
-    return leads.where((l) => l.isFavorite).toList();
-  }
-
-  Future<void> _refresh() async {
-    setState(() => _future = _load());
-    await _future;
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -39,16 +22,16 @@ class _FavoritesPageState extends State<FavoritesPage> {
         title: const Text('My Favorites'),
         centerTitle: true,
       ),
-      body: RefreshIndicator(
-        onRefresh: _refresh,
-        child: FutureBuilder<List<Lead>>(
-          future: _future,
+      body: SafeArea(
+        child: StreamBuilder<List<Lead>>(
+          stream: _repo.getLeadsStream(),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
               return const Center(child: CircularProgressIndicator());
             }
 
-            final leads = snapshot.data ?? [];
+            final allLeads = snapshot.data ?? [];
+            final leads = allLeads.where((l) => l.isFavorite).toList();
 
             if (leads.isEmpty) {
               return _buildEmptyState();
@@ -61,11 +44,10 @@ class _FavoritesPageState extends State<FavoritesPage> {
                 final lead = leads[index];
                 return SavedBusinessCard(
                   lead: lead,
-                  onTap: () async {
-                    await Navigator.of(context).push(
+                  onTap: () {
+                    Navigator.of(context).push(
                       MaterialPageRoute(builder: (_) => BusinessDetailsPage(lead: lead)),
                     );
-                    _refresh();
                   },
                 );
               },

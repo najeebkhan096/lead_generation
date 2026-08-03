@@ -1,3 +1,4 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../models/lead.dart';
@@ -41,8 +42,9 @@ class _SavedBusinessCardState extends State<SavedBusinessCard> {
   }
 
   Future<void> _updateStatus(LeadStatus status) async {
+    final user = FirebaseAuth.instance.currentUser;
     try {
-      await _repo.updateStatus(widget.lead.id, status);
+      await _repo.updateStatus(widget.lead.id, status, user?.uid);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Status updated to ${status.name}')),
@@ -69,12 +71,12 @@ class _SavedBusinessCardState extends State<SavedBusinessCard> {
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.03),
+            color: Colors.black.withValues(alpha: 0.03),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
         ],
-        border: Border.all(color: Colors.black.withOpacity(0.05)),
+        border: Border.all(color: Colors.black.withValues(alpha: 0.05)),
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(20),
@@ -121,16 +123,20 @@ class _SavedBusinessCardState extends State<SavedBusinessCard> {
                         _RatingInfo(rating: widget.lead.rating!),
                         const SizedBox(width: 16),
                       ],
-                      Icon(Icons.location_on_outlined, size: 16, color: AppTheme.slate.withOpacity(0.5)),
+                      Icon(Icons.location_on_outlined, size: 16, color: AppTheme.slate.withValues(alpha: 0.5)),
                       const SizedBox(width: 4),
                       Expanded(
                         child: Text(
                           widget.lead.location,
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppTheme.slate.withOpacity(0.7)),
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppTheme.slate.withValues(alpha: 0.7)),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
+                      if (addedOn != null) ...[
+                        const SizedBox(width: 8),
+                        Text(addedOn, style: TextStyle(fontSize: 10, color: AppTheme.slate.withValues(alpha: 0.4))),
+                      ],
                     ],
                   ),
                   const SizedBox(height: 20),
@@ -140,15 +146,13 @@ class _SavedBusinessCardState extends State<SavedBusinessCard> {
                         child: _StatusBadge(status: widget.lead.status, color: statusColor),
                       ),
                       const SizedBox(width: 12),
-                      _ActionIconButton(
-                        icon: Icons.chat_rounded,
-                        color: AppTheme.whatsApp,
+                      _WhatsAppButton(
                         onTap: () => openWhatsApp(widget.lead.whatsAppUrl),
                       ),
                       const SizedBox(width: 8),
                       _ActionIconButton(
                         icon: Icons.more_horiz_rounded,
-                        color: AppTheme.accent,
+                        color: AppTheme.slate,
                         onTap: () => _showActionSheet(context),
                       ),
                     ],
@@ -165,19 +169,21 @@ class _SavedBusinessCardState extends State<SavedBusinessCard> {
   void _showActionSheet(BuildContext context) {
     showModalBottomSheet(
       context: context,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (context) => Container(
-        padding: const EdgeInsets.symmetric(vertical: 24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text('Update Lead Status', style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 16),
-            _buildStatusOption(context, LeadStatus.lead, 'New Lead', Icons.explore_outlined),
-            _buildStatusOption(context, LeadStatus.contacted, 'Contacted', Icons.send_rounded),
-            _buildStatusOption(context, LeadStatus.booked, 'Meeting Booked', Icons.event_available_rounded),
-            _buildStatusOption(context, LeadStatus.dealDone, 'Deal Done', Icons.check_circle_rounded),
-          ],
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (context) => SafeArea(
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Update Lead Status', style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 16),
+              _buildStatusOption(context, LeadStatus.lead, 'New Lead', Icons.explore_outlined),
+              _buildStatusOption(context, LeadStatus.contacted, 'Contacted', Icons.send_rounded),
+              _buildStatusOption(context, LeadStatus.booked, 'Meeting Booked', Icons.event_available_rounded),
+              _buildStatusOption(context, LeadStatus.dealDone, 'Deal Done', Icons.check_circle_rounded),
+            ],
+          ),
         ),
       ),
     );
@@ -259,13 +265,51 @@ class _StatusBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 10),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Center(
         child: Text(
           label,
           style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 12, letterSpacing: 1),
+        ),
+      ),
+    );
+  }
+}
+
+class _WhatsAppButton extends StatelessWidget {
+  final VoidCallback onTap;
+  const _WhatsAppButton({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        decoration: BoxDecoration(
+          color: const Color(0xFF25D366),
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF25D366).withValues(alpha: 0.3),
+              blurRadius: 8,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.chat_rounded, color: Colors.white, size: 18),
+            SizedBox(width: 8),
+            Text(
+              'WhatsApp',
+              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+            ),
+          ],
         ),
       ),
     );
@@ -287,7 +331,7 @@ class _ActionIconButton extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
-          color: color.withOpacity(0.1),
+          color: color.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(12),
         ),
         child: Icon(icon, color: color, size: 20),
