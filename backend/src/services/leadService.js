@@ -149,7 +149,7 @@ export async function findLeads({
   }
 }
 
-import { saveLeadsToFirebase } from './firebaseLeadStore.js';
+import { saveLeadsToFirebase, checkIfCategorySearched } from './firebaseLeadStore.js';
 
 /**
  * Search multiple categories sequentially across all US states.
@@ -176,6 +176,25 @@ export async function findLeadsSequential({
   try {
     for (let i = 0; i < categories.length; i++) {
       const category = categories[i];
+
+      // Check if we already searched this category recently
+      const alreadySearched = await checkIfCategorySearched(category);
+      if (alreadySearched) {
+        setProgress({
+          message: `Sequential search: skipping "${category}" (already searched in the last 7 days).`,
+          found: 0,
+          processed: 0,
+          statesDone: US_STATES.length,
+          statesTotal: US_STATES.length,
+        });
+        // Short pause to let user see the message
+        await new Promise(r => setTimeout(r, 2000));
+        continue;
+      }
+
+      // Keep searching status active throughout the sequence
+      setStatus('searching');
+
       setProgress({
         message: `Sequential search: starting category ${i + 1}/${categories.length} — "${category}"...`,
         found: 0,
@@ -194,6 +213,7 @@ export async function findLeadsSequential({
         analyze,
         autoSave: true, // Handle separate storage
         skipInitialClear: true, // Don't clear what we just set up
+        isSequential: true, // Don't set status to 'done' inside
       });
     }
 
@@ -218,6 +238,7 @@ export async function findLeadsNationwide({
   analyze = false,
   autoSave = false,
   skipInitialClear = false,
+  isSequential = false,
 }) {
   if (!category?.trim()) {
     throw new Error('category is required');
@@ -320,7 +341,7 @@ export async function findLeadsNationwide({
     }
 
     const leads = dedupeLeads(getStore().leads);
-    setLeads(leads);
+    setLeads(leads, { done: !isSequential });
 
     if (autoSave) {
       try {

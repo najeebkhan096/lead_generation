@@ -25,11 +25,13 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
     SearchSubmitted event,
     Emitter<SearchState> emit,
   ) async {
+    final primaryCategory = event.category ?? (event.categories?.isNotEmpty == true ? event.categories!.first : '');
+    
     emit(
       state.copyWith(
         status: SearchStatus.loading,
         location: event.location,
-        category: event.category ?? (event.categories?.isNotEmpty == true ? event.categories!.first : ''),
+        category: primaryCategory,
         categories: event.categories,
         dateRange: event.dateRange,
         leads: const [],
@@ -45,18 +47,22 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
     try {
       final leads = await _repository.searchLeads(
         location: event.location,
-        category: event.category,
+        category: primaryCategory,
         categories: event.categories,
         dateRange: event.dateRange,
         nationwide: event.nationwide,
         targetLeadCount: event.targetLeadCount,
         analyze: event.analyze,
+        autoSave: event.autoSave,
         onProgress: (progress, liveLeads) {
+          // Use this.state to ensure we are building on the latest state
+          // instead of the stale state from the start of _onSubmitted
           emit(
-            state.copyWith(
+            this.state.copyWith(
               status: SearchStatus.loading,
               progress: progress,
               leads: liveLeads,
+              category: progress.currentCategory.isNotEmpty ? progress.currentCategory : null,
             ),
           );
         },

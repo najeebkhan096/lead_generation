@@ -30,6 +30,7 @@ class LeadRemoteDataSource {
     bool nationwide = true,
     int targetLeadCount = 100,
     bool analyze = false,
+    bool autoSave = true,
     void Function(SearchProgress progress, List<Lead> liveLeads)? onProgress,
   }) async {
     final start = await _client
@@ -42,6 +43,7 @@ class LeadRemoteDataSource {
             'categories': categories,
             'dateRange': dateRange,
             'analyze': analyze,
+            'autoSave': autoSave,
             'nationwide': nationwide,
             'targetLeadCount': targetLeadCount,
             'maxResultsPerState': 16,
@@ -150,6 +152,7 @@ class LeadRemoteDataSource {
         statesDone: (progressMap?['statesDone'] as num?)?.toInt() ?? 0,
         statesTotal: (progressMap?['statesTotal'] as num?)?.toInt() ?? 0,
         businessesScraped: (progressMap?['processed'] as num?)?.toInt() ?? 0,
+        currentCategory: lastSearch?['category'] as String? ?? '',
       );
 
       if (leadCount > 0 && leadCount != lastLeadFetch) {

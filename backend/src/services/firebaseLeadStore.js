@@ -182,3 +182,22 @@ export async function getFirebaseLeadCount() {
   const snap = await db.collection('leads').count().get();
   return snap.data().count ?? 0;
 }
+
+/**
+ * Checks if a specific category has already been searched within the last N days.
+ */
+export async function checkIfCategorySearched(category, days = 7) {
+  if (!category) return false;
+  const db = getFirestore();
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - days);
+
+  const snap = await db
+    .collection('searches')
+    .where('category', '==', category)
+    .where('createdAt', '>', cutoff)
+    .limit(1)
+    .get();
+
+  return !snap.empty;
+}

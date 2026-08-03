@@ -7,6 +7,7 @@ import '../../core/theme/app_theme.dart';
 import '../bloc/search/search_bloc.dart';
 import '../bloc/search/search_event.dart';
 import '../bloc/search/search_state.dart';
+import 'active_search_page.dart';
 import 'results_page.dart';
 import 'saved_businesses_page.dart';
 import 'whatsapp_checker_page.dart';
@@ -24,6 +25,8 @@ class _SearchPageState extends State<SearchPage> {
   final List<String> _targetServices = [];
 
   String _dateRange = '30';
+  bool _autoSave = true;
+  bool _analyze = false;
 
   static const _dateRanges = <String, String>{
     '7': 'Last 7 days',
@@ -76,6 +79,8 @@ class _SearchPageState extends State<SearchPage> {
             categories: List.from(_targetServices),
             dateRange: _dateRange,
             nationwide: true,
+            autoSave: _autoSave,
+            analyze: _analyze,
           ),
         );
   }
@@ -83,12 +88,13 @@ class _SearchPageState extends State<SearchPage> {
   @override
   Widget build(BuildContext context) {
     return BlocConsumer<SearchBloc, SearchState>(
-      listenWhen: (prev, next) =>
-          prev.status != next.status && next.status == SearchStatus.success,
+      listenWhen: (prev, next) => prev.status != next.status,
       listener: (context, state) {
-        Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const ResultsPage()),
-        );
+        if (state.status == SearchStatus.loading) {
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const ActiveSearchPage()),
+          );
+        }
       },
       builder: (context, state) {
         final loading = state.status == SearchStatus.loading;
@@ -118,7 +124,7 @@ class _SearchPageState extends State<SearchPage> {
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                            crossAxisAlignment: CrossAxisAlignment.center,
                             children: [
                               Expanded(
                                 child: Text(
@@ -126,23 +132,16 @@ class _SearchPageState extends State<SearchPage> {
                                   style: Theme.of(context).textTheme.displaySmall,
                                 ),
                               ),
-                              IconButton(
-                                tooltip: 'WhatsApp Checker',
-                                icon: const Icon(Icons.chat_outlined, color: AppTheme.accent),
-                                onPressed: () {
-                                  Navigator.of(context).push(
-                                    MaterialPageRoute(builder: (_) => const WhatsAppCheckerPage()),
-                                  );
-                                },
+                              _ActionButton(
+                                icon: Icons.chat_outlined,
+                                label: 'WhatsApp',
+                                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const WhatsAppCheckerPage())),
                               ),
-                              IconButton(
-                                tooltip: 'Saved Businesses',
-                                icon: const Icon(Icons.manage_search_rounded, color: AppTheme.accent),
-                                onPressed: () {
-                                  Navigator.of(context).push(
-                                    MaterialPageRoute(builder: (_) => const SavedBusinessesPage()),
-                                  );
-                                },
+                              const SizedBox(width: 12),
+                              _ActionButton(
+                                icon: Icons.history_rounded,
+                                label: 'History',
+                                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SavedBusinessesPage())),
                               ),
                             ],
                           ),
@@ -281,7 +280,7 @@ class _SearchPageState extends State<SearchPage> {
                                 labelStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(8),
-                                  borderSide: const BorderSide(color: AppTheme.line),
+                                  side: const BorderSide(color: AppTheme.line),
                                 ),
                               )).toList(),
                             ),
@@ -338,215 +337,49 @@ class _SearchPageState extends State<SearchPage> {
                                     if (v != null) setState(() => _dateRange = v);
                                   },
                           ),
+                          const SizedBox(height: 20),
+                          Text(
+                            'Search Options',
+                            style: Theme.of(context).textTheme.titleLarge?.copyWith(fontSize: 15),
+                          ),
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: CheckboxListTile(
+                                  title: const Text('Auto-save to Firebase', style: TextStyle(fontSize: 14)),
+                                  subtitle: const Text('Saves each niche immediately', style: TextStyle(fontSize: 11)),
+                                  value: _autoSave,
+                                  onChanged: loading ? null : (v) => setState(() => _autoSave = v ?? true),
+                                  contentPadding: EdgeInsets.zero,
+                                  controlAffinity: ListTileControlAffinity.leading,
+                                  dense: true,
+                                ),
+                              ),
+                              Expanded(
+                                child: CheckboxListTile(
+                                  title: const Text('Analyze Reviews', style: TextStyle(fontSize: 14)),
+                                  subtitle: const Text('Categorize complaints', style: TextStyle(fontSize: 11)),
+                                  value: _analyze,
+                                  onChanged: loading ? null : (v) => setState(() => _analyze = v ?? false),
+                                  contentPadding: EdgeInsets.zero,
+                                  controlAffinity: ListTileControlAffinity.leading,
+                                  dense: true,
+                                ),
+                              ),
+                            ],
+                          ),
                           const SizedBox(height: 28),
                           ElevatedButton(
                             onPressed: loading ? null : _submit,
-                            child: loading
-                                ? const SizedBox(
-                                    height: 22,
-                                    width: 22,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2.4,
-                                      color: Colors.white,
-                                    ),
-                                  )
-                                : const Text('Start Sequential Search'),
+                            child: const Text('Start Sequential Search'),
                           ),
-                          if (loading) ...[
-                            const SizedBox(height: 24),
-                            if (state.progress != null) ...[
-                              LinearProgressIndicator(
-                                value: state.progress!.statesFraction ?? state.progress!.leadFraction,
-                                backgroundColor: Colors.black.withOpacity(0.06),
-                                color: AppTheme.accent,
-                                minHeight: 8,
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              const SizedBox(height: 12),
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Text(
-                                    '${state.leads.length} leads found',
-                                    style: const TextStyle(fontWeight: FontWeight.bold),
-                                  ),
-                                  Text(
-                                    'Full USA Scan',
-                                    style: TextStyle(color: Colors.grey[600]),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 24),
-                              Container(
-                                padding: const EdgeInsets.all(16),
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withOpacity(0.6),
-                                  borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(color: Colors.black.withOpacity(0.05)),
-                                ),
-                                child: Column(
-                                  children: [
-                                    Row(
-                                      children: [
-                                        _ProgressStat(
-                                          label: 'STATES',
-                                          value: '${state.progress!.statesDone}/${state.progress!.statesTotal > 0 ? state.progress!.statesTotal : 51}',
-                                          icon: Icons.map_outlined,
-                                        ),
-                                        Container(width: 1, height: 30, color: Colors.black12, margin: const EdgeInsets.symmetric(horizontal: 16)),
-                                        _ProgressStat(
-                                          label: 'SCANNED',
-                                          value: '${state.progress!.businessesScraped}',
-                                          icon: Icons.search_rounded,
-                                        ),
-                                        Container(width: 1, height: 30, color: Colors.black12, margin: const EdgeInsets.symmetric(horizontal: 16)),
-                                        _ProgressStat(
-                                          label: 'YIELD',
-                                          value: '${state.leads.isEmpty || state.progress!.businessesScraped == 0 ? 0 : (state.leads.length / state.progress!.businessesScraped * 100).toStringAsFixed(1)}%',
-                                          icon: Icons.analytics_outlined,
-                                        ),
-                                      ],
-                                    ),
-                                    if (state.progress!.statesTotal > 0) ...[
-                                      const SizedBox(height: 16),
-                                      ClipRRect(
-                                        borderRadius: BorderRadius.circular(2),
-                                        child: LinearProgressIndicator(
-                                          value: state.progress!.statesFraction,
-                                          backgroundColor: Colors.black.withOpacity(0.03),
-                                          color: AppTheme.slate.withOpacity(0.4),
-                                          minHeight: 3,
-                                        ),
-                                      ),
-                                    ],
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(height: 20),
-                            ],
-                            Text(
-                              state.progress?.message ??
-                                  'Scanning U.S. states… much faster now. Keep this tab open.',
-                              textAlign: TextAlign.center,
-                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                fontStyle: FontStyle.italic,
-                                color: AppTheme.slate.withOpacity(0.8),
-                              ),
-                            ),
-                            if (state.leads.isNotEmpty) ...[
-                              const SizedBox(height: 32),
-                              Row(
-                                children: [
-                                  const Icon(Icons.bolt, color: AppTheme.accent, size: 18),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    'LIVE FEED',
-                                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                                          letterSpacing: 1.2,
-                                          fontWeight: FontWeight.bold,
-                                          color: AppTheme.accent,
-                                        ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 12),
-                              ...state.leads.reversed.take(5).map((lead) => InkWell(
-                                    onTap: () {
-                                      if (lead.mapsUrl != null) {
-                                        launchUrl(Uri.parse(lead.mapsUrl!));
-                                      }
-                                    },
-                                    borderRadius: BorderRadius.circular(8),
-                                    child: Container(
-                                      margin: const EdgeInsets.only(bottom: 8),
-                                      padding: const EdgeInsets.all(12),
-                                      decoration: BoxDecoration(
-                                        color: Colors.white.withOpacity(0.5),
-                                        borderRadius: BorderRadius.circular(8),
-                                        border: Border.all(color: Colors.black.withOpacity(0.1)),
-                                      ),
-                                      child: Row(
-                                        children: [
-                                          const Icon(Icons.check_circle,
-                                              color: Colors.green, size: 16),
-                                          const SizedBox(width: 12),
-                                          Expanded(
-                                            child: Column(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.start,
-                                              children: [
-                                                Text(
-                                                  lead.business,
-                                                  style: const TextStyle(
-                                                      fontWeight: FontWeight.w600,
-                                                      fontSize: 14),
-                                                  maxLines: 1,
-                                                  overflow: TextOverflow.ellipsis,
-                                                ),
-                                                Text(
-                                                  lead.location,
-                                                  style: TextStyle(
-                                                      color: Colors.grey[600],
-                                                      fontSize: 12),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                          if (lead.rating != null)
-                                            Container(
-                                              padding: const EdgeInsets.symmetric(
-                                                  horizontal: 6, vertical: 2),
-                                              decoration: BoxDecoration(
-                                                color: Colors.amber[100],
-                                                borderRadius:
-                                                    BorderRadius.circular(4),
-                                              ),
-                                              child: Text(
-                                                '★ ${lead.rating}',
-                                                style: TextStyle(
-                                                  color: Colors.amber[900],
-                                                  fontWeight: FontWeight.bold,
-                                                  fontSize: 12,
-                                                ),
-                                              ),
-                                            ),
-                                          const SizedBox(width: 8),
-                                          Icon(Icons.open_in_new, size: 14, color: Colors.grey[400]),
-                                        ],
-                                      ),
-                                    ),
-                                  )),
-                              if (state.leads.length > 5)
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 4),
-                                  child: Text(
-                                    '+ ${state.leads.length - 5} more leads hidden',
-                                    textAlign: TextAlign.center,
-                                    style: TextStyle(
-                                        color: Colors.grey[500],
-                                        fontSize: 12,
-                                        fontStyle: FontStyle.italic),
-                                  ),
-                                ),
-                            ],
-                          ],
                           if (state.status == SearchStatus.failure && state.error != null) ...[
                             const SizedBox(height: 16),
                             Text(
                               state.error!,
                               textAlign: TextAlign.center,
                               style: const TextStyle(color: Color(0xFFB91C1C)),
-                            ),
-                          ],
-                          if (state.leads.isNotEmpty && state.status == SearchStatus.success) ...[
-                            const SizedBox(height: 16),
-                            TextButton(
-                              onPressed: () {
-                                Navigator.of(context).push(
-                                  MaterialPageRoute(builder: (_) => const ResultsPage()),
-                                );
-                              },
-                              child: Text('View ${state.leads.length} results'),
                             ),
                           ],
                         ],
@@ -563,42 +396,31 @@ class _SearchPageState extends State<SearchPage> {
   }
 }
 
-class _ProgressStat extends StatelessWidget {
-  final String label;
-  final String value;
+class _ActionButton extends StatelessWidget {
   final IconData icon;
+  final String label;
+  final VoidCallback onTap;
 
-  const _ProgressStat({
-    required this.label,
-    required this.value,
-    required this.icon,
-  });
+  const _ActionButton({required this.icon, required this.label, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    return Expanded(
-      child: Column(
-        children: [
-          Icon(icon, size: 16, color: AppTheme.slate.withOpacity(0.6)),
-          const SizedBox(height: 4),
-          Text(
-            value,
-            style: const TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: 16,
-              color: AppTheme.ink,
-            ),
-          ),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 10,
-              letterSpacing: 0.5,
-              fontWeight: FontWeight.w600,
-              color: AppTheme.slate.withOpacity(0.5),
-            ),
-          ),
-        ],
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          border: Border.all(color: AppTheme.accent.withOpacity(0.2)),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          children: [
+            Icon(icon, color: AppTheme.accent, size: 20),
+            const SizedBox(height: 4),
+            Text(label, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppTheme.accent)),
+          ],
+        ),
       ),
     );
   }

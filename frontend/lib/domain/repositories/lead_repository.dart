@@ -11,6 +11,7 @@ abstract class LeadRepository {
     bool nationwide = true,
     int targetLeadCount = 100,
     bool analyze = false,
+    bool autoSave = true,
     void Function(SearchProgress progress, List<Lead> liveLeads)? onProgress,
   });
 

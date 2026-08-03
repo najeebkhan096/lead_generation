@@ -8,6 +8,7 @@ class SearchProgress extends Equatable {
     this.statesDone = 0,
     this.statesTotal = 0,
     this.businessesScraped = 0,
+    this.currentCategory = '',
   });
 
   final String message;
@@ -16,6 +17,7 @@ class SearchProgress extends Equatable {
   final int statesDone;
   final int statesTotal;
   final int businessesScraped;
+  final String currentCategory;
 
   double get leadFraction {
     if (targetCount <= 0) return 0;
@@ -35,5 +37,6 @@ class SearchProgress extends Equatable {
         statesDone,
         statesTotal,
         businessesScraped,
+        currentCategory,
       ];
 }

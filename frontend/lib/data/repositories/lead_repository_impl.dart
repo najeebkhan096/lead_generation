@@ -18,6 +18,7 @@ class LeadRepositoryImpl implements LeadRepository {
     bool nationwide = true,
     int targetLeadCount = 100,
     bool analyze = false,
+    bool autoSave = true,
     void Function(SearchProgress progress, List<Lead> liveLeads)? onProgress,
   }) {
     return _remote.searchLeads(
@@ -28,6 +29,7 @@ class LeadRepositoryImpl implements LeadRepository {
       nationwide: nationwide,
       targetLeadCount: targetLeadCount,
       analyze: analyze,
+      autoSave: autoSave,
       onProgress: onProgress,
     );
   }

@@ -37,9 +37,12 @@ export async function startSearch(req, res) {
     nationwide,
   } = req.body || {};
 
-  if (!category && (!Array.isArray(categories) || !categories.length)) {
+  const hasCategory = (category && String(category).trim().length > 0) ||
+                      (Array.isArray(categories) && categories.length > 0);
+
+  if (!hasCategory) {
     return res.status(400).json({
-      error: 'category or categories array is required',
+      error: 'At least one business category is required',
     });
   }
 
