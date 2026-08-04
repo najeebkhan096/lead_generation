@@ -29,70 +29,148 @@ class _LoginPageState extends State<LoginPage> {
 
   @override
   Widget build(BuildContext context) {
+    final t = context.tokens;
     return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Color(0xFFF0F4F8), Color(0xFFE8F5F3)],
+      body: Stack(
+        children: [
+          // Soft decorative blobs bleeding off the page edges.
+          Positioned(
+            top: -90,
+            right: -70,
+            child: _Blob(size: 240, color: t.accentTint),
           ),
-        ),
-        child: SafeArea(
-          child: Center(
+          Positioned(
+            top: 90,
+            right: 40,
+            child: _Blob(size: 72, color: t.sageTintStrong),
+          ),
+          Positioned(
+            bottom: -120,
+            left: -90,
+            child: _Blob(size: 280, color: t.sageTint),
+          ),
+          SafeArea(
             child: Padding(
-              padding: const EdgeInsets.all(32.0),
+              padding: const EdgeInsets.symmetric(horizontal: 32),
               child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Icon(Icons.auto_graph_rounded, size: 80, color: AppTheme.accent),
-                  const SizedBox(height: 24),
-                  Text(
-                    'LeadFinder Mobile',
-                    style: Theme.of(context).textTheme.displaySmall?.copyWith(
-                          fontSize: 32,
-                          fontWeight: FontWeight.bold,
+                  const Spacer(flex: 2),
+                  Container(
+                    width: 76,
+                    height: 76,
+                    decoration: BoxDecoration(
+                      color: t.sageTintStrong,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(AppIcons.sprout, size: 36, color: t.sageText),
+                  ),
+                  const SizedBox(height: 28),
+                  Text.rich(
+                    TextSpan(
+                      children: [
+                        const TextSpan(text: 'Grow your\n'),
+                        TextSpan(
+                          text: 'next lead.',
+                          style: TextStyle(color: t.accentDeep),
                         ),
+                      ],
+                    ),
+                    style: Theme.of(context).textTheme.displayMedium,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Sign in to access your business leads and outreach tools.',
+                    style: Theme.of(context).textTheme.bodyLarge,
+                  ),
+                  const SizedBox(height: 28),
+                  _FeatureRow(
+                    icon: AppIcons.compass,
+                    tint: t.accentTint,
+                    iconColor: t.accentText,
+                    label: 'Fresh leads, straight from your searches',
                   ),
                   const SizedBox(height: 12),
-                  const Text(
-                    'Sign in to access your business leads and outreach tools.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: AppTheme.slate),
+                  _FeatureRow(
+                    icon: AppIcons.chat,
+                    tint: t.sageTint,
+                    iconColor: t.sageText,
+                    label: 'One-tap WhatsApp outreach',
                   ),
-                  const SizedBox(height: 48),
+                  const SizedBox(height: 12),
+                  _FeatureRow(
+                    icon: AppIcons.handshake,
+                    tint: t.accentTint,
+                    iconColor: t.accentText,
+                    label: 'Track every deal to the finish',
+                  ),
+                  const Spacer(flex: 3),
                   if (_loading)
-                    const CircularProgressIndicator()
+                    const Center(child: CircularProgressIndicator())
                   else
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton.icon(
                         onPressed: _handleGoogleSignIn,
-                        icon: Image.network(
-                          'https://www.gstatic.com/images/branding/product/2x/googleg_96dp.png',
-                          height: 20,
-                          width: 20,
-                          errorBuilder: (context, error, stackTrace) => const Icon(Icons.login, size: 20),
-                        ),
+                        icon: const Icon(AppIcons.logIn, size: 20),
                         label: const Text('Sign in with Google'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.white,
-                          foregroundColor: AppTheme.ink,
-                          elevation: 0,
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                            side: BorderSide(color: AppTheme.slate.withOpacity(0.1)),
-                          ),
-                        ),
                       ),
                     ),
+                  const SizedBox(height: 48),
                 ],
               ),
             ),
           ),
-        ),
+        ],
       ),
+    );
+  }
+}
+
+class _FeatureRow extends StatelessWidget {
+  const _FeatureRow({
+    required this.icon,
+    required this.tint,
+    required this.iconColor,
+    required this.label,
+  });
+
+  final IconData icon;
+  final Color tint;
+  final Color iconColor;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(color: tint, shape: BoxShape.circle),
+          child: Icon(icon, size: 18, color: iconColor),
+        ),
+        const SizedBox(width: 14),
+        Expanded(
+          child: Text(label, style: Theme.of(context).textTheme.bodyMedium),
+        ),
+      ],
+    );
+  }
+}
+
+class _Blob extends StatelessWidget {
+  const _Blob({required this.size, required this.color});
+
+  final double size;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(color: color, shape: BoxShape.circle),
     );
   }
 }

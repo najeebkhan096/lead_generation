@@ -41,12 +41,15 @@ dependencies:
   url_launcher: ^6.3.2
   google_fonts: ^8.2.0
   equatable: ^2.1.0
+  lucide_icons_flutter: ^3.1.15
+  shared_preferences: ^2.5.5
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   mocktail: ^1.0.4
   flutter_lints: ^6.0.0
+  firebase_core_platform_interface: ^8.1.0
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

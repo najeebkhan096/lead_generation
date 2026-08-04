@@ -3,10 +3,11 @@ import 'package:flutter/material.dart';
 import '../models/lead.dart';
 import '../services/lead_repository.dart';
 import '../theme/app_theme.dart';
+import '../widgets/page_header.dart';
 import '../widgets/saved_business_card.dart';
 import 'business_details_page.dart';
 
-/// Lists every business saved to Firestore, filterable by category, with pull-to-refresh.
+/// Lists every business saved to Firestore, filterable by category.
 class SavedBusinessesPage extends StatefulWidget {
   const SavedBusinessesPage({super.key});
 
@@ -35,11 +36,8 @@ class _SavedBusinessesPageState extends State<SavedBusinessesPage> {
 
   @override
   Widget build(BuildContext context) {
+    final t = context.tokens;
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Discover Leads'),
-        centerTitle: true,
-      ),
       body: SafeArea(
         child: StreamBuilder<List<Lead>>(
           stream: _repo.getLeadsStream(),
@@ -61,64 +59,68 @@ class _SavedBusinessesPageState extends State<SavedBusinessesPage> {
             // Only show leads with status 'lead'
             final newLeads = allLeads.where((l) => l.status == LeadStatus.lead).toList();
 
-            if (newLeads.isEmpty) {
-              return const _ScrollableState(child: _EmptyState());
-            }
-
             final categories = _categoriesFrom(allLeads);
             final effectiveCategory = categories.contains(_selectedCategory)
                 ? _selectedCategory
                 : _allCategories;
-            
+
             final filtered = effectiveCategory == _allCategories
                 ? newLeads
                 : newLeads.where((lead) => lead.category == effectiveCategory).toList();
 
             return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
-                  child: _CategoryDropdown(
-                    categories: categories,
-                    value: effectiveCategory,
-                    onChanged: (value) => setState(() => _selectedCategory = value),
+                PageHeader(
+                  title: 'Discover leads',
+                  subtitle: newLeads.isEmpty
+                      ? 'New businesses will land here'
+                      : '${newLeads.length} fresh ${newLeads.length == 1 ? 'business' : 'businesses'} to win over',
+                  trailing: HeaderBadge(
+                    icon: AppIcons.sparkles,
+                    background: t.accentTint,
+                    foreground: t.accentDeep,
                   ),
                 ),
-                Expanded(
-                  child: filtered.isEmpty
-                      ? const _ScrollableState(child: _NoResultsState())
-                      : ListView.builder(
-                          physics: const AlwaysScrollableScrollPhysics(),
-                          padding: const EdgeInsets.fromLTRB(20, 0, 20, 28),
-                          itemCount: filtered.length + 1,
-                          itemBuilder: (context, index) {
-                            if (index == 0) {
-                              return Padding(
-                                padding: const EdgeInsets.only(bottom: 16, top: 4),
-                                child: Row(
-                                  children: [
-                                    Text(
-                                      '${filtered.length} New Leads Available',
-                                      style: Theme.of(context).textTheme.titleMedium,
-                                    ),
-                                    const Spacer(),
-                                    Icon(Icons.auto_graph_rounded, size: 16, color: AppTheme.accent.withValues(alpha: 0.5)),
-                                  ],
+                if (newLeads.isEmpty)
+                  const Expanded(child: _ScrollableState(child: _EmptyState()))
+                else ...[
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: _CategoryDropdown(
+                      categories: categories,
+                      selected: effectiveCategory,
+                      countFor: (category) => category == _allCategories
+                          ? newLeads.length
+                          : newLeads
+                              .where((l) => l.category == category)
+                              .length,
+                      onSelected: (value) =>
+                          setState(() => _selectedCategory = value),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Expanded(
+                    child: filtered.isEmpty
+                        ? const _ScrollableState(child: _NoResultsState())
+                        : ListView.builder(
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
+                            itemCount: filtered.length,
+                            itemBuilder: (context, index) {
+                              final lead = filtered[index];
+                              return SavedBusinessCard(
+                                lead: lead,
+                                onTap: () => Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => BusinessDetailsPage(lead: lead),
+                                  ),
                                 ),
                               );
-                            }
-                            final lead = filtered[index - 1];
-                            return SavedBusinessCard(
-                              lead: lead,
-                              onTap: () => Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) => BusinessDetailsPage(lead: lead),
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                ),
+                            },
+                          ),
+                  ),
+                ],
               ],
             );
           },
@@ -128,51 +130,246 @@ class _SavedBusinessesPageState extends State<SavedBusinessesPage> {
   }
 }
 
-/// Category filter built only from categories present in the saved
-/// businesses — never the full static category list.
+/// Pill dropdown field that opens a searchable category picker sheet.
 class _CategoryDropdown extends StatelessWidget {
   const _CategoryDropdown({
     required this.categories,
-    required this.value,
-    required this.onChanged,
+    required this.selected,
+    required this.countFor,
+    required this.onSelected,
   });
 
   final List<String> categories;
-  final String value;
-  final ValueChanged<String> onChanged;
+  final String selected;
+  final int Function(String category) countFor;
+  final ValueChanged<String> onSelected;
+
+  Future<void> _openPicker(BuildContext context) async {
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => _CategoryPickerSheet(
+        categories: categories,
+        selected: selected,
+        countFor: countFor,
+      ),
+    );
+    if (choice != null) onSelected(choice);
+  }
 
   @override
   Widget build(BuildContext context) {
-    return DropdownButtonFormField<String>(
-      initialValue: value,
-      icon: const Icon(Icons.expand_more_rounded, color: AppTheme.accent),
-      decoration: InputDecoration(
-        labelText: 'Filter by Category',
-        labelStyle: const TextStyle(color: AppTheme.slate, fontWeight: FontWeight.w500),
-        prefixIcon: const Icon(Icons.filter_list_rounded, color: AppTheme.accent),
-        filled: true,
-        fillColor: Colors.white,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide(color: AppTheme.accent.withValues(alpha: 0.1)),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide(color: AppTheme.accent.withValues(alpha: 0.1)),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: const BorderSide(color: AppTheme.accent, width: 1.5),
+    final t = context.tokens;
+    final isFiltered = selected != _allCategories;
+    return Material(
+      color: t.surface,
+      borderRadius: BorderRadius.circular(AppTheme.radiusPill),
+      child: InkWell(
+        onTap: () => _openPicker(context),
+        borderRadius: BorderRadius.circular(AppTheme.radiusPill),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+          child: Row(
+            children: [
+              Icon(AppIcons.filter, size: 19, color: t.accent),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  isFiltered ? selected : 'All categories',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: isFiltered ? t.accentTextStrong : t.ink,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              if (isFiltered) ...[
+                const SizedBox(width: 8),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: t.accentTint,
+                    borderRadius: const BorderRadius.all(
+                        Radius.circular(AppTheme.radiusPill)),
+                  ),
+                  child: Text(
+                    '${countFor(selected)}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: t.accentTextStrong,
+                    ),
+                  ),
+                ),
+              ],
+              const SizedBox(width: 10),
+              Icon(AppIcons.chevronDown, size: 18, color: t.accent),
+            ],
+          ),
         ),
       ),
-      items: [
-        for (final category in categories)
-          DropdownMenuItem(value: category, child: Text(category)),
-      ],
-      onChanged: (selected) {
-        if (selected != null) onChanged(selected);
-      },
+    );
+  }
+}
+
+/// Rounded bottom sheet with a search bar and the category list.
+class _CategoryPickerSheet extends StatefulWidget {
+  const _CategoryPickerSheet({
+    required this.categories,
+    required this.selected,
+    required this.countFor,
+  });
+
+  final List<String> categories;
+  final String selected;
+  final int Function(String category) countFor;
+
+  @override
+  State<_CategoryPickerSheet> createState() => _CategoryPickerSheetState();
+}
+
+class _CategoryPickerSheetState extends State<_CategoryPickerSheet> {
+  String _query = '';
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    final query = _query.trim().toLowerCase();
+    final results = query.isEmpty
+        ? widget.categories
+        : widget.categories
+            .where((c) =>
+                c == _allCategories || c.toLowerCase().contains(query))
+            .toList();
+
+    return Padding(
+      // Keep the sheet above the keyboard while typing.
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: SafeArea(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(context).size.height * 0.7,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 12),
+              Container(
+                width: 44,
+                height: 5,
+                decoration: BoxDecoration(
+                  color: t.border,
+                  borderRadius: BorderRadius.circular(AppTheme.radiusPill),
+                ),
+              ),
+              const SizedBox(height: 20),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text('Filter by category',
+                          style: Theme.of(context).textTheme.headlineSmall),
+                    ),
+                    Text(
+                      '${widget.categories.length - 1} categories',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: TextField(
+                  autofocus: false,
+                  onChanged: (value) => setState(() => _query = value),
+                  decoration: InputDecoration(
+                    hintText: 'Search categories…',
+                    prefixIcon: Padding(
+                      padding: const EdgeInsets.only(left: 20, right: 12),
+                      child: Icon(AppIcons.search, size: 19, color: t.faint),
+                    ),
+                    prefixIconConstraints:
+                        const BoxConstraints(minWidth: 0, minHeight: 0),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Flexible(
+                child: results.isEmpty
+                    ? Padding(
+                        padding: const EdgeInsets.all(32),
+                        child: Text(
+                          'No category matches “${_query.trim()}”',
+                          style: Theme.of(context).textTheme.bodyLarge,
+                          textAlign: TextAlign.center,
+                        ),
+                      )
+                    : ListView.builder(
+                        shrinkWrap: true,
+                        padding: const EdgeInsets.fromLTRB(12, 4, 12, 16),
+                        itemCount: results.length,
+                        itemBuilder: (context, index) {
+                          final category = results[index];
+                          final isAll = category == _allCategories;
+                          final isSelected = category == widget.selected;
+                          return ListTile(
+                            leading: Container(
+                              width: 42,
+                              height: 42,
+                              decoration: BoxDecoration(
+                                color: isSelected
+                                    ? t.accentTint
+                                    : t.neutralTint,
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(
+                                isAll ? AppIcons.sparkles : AppIcons.tag,
+                                size: 18,
+                                color: isSelected
+                                    ? t.accentTextStrong
+                                    : t.subtle,
+                              ),
+                            ),
+                            title: Text(
+                              isAll ? 'All categories' : category,
+                              style: TextStyle(
+                                fontWeight: isSelected
+                                    ? FontWeight.w700
+                                    : FontWeight.w600,
+                                color: isSelected
+                                    ? t.accentTextStrong
+                                    : t.ink,
+                              ),
+                            ),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  '${widget.countFor(category)}',
+                                  style:
+                                      Theme.of(context).textTheme.bodySmall,
+                                ),
+                                if (isSelected) ...[
+                                  const SizedBox(width: 10),
+                                  Icon(AppIcons.check,
+                                      size: 20, color: t.accentDeep),
+                                ],
+                              ],
+                            ),
+                            onTap: () => Navigator.pop(context, category),
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -204,6 +401,35 @@ class _ScrollableState extends StatelessWidget {
   }
 }
 
+/// Icon inside a soft tinted circle — shared look for all empty states.
+/// Colors fall back to the quiet neutral pair when not supplied.
+class StateBadge extends StatelessWidget {
+  const StateBadge({
+    super.key,
+    required this.icon,
+    this.background,
+    this.foreground,
+  });
+
+  final IconData icon;
+  final Color? background;
+  final Color? foreground;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    return Container(
+      width: 88,
+      height: 88,
+      decoration: BoxDecoration(
+        color: background ?? t.neutralTintStrong,
+        shape: BoxShape.circle,
+      ),
+      child: Icon(icon, size: 38, color: foreground ?? t.subtle),
+    );
+  }
+}
+
 class _EmptyState extends StatelessWidget {
   const _EmptyState();
 
@@ -212,11 +438,11 @@ class _EmptyState extends StatelessWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        const Icon(Icons.inbox_outlined, size: 48, color: AppTheme.slate),
-        const SizedBox(height: 12),
+        const StateBadge(icon: AppIcons.inbox),
+        const SizedBox(height: 20),
         Text(
           'No businesses saved yet',
-          style: Theme.of(context).textTheme.titleLarge,
+          style: Theme.of(context).textTheme.headlineSmall,
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: 8),
@@ -238,11 +464,11 @@ class _NoResultsState extends StatelessWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        const Icon(Icons.search_off_rounded, size: 48, color: AppTheme.slate),
-        const SizedBox(height: 12),
+        const StateBadge(icon: AppIcons.searchX),
+        const SizedBox(height: 20),
         Text(
           'No matches',
-          style: Theme.of(context).textTheme.titleLarge,
+          style: Theme.of(context).textTheme.headlineSmall,
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: 8),
@@ -264,26 +490,34 @@ class _ErrorState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = context.tokens;
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        const Icon(Icons.error_outline, size: 48, color: Color(0xFFB91C1C)),
-        const SizedBox(height: 12),
+        StateBadge(
+          icon: AppIcons.alert,
+          background: t.accentTint,
+          foreground: t.accentText,
+        ),
+        const SizedBox(height: 20),
         Text(
           'Could not load businesses',
-          style: Theme.of(context).textTheme.titleLarge,
+          style: Theme.of(context).textTheme.headlineSmall,
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: 8),
         Text(
           message,
           textAlign: TextAlign.center,
-          style: const TextStyle(color: Color(0xFFB91C1C)),
+          style: Theme.of(context)
+              .textTheme
+              .bodyMedium
+              ?.copyWith(color: t.danger),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 20),
         OutlinedButton.icon(
           onPressed: onRetry,
-          icon: const Icon(Icons.refresh_rounded),
+          icon: const Icon(AppIcons.refresh, size: 18),
           label: const Text('Retry'),
         ),
       ],

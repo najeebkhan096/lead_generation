@@ -5,7 +5,6 @@ import '../models/lead.dart';
 import '../services/lead_repository.dart';
 import '../services/open_links.dart';
 import '../theme/app_theme.dart';
-import '../utils/date_format.dart';
 
 class BusinessDetailsPage extends StatefulWidget {
   const BusinessDetailsPage({super.key, required this.lead});
@@ -45,179 +44,370 @@ class _BusinessDetailsPageState extends State<BusinessDetailsPage> {
     }
   }
 
-  Future<void> _launch(
-    BuildContext context,
-    Future<bool> Function() action,
-    String failureMessage,
-  ) async {
-    final ok = await action();
-    if (!context.mounted) return;
+  Future<void> _openReviews() async {
+    final ok = await openGoogleMaps(widget.lead.mapsUrl);
+    if (!mounted) return;
     if (!ok) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(failureMessage)),
+        const SnackBar(content: Text('Could not open Google reviews')),
       );
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final addedOn = formatDate(widget.lead.dateAdded);
+    final t = context.tokens;
+    final lead = widget.lead;
+    final dirty = _currentStatus != lead.status;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Business Details'),
-        actions: [
-          if (_loading)
-            const Center(child: Padding(padding: EdgeInsets.all(16.0), child: CircularProgressIndicator(strokeWidth: 2)))
-          else
-            TextButton(
-              onPressed: _saveChanges,
-              child: const Text('Save', style: TextStyle(fontWeight: FontWeight.bold, color: AppTheme.accent)),
-            ),
-        ],
-      ),
+      appBar: AppBar(),
       body: SafeArea(
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 40),
+          padding: const EdgeInsets.fromLTRB(24, 4, 24, 40),
           children: [
-            _buildInfoCard(context, addedOn),
-            const SizedBox(height: 24),
-            Text('Action & Status', style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 12),
-            _buildStatusPicker(),
-            const SizedBox(height: 24),
+            _Hero(lead: lead),
+            if (lead.mapsUrl != null) ...[
+              const SizedBox(height: 20),
+              OutlinedButton.icon(
+                onPressed: _openReviews,
+                icon: Icon(AppIcons.externalLink, size: 18, color: t.accentText),
+                label: const Text('Read the reviews on Google'),
+              ),
+            ],
+            const SizedBox(height: 28),
+            _ReviewCard(review: lead.badReview),
+            const SizedBox(height: 32),
+            Text('Where does this lead stand?',
+                style: Theme.of(context).textTheme.headlineSmall),
+            const SizedBox(height: 14),
+            for (final option in _statusOptions)
+              _StatusOption(
+                option: option,
+                selected: _currentStatus == option.status,
+                onTap: () => setState(() => _currentStatus = option.status),
+              ),
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              onPressed: !dirty || _loading ? null : _saveChanges,
+              icon: _loading
+                  ? SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2.5, color: t.onFill),
+                    )
+                  : const Icon(AppIcons.check, size: 20),
+              label: Text(dirty ? 'Save new status' : 'Status up to date'),
+            ),
           ],
         ),
       ),
     );
   }
+}
 
-  Widget _buildInfoCard(BuildContext context, String? addedOn) {
+class _Hero extends StatelessWidget {
+  const _Hero({required this.lead});
+
+  final Lead lead;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+          decoration: BoxDecoration(
+            color: t.accentTint,
+            borderRadius:
+                const BorderRadius.all(Radius.circular(AppTheme.radiusPill)),
+          ),
+          child: Text(
+            lead.category,
+            style: TextStyle(
+              color: t.accentTextStrong,
+              fontWeight: FontWeight.w700,
+              fontSize: 12,
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Text(lead.business, style: Theme.of(context).textTheme.displaySmall),
+        if (lead.rating != null) ...[
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Icon(AppIcons.star, size: 18, color: t.accent),
+              const SizedBox(width: 6),
+              Text(
+                lead.rating!.toStringAsFixed(1),
+                style: TextStyle(
+                    fontWeight: FontWeight.w700, color: t.ink, fontSize: 16),
+              ),
+              if (lead.totalReviews != null) ...[
+                const SizedBox(width: 6),
+                Text(
+                  '· ${lead.totalReviews} reviews on Google',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+              ],
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+/// The sales hook: the worst recent review, quoted in full — or a sage
+/// "clean reputation" note when none was captured.
+class _ReviewCard extends StatelessWidget {
+  const _ReviewCard({required this.review});
+
+  final BadReview review;
+
+  bool get _hasReview => review.text.trim().isNotEmpty;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_hasReview) return const _CleanReputationCard();
+    final t = context.tokens;
+
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.black.withValues(alpha: 0.05)),
+        color: t.surface,
+        borderRadius: BorderRadius.circular(AppTheme.radiusCard),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.07),
+            blurRadius: 14,
+            offset: const Offset(0, 6),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: t.accentTint,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(AppIcons.quote, size: 20, color: t.accentText),
+              ),
+              const SizedBox(width: 14),
               Expanded(
-                child: Text(
-                  widget.lead.business,
-                  style: Theme.of(context).textTheme.displaySmall?.copyWith(fontSize: 24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('The review that stings',
+                        style: Theme.of(context).textTheme.titleMedium),
+                    const SizedBox(height: 4),
+                    _Stars(count: review.stars),
+                  ],
                 ),
               ),
-              if (widget.lead.rating != null) _RatingBadge(rating: widget.lead.rating!),
             ],
           ),
-          const SizedBox(height: 8),
-          _DetailRow(icon: Icons.category_outlined, label: 'Category', value: widget.lead.category),
-          _DetailRow(
-            icon: Icons.phone_outlined,
-            label: 'Phone',
-            value: widget.lead.phone,
-            onTap: widget.lead.phone == null ? null : () => _launch(context, () => openPhone(widget.lead.phone), 'Error'),
-          ),
-          _DetailRow(
-            icon: Icons.public_outlined,
-            label: 'Website',
-            value: widget.lead.website,
-            onTap: widget.lead.website == null ? null : () => _launch(context, () => openWebsite(widget.lead.website), 'Error'),
-          ),
-          _DetailRow(
-            icon: Icons.location_on_outlined,
-            label: 'Address',
-            value: widget.lead.address,
-            onTap: widget.lead.mapsUrl == null ? null : () => _launch(context, () => openGoogleMaps(widget.lead.mapsUrl), 'Error'),
-          ),
-          _DetailRow(icon: Icons.event_note_outlined, label: 'Date Found', value: addedOn),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStatusPicker() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.black.withValues(alpha: 0.1)),
-      ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<LeadStatus>(
-          value: _currentStatus,
-          isExpanded: true,
-          items: LeadStatus.values.map((status) {
-            return DropdownMenuItem(
-              value: status,
-              child: Text(status.name.toUpperCase(), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-            );
-          }).toList(),
-          onChanged: (val) {
-            if (val != null) setState(() => _currentStatus = val);
-          },
-        ),
-      ),
-    );
-  }
-}
-
-class _RatingBadge extends StatelessWidget {
-  final double rating;
-  const _RatingBadge({required this.rating});
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(color: const Color(0xFFFEF3C7), borderRadius: BorderRadius.circular(12)),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.star_rounded, size: 16, color: AppTheme.warn),
-          const SizedBox(width: 4),
-          Text(rating.toStringAsFixed(1), style: const TextStyle(color: AppTheme.warn, fontWeight: FontWeight.bold)),
-        ],
-      ),
-    );
-  }
-}
-
-class _DetailRow extends StatelessWidget {
-  const _DetailRow({required this.icon, required this.label, required this.value, this.onTap});
-  final IconData icon;
-  final String label;
-  final String? value;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final hasValue = value != null && value!.trim().isNotEmpty;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: InkWell(
-        onTap: onTap,
-        child: Row(
-          children: [
-            Icon(icon, size: 18, color: AppTheme.slate.withValues(alpha: 0.5)),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                hasValue ? value! : 'N/A',
-                style: TextStyle(
-                  color: onTap != null ? AppTheme.accent : AppTheme.ink,
-                  fontWeight: onTap != null ? FontWeight.bold : FontWeight.normal,
+          const SizedBox(height: 18),
+          Text(
+            '“${review.text.trim()}”',
+            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                  color: t.ink,
+                  fontStyle: FontStyle.italic,
+                  height: 1.5,
                 ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 18),
+          Row(
+            children: [
+              Icon(AppIcons.user, size: 15, color: t.faint),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text(
+                  review.reviewer ?? 'Anonymous reviewer',
+                  style: Theme.of(context).textTheme.bodySmall,
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
+              const SizedBox(width: 16),
+              Icon(AppIcons.clock, size: 15, color: t.faint),
+              const SizedBox(width: 6),
+              Text(review.date, style: Theme.of(context).textTheme.bodySmall),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CleanReputationCard extends StatelessWidget {
+  const _CleanReputationCard();
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: t.sageTint,
+        borderRadius: BorderRadius.circular(AppTheme.radiusCard),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: t.sageTintStrong,
+              shape: BoxShape.circle,
             ),
-          ],
+            child: Icon(AppIcons.shieldCheck, size: 20, color: t.sageText),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('No bad review captured',
+                    style: Theme.of(context)
+                        .textTheme
+                        .titleMedium
+                        ?.copyWith(color: t.sageTextStrong)),
+                const SizedBox(height: 4),
+                Text(
+                  'Their reputation looks clean right now.',
+                  style: Theme.of(context)
+                      .textTheme
+                      .bodyMedium
+                      ?.copyWith(color: t.sageText),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Stars extends StatelessWidget {
+  const _Stars({required this.count});
+
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    return Row(
+      children: [
+        for (var i = 0; i < 5; i++) ...[
+          Icon(
+            AppIcons.star,
+            size: 15,
+            color: i < count ? t.accent : t.border,
+          ),
+          const SizedBox(width: 2),
+        ],
+      ],
+    );
+  }
+}
+
+class _StatusOptionData {
+  const _StatusOptionData(this.status, this.label, this.hint, this.icon);
+
+  final LeadStatus status;
+  final String label;
+  final String hint;
+  final IconData icon;
+}
+
+const _statusOptions = [
+  _StatusOptionData(LeadStatus.lead, 'New Lead', 'Not approached yet', AppIcons.compass),
+  _StatusOptionData(LeadStatus.contacted, 'Contacted', 'First message sent', AppIcons.send),
+  _StatusOptionData(LeadStatus.booked, 'Order Placed', 'They put in an order', AppIcons.packageCheck),
+  _StatusOptionData(LeadStatus.dealDone, 'Deal Done', 'Signed and won', AppIcons.circleCheck),
+];
+
+class _StatusOption extends StatelessWidget {
+  const _StatusOption({
+    required this.option,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final _StatusOptionData option;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    // Deal Done celebrates in sage; everything else speaks terracotta.
+    final isWin = option.status == LeadStatus.dealDone;
+    final tint = isWin ? t.sageTint : t.accentTint;
+    final deep = isWin ? t.sageText : t.accentText;
+    final fill = isWin ? t.sage : t.accent;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Material(
+        color: selected ? tint : t.surface,
+        borderRadius: BorderRadius.circular(AppTheme.radius + 4),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(AppTheme.radius + 4),
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Row(
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: selected ? fill : t.neutralTint,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    option.icon,
+                    size: 20,
+                    color: selected ? t.onFill : t.subtle,
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        option.label,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 15,
+                          color: selected ? deep : t.ink,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(option.hint,
+                          style: Theme.of(context).textTheme.bodySmall),
+                    ],
+                  ),
+                ),
+                if (selected)
+                  Icon(AppIcons.circleCheck, size: 22, color: deep),
+              ],
+            ),
+          ),
         ),
       ),
     );

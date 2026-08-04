@@ -30,6 +30,17 @@ class BadReview extends Equatable {
 
 enum LeadStatus { lead, contacted, booked, dealDone }
 
+/// Display names for statuses. `booked` stays as the stored value for
+/// backwards compatibility but reads as "Order Placed" everywhere.
+extension LeadStatusLabel on LeadStatus {
+  String get label => switch (this) {
+        LeadStatus.lead => 'New Lead',
+        LeadStatus.contacted => 'Contacted',
+        LeadStatus.booked => 'Order Placed',
+        LeadStatus.dealDone => 'Deal Done',
+      };
+}
+
 class Lead extends Equatable {
   const Lead({
     required this.id,

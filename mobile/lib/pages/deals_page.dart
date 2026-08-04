@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import '../models/lead.dart';
 import '../services/lead_repository.dart';
 import '../theme/app_theme.dart';
+import '../widgets/page_header.dart';
 import '../widgets/saved_business_card.dart';
 import 'business_details_page.dart';
+import 'saved_businesses_page.dart' show StateBadge;
 
 class DealsPage extends StatefulWidget {
   const DealsPage({super.key});
@@ -17,25 +19,10 @@ class _DealsPageState extends State<DealsPage> {
 
   @override
   Widget build(BuildContext context) {
+    final t = context.tokens;
     return DefaultTabController(
       length: 3,
       child: Scaffold(
-        appBar: AppBar(
-          title: const Text('Active Deals'),
-          centerTitle: true,
-          bottom: TabBar(
-            isScrollable: false,
-            indicatorColor: AppTheme.accent,
-            labelColor: AppTheme.accent,
-            unselectedLabelColor: AppTheme.slate.withValues(alpha: 0.5),
-            labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-            tabs: const [
-              Tab(text: 'CONTACTED'),
-              Tab(text: 'BOOKED'),
-              Tab(text: 'DONE'),
-            ],
-          ),
-        ),
         body: SafeArea(
           child: StreamBuilder<List<Lead>>(
             stream: _repo.getLeadsStream(),
@@ -45,12 +32,67 @@ class _DealsPageState extends State<DealsPage> {
               }
 
               final allLeads = snapshot.data ?? [];
-              
-              return TabBarView(
+              final contacted =
+                  allLeads.where((l) => l.status == LeadStatus.contacted).toList();
+              final booked =
+                  allLeads.where((l) => l.status == LeadStatus.booked).toList();
+              final done =
+                  allLeads.where((l) => l.status == LeadStatus.dealDone).toList();
+
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildLeadList(allLeads.where((l) => l.status == LeadStatus.contacted).toList(), 'No contacted leads'),
-                  _buildLeadList(allLeads.where((l) => l.status == LeadStatus.booked).toList(), 'No booked meetings'),
-                  _buildLeadList(allLeads.where((l) => l.status == LeadStatus.dealDone).toList(), 'No completed deals'),
+                  PageHeader(
+                    title: 'Active deals',
+                    subtitle: done.isEmpty
+                        ? 'Your pipeline at a glance'
+                        : '${done.length} ${done.length == 1 ? 'deal' : 'deals'} won so far — keep going',
+                    trailing: HeaderBadge(
+                      icon: AppIcons.handshake,
+                      background: t.sageTint,
+                      foreground: t.sageDeep,
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+                    child: Row(
+                      children: [
+                        _StatTile(
+                          label: 'Contacted',
+                          count: contacted.length,
+                          icon: AppIcons.send,
+                          background: t.accentTint,
+                          foreground: t.accentTextStrong,
+                        ),
+                        const SizedBox(width: 10),
+                        _StatTile(
+                          label: 'Orders',
+                          count: booked.length,
+                          icon: AppIcons.packageCheck,
+                          background: t.sageTint,
+                          foreground: t.sageTextStrong,
+                        ),
+                        const SizedBox(width: 10),
+                        _StatTile(
+                          label: 'Won',
+                          count: done.length,
+                          icon: AppIcons.circleCheck,
+                          background: t.sage,
+                          foreground: t.onFill,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const _SegmentedTabs(),
+                  Expanded(
+                    child: TabBarView(
+                      children: [
+                        _buildLeadList(contacted, 'No contacted leads'),
+                        _buildLeadList(booked, 'No orders placed yet'),
+                        _buildLeadList(done, 'No completed deals'),
+                      ],
+                    ),
+                  ),
                 ],
               );
             },
@@ -93,21 +135,25 @@ class _DealsPageState extends State<DealsPage> {
 
   Widget _buildReputationIndicator(Lead lead) {
     if (lead.reputationStatus.isEmpty) return const SizedBox.shrink();
+    final t = context.tokens;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: AppTheme.accent,
-        borderRadius: BorderRadius.circular(6),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 4)],
+        color: t.accent,
+        borderRadius: const BorderRadius.all(Radius.circular(AppTheme.radiusPill)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.auto_awesome, color: Colors.white, size: 10),
+          Icon(AppIcons.sparkles, color: t.onFill, size: 11),
           const SizedBox(width: 4),
           Text(
             lead.reputationStatus,
-            style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
+            style: TextStyle(
+              color: t.onFill,
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+            ),
           ),
         ],
       ),
@@ -115,23 +161,114 @@ class _DealsPageState extends State<DealsPage> {
   }
 
   Widget _buildEmptyState(String message) {
+    final t = context.tokens;
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32.0),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.handshake_outlined, size: 64, color: AppTheme.slate.withValues(alpha: 0.1)),
-            const SizedBox(height: 16),
+            StateBadge(
+              icon: AppIcons.handshake,
+              background: t.sageTint,
+              foreground: t.sageDeep,
+            ),
+            const SizedBox(height: 20),
             Text(
               'Nothing here',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(color: AppTheme.slate.withValues(alpha: 0.5)),
+              style: Theme.of(context).textTheme.headlineSmall,
             ),
             const SizedBox(height: 8),
             Text(
               message,
               textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.black38),
+              style: Theme.of(context).textTheme.bodyLarge,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Pipeline tabs styled as a rounded segmented control.
+class _SegmentedTabs extends StatelessWidget {
+  const _SegmentedTabs();
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 20),
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: t.surface,
+        borderRadius: const BorderRadius.all(Radius.circular(AppTheme.radiusPill)),
+      ),
+      child: TabBar(
+        indicator: BoxDecoration(
+          color: t.accent,
+          borderRadius:
+              const BorderRadius.all(Radius.circular(AppTheme.radiusPill)),
+        ),
+        indicatorSize: TabBarIndicatorSize.tab,
+        labelColor: t.onFill,
+        unselectedLabelColor: t.subtle,
+        splashBorderRadius: BorderRadius.circular(AppTheme.radiusPill),
+        tabs: const [
+          Tab(height: 40, text: 'Contacted'),
+          Tab(height: 40, text: 'Orders'),
+          Tab(height: 40, text: 'Done'),
+        ],
+      ),
+    );
+  }
+}
+
+class _StatTile extends StatelessWidget {
+  const _StatTile({
+    required this.label,
+    required this.count,
+    required this.icon,
+    required this.background,
+    required this.foreground,
+  });
+
+  final String label;
+  final int count;
+  final IconData icon;
+  final Color background;
+  final Color foreground;
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        decoration: BoxDecoration(
+          color: background,
+          borderRadius: BorderRadius.circular(AppTheme.radius + 4),
+        ),
+        child: Column(
+          children: [
+            Icon(icon, size: 18, color: foreground),
+            const SizedBox(height: 6),
+            Text(
+              '$count',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w800,
+                color: foreground,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w600,
+                color: foreground,
+              ),
             ),
           ],
         ),

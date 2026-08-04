@@ -1,5 +1,6 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 import '../models/lead.dart';
 import '../services/lead_repository.dart';
@@ -47,7 +48,7 @@ class _SavedBusinessCardState extends State<SavedBusinessCard> {
       await _repo.updateStatus(widget.lead.id, status, user?.uid);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Status updated to ${status.name}')),
+          SnackBar(content: Text('Status updated to ${status.label}')),
         );
       }
     } catch (e) {
@@ -61,58 +62,70 @@ class _SavedBusinessCardState extends State<SavedBusinessCard> {
 
   @override
   Widget build(BuildContext context) {
+    final t = context.tokens;
     final addedOn = formatDate(widget.lead.dateAdded);
-    final statusColor = _getStatusColor(widget.lead.status);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
+        color: t.surface,
+        borderRadius: BorderRadius.circular(AppTheme.radiusCard),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
+            color: Colors.black.withValues(alpha: 0.07),
+            blurRadius: 14,
+            offset: const Offset(0, 6),
           ),
         ],
-        border: Border.all(color: Colors.black.withValues(alpha: 0.05)),
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(AppTheme.radiusCard),
         child: Material(
           color: Colors.transparent,
           child: InkWell(
             onTap: widget.onTap,
             child: Padding(
-              padding: const EdgeInsets.all(20),
+              padding: const EdgeInsets.all(18),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
+                      _InitialAvatar(name: widget.lead.business),
+                      const SizedBox(width: 14),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
                               widget.lead.business,
-                              style: Theme.of(context).textTheme.titleLarge?.copyWith(fontSize: 18),
+                              style: Theme.of(context).textTheme.titleMedium,
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
                             ),
-                            const SizedBox(height: 4),
-                            _CategoryBadge(category: widget.lead.category),
+                            const SizedBox(height: 3),
+                            Text(
+                              widget.lead.category,
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodySmall
+                                  ?.copyWith(
+                                    color: t.accentText,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ],
                         ),
                       ),
-                      IconButton(
-                        onPressed: _toggleFavorite,
-                        icon: Icon(
-                          _isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-                          color: _isFavorite ? Colors.red : AppTheme.slate.withOpacity(0.3),
-                        ),
+                      const SizedBox(width: 8),
+                      _RoundIconButton(
+                        icon: AppIcons.heart,
+                        background: _isFavorite ? t.accentTint : t.neutralTint,
+                        foreground: _isFavorite ? t.accentDeep : t.faint,
+                        onTap: _toggleFavorite,
                       ),
                     ],
                   ),
@@ -123,36 +136,38 @@ class _SavedBusinessCardState extends State<SavedBusinessCard> {
                         _RatingInfo(rating: widget.lead.rating!),
                         const SizedBox(width: 16),
                       ],
-                      Icon(Icons.location_on_outlined, size: 16, color: AppTheme.slate.withValues(alpha: 0.5)),
-                      const SizedBox(width: 4),
+                      Icon(AppIcons.mapPin, size: 15, color: t.faint),
+                      const SizedBox(width: 5),
                       Expanded(
                         child: Text(
                           widget.lead.location,
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppTheme.slate.withValues(alpha: 0.7)),
+                          style: Theme.of(context).textTheme.bodyMedium,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
                       if (addedOn != null) ...[
                         const SizedBox(width: 8),
-                        Text(addedOn, style: TextStyle(fontSize: 10, color: AppTheme.slate.withValues(alpha: 0.4))),
+                        Text(addedOn,
+                            style: Theme.of(context).textTheme.bodySmall),
                       ],
                     ],
                   ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 16),
                   Row(
                     children: [
                       Expanded(
-                        child: _StatusBadge(status: widget.lead.status, color: statusColor),
+                        child: _StatusBadge(status: widget.lead.status),
                       ),
                       const SizedBox(width: 12),
                       _WhatsAppButton(
                         onTap: () => openWhatsApp(widget.lead.whatsAppUrl),
                       ),
                       const SizedBox(width: 8),
-                      _ActionIconButton(
-                        icon: Icons.more_horiz_rounded,
-                        color: AppTheme.slate,
+                      _RoundIconButton(
+                        icon: AppIcons.more,
+                        background: t.neutralTint,
+                        foreground: t.subtle,
                         onTap: () => _showActionSheet(context),
                       ),
                     ],
@@ -169,19 +184,28 @@ class _SavedBusinessCardState extends State<SavedBusinessCard> {
   void _showActionSheet(BuildContext context) {
     showModalBottomSheet(
       context: context,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (context) => SafeArea(
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 24),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text('Update Lead Status', style: Theme.of(context).textTheme.titleMedium),
+              Container(
+                width: 44,
+                height: 5,
+                decoration: BoxDecoration(
+                  color: context.tokens.border,
+                  borderRadius: BorderRadius.circular(AppTheme.radiusPill),
+                ),
+              ),
+              const SizedBox(height: 20),
+              Text('Update lead status',
+                  style: Theme.of(context).textTheme.headlineSmall),
               const SizedBox(height: 16),
-              _buildStatusOption(context, LeadStatus.lead, 'New Lead', Icons.explore_outlined),
-              _buildStatusOption(context, LeadStatus.contacted, 'Contacted', Icons.send_rounded),
-              _buildStatusOption(context, LeadStatus.booked, 'Meeting Booked', Icons.event_available_rounded),
-              _buildStatusOption(context, LeadStatus.dealDone, 'Deal Done', Icons.check_circle_rounded),
+              _buildStatusOption(context, LeadStatus.lead, 'New Lead', AppIcons.compass),
+              _buildStatusOption(context, LeadStatus.contacted, 'Contacted', AppIcons.send),
+              _buildStatusOption(context, LeadStatus.booked, 'Order Placed', AppIcons.packageCheck),
+              _buildStatusOption(context, LeadStatus.dealDone, 'Deal Done', AppIcons.circleCheck),
             ],
           ),
         ),
@@ -190,43 +214,63 @@ class _SavedBusinessCardState extends State<SavedBusinessCard> {
   }
 
   Widget _buildStatusOption(BuildContext context, LeadStatus status, String label, IconData icon) {
+    final t = context.tokens;
     final isSelected = widget.lead.status == status;
     return ListTile(
-      leading: Icon(icon, color: isSelected ? AppTheme.accent : AppTheme.slate),
-      title: Text(label, style: TextStyle(fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)),
-      trailing: isSelected ? const Icon(Icons.check, color: AppTheme.accent) : null,
+      leading: Container(
+        width: 42,
+        height: 42,
+        decoration: BoxDecoration(
+          color: isSelected ? t.accentTint : t.neutralTint,
+          shape: BoxShape.circle,
+        ),
+        child: Icon(icon,
+            size: 20, color: isSelected ? t.accentTextStrong : t.subtle),
+      ),
+      title: Text(
+        label,
+        style: TextStyle(
+          fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
+          color: isSelected ? t.accentTextStrong : t.ink,
+        ),
+      ),
+      trailing: isSelected
+          ? Icon(AppIcons.check, size: 20, color: t.accentDeep)
+          : null,
       onTap: () {
         Navigator.pop(context);
         _updateStatus(status);
       },
     );
   }
-
-  Color _getStatusColor(LeadStatus status) {
-    switch (status) {
-      case LeadStatus.lead: return AppTheme.slate;
-      case LeadStatus.contacted: return AppTheme.accent;
-      case LeadStatus.booked: return AppTheme.warn;
-      case LeadStatus.dealDone: return AppTheme.success;
-    }
-  }
 }
 
-class _CategoryBadge extends StatelessWidget {
-  final String category;
-  const _CategoryBadge({required this.category});
+/// Circle with the business's first letter in the display face. Tint
+/// alternates between the two accent voices so lists feel hand-arranged.
+class _InitialAvatar extends StatelessWidget {
+  const _InitialAvatar({required this.name});
+
+  final String name;
 
   @override
   Widget build(BuildContext context) {
+    final t = context.tokens;
+    final letter = name.trim().isEmpty ? '?' : name.trim()[0].toUpperCase();
+    final warm = name.hashCode.isEven;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      width: 50,
+      height: 50,
       decoration: BoxDecoration(
-        color: AppTheme.accent.withOpacity(0.08),
-        borderRadius: BorderRadius.circular(8),
+        color: warm ? t.accentTint : t.sageTint,
+        shape: BoxShape.circle,
       ),
+      alignment: Alignment.center,
       child: Text(
-        category,
-        style: const TextStyle(color: AppTheme.accent, fontWeight: FontWeight.bold, fontSize: 11, letterSpacing: 0.5),
+        letter,
+        style: GoogleFonts.caprasimo(
+          fontSize: 21,
+          color: warm ? t.accentText : t.sageText,
+        ),
       ),
     );
   }
@@ -238,14 +282,15 @@ class _RatingInfo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = context.tokens;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        const Icon(Icons.star_rounded, size: 18, color: Color(0xFFFBBF24)),
+        Icon(AppIcons.star, size: 16, color: t.accent),
         const SizedBox(width: 4),
         Text(
           rating.toStringAsFixed(1),
-          style: const TextStyle(fontWeight: FontWeight.bold, color: AppTheme.ink),
+          style: TextStyle(fontWeight: FontWeight.w700, color: t.ink),
         ),
       ],
     );
@@ -254,87 +299,103 @@ class _RatingInfo extends StatelessWidget {
 
 class _StatusBadge extends StatelessWidget {
   final LeadStatus status;
-  final Color color;
-  const _StatusBadge({required this.status, required this.color});
+  const _StatusBadge({required this.status});
 
   @override
   Widget build(BuildContext context) {
-    String label = status.name.toUpperCase();
-    if (status == LeadStatus.dealDone) label = 'DEAL DONE';
-    
+    final t = context.tokens;
+    final (label, background, foreground) = switch (status) {
+      // Terracotta = outreach emphasis; sage = positive momentum and wins.
+      LeadStatus.lead => ('NEW LEAD', t.neutralTint, t.subtle),
+      LeadStatus.contacted => ('CONTACTED', t.accentTint, t.accentTextStrong),
+      LeadStatus.booked => ('ORDER PLACED', t.sageTint, t.sageTextStrong),
+      LeadStatus.dealDone => ('DEAL DONE', t.sage, t.onFill),
+    };
+
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 10),
+      padding: const EdgeInsets.symmetric(vertical: 11),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(12),
+        color: background,
+        borderRadius: BorderRadius.circular(AppTheme.radiusPill),
       ),
       child: Center(
         child: Text(
           label,
-          style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 12, letterSpacing: 1),
+          style: TextStyle(
+            color: foreground,
+            fontWeight: FontWeight.w700,
+            fontSize: 12,
+            letterSpacing: 0.8,
+          ),
         ),
       ),
     );
   }
 }
 
+/// Sage = the "online / reach them now" voice.
 class _WhatsAppButton extends StatelessWidget {
   final VoidCallback onTap;
   const _WhatsAppButton({required this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        decoration: BoxDecoration(
-          color: const Color(0xFF25D366),
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: [
-            BoxShadow(
-              color: const Color(0xFF25D366).withValues(alpha: 0.3),
-              blurRadius: 8,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: const Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.chat_rounded, color: Colors.white, size: 18),
-            SizedBox(width: 8),
-            Text(
-              'WhatsApp',
-              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
-            ),
-          ],
+    final t = context.tokens;
+    return Material(
+      color: t.sage,
+      borderRadius: BorderRadius.circular(AppTheme.radiusPill),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(AppTheme.radiusPill),
+        splashColor: t.sageDeep,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(AppIcons.chat, color: t.onFill, size: 17),
+              const SizedBox(width: 8),
+              Text(
+                'WhatsApp',
+                style: TextStyle(
+                  color: t.onFill,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 }
 
-class _ActionIconButton extends StatelessWidget {
+class _RoundIconButton extends StatelessWidget {
   final IconData icon;
-  final Color color;
+  final Color background;
+  final Color foreground;
   final VoidCallback onTap;
 
-  const _ActionIconButton({required this.icon, required this.color, required this.onTap});
+  const _RoundIconButton({
+    required this.icon,
+    required this.background,
+    required this.foreground,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(12),
+    return Material(
+      color: background,
+      shape: const CircleBorder(),
+      child: InkWell(
+        onTap: onTap,
+        customBorder: const CircleBorder(),
+        child: Padding(
+          padding: const EdgeInsets.all(10),
+          child: Icon(icon, color: foreground, size: 19),
         ),
-        child: Icon(icon, color: color, size: 20),
       ),
     );
   }

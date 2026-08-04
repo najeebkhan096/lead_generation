@@ -1,40 +1,47 @@
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_core_platform_interface/test.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lead_mobile/pages/main_navigation_page.dart';
+import 'package:lead_mobile/theme/app_theme.dart';
 
-// Since we can't easily mock all Firebase services inside widget tests without boilerplate,
-// we will test if the MainNavigationPage structure is correct and responds to taps.
+// Firebase core is mocked so pages that create Firestore streams can build;
+// the streams themselves surface errors, which the pages render as states.
 
 void main() {
+  setUpAll(() async {
+    TestWidgetsFlutterBinding.ensureInitialized();
+    setupFirebaseCoreMocks();
+    await Firebase.initializeApp();
+  });
+
   testWidgets('MainNavigationPage has 4 tabs and switches content', (WidgetTester tester) async {
-    // We wrap the widget in a MaterialApp and provide placeholders for the pages
-    // to avoid Firebase dependency issues in this simple structure test.
-    
-    await tester.pumpWidget(const MaterialApp(
-      home: MainNavigationPage(),
+    await tester.pumpWidget(MaterialApp(
+      theme: AppTheme.light(),
+      home: const MainNavigationPage(),
     ));
 
-    // Verify initial state (Leads tab)
+    // Verify all four destinations are present.
     expect(find.text('Leads'), findsOneWidget);
     expect(find.text('Favorites'), findsOneWidget);
     expect(find.text('Deals'), findsOneWidget);
     expect(find.text('Profile'), findsOneWidget);
 
-    // Tap on Favorites
-    await tester.tap(find.byIcon(Icons.favorite_border_rounded));
-    await tester.pumpAndSettle();
+    NavigationBar navBar() => tester.widget<NavigationBar>(find.byType(NavigationBar));
+    expect(navBar().selectedIndex, 0);
 
-    // Verify it changed (icon should change to activeIcon)
-    expect(find.byIcon(Icons.favorite_rounded), findsOneWidget);
+    // Tap through the tabs and verify selection follows. Plain pump():
+    // pumpAndSettle never settles while stream spinners are animating.
+    await tester.tap(find.byIcon(AppIcons.heart));
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(navBar().selectedIndex, 1);
 
-    // Tap on Deals
-    await tester.tap(find.byIcon(Icons.handshake_outlined));
-    await tester.pumpAndSettle();
-    expect(find.byIcon(Icons.handshake), findsOneWidget);
+    await tester.tap(find.byIcon(AppIcons.handshake));
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(navBar().selectedIndex, 2);
 
-    // Tap on Profile
-    await tester.tap(find.byIcon(Icons.person_outline_rounded));
-    await tester.pumpAndSettle();
-    expect(find.byIcon(Icons.person_rounded), findsOneWidget);
+    await tester.tap(find.byIcon(AppIcons.user));
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(navBar().selectedIndex, 3);
   });
 }
