@@ -18,19 +18,26 @@ class BusinessDetailsPage extends StatefulWidget {
 class _BusinessDetailsPageState extends State<BusinessDetailsPage> {
   final _repo = LeadRepository();
   late LeadStatus _currentStatus;
+  late bool _hasWhatsApp;
   bool _loading = false;
 
   @override
   void initState() {
     super.initState();
     _currentStatus = widget.lead.status;
+    _hasWhatsApp = widget.lead.hasWhatsApp;
   }
 
   Future<void> _saveChanges() async {
     setState(() => _loading = true);
     final user = FirebaseAuth.instance.currentUser;
     try {
-      await _repo.updateStatus(widget.lead.id, _currentStatus, user?.uid);
+      if (_currentStatus != widget.lead.status) {
+        await _repo.updateStatus(widget.lead.id, _currentStatus, user?.uid);
+      }
+      if (_hasWhatsApp != widget.lead.hasWhatsApp) {
+        await _repo.updateWhatsAppStatus(widget.lead.id, _hasWhatsApp, user?.uid);
+      }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Changes saved')));
         Navigator.pop(context);
@@ -58,7 +65,7 @@ class _BusinessDetailsPageState extends State<BusinessDetailsPage> {
   Widget build(BuildContext context) {
     final t = context.tokens;
     final lead = widget.lead;
-    final dirty = _currentStatus != lead.status;
+    final dirty = _currentStatus != lead.status || _hasWhatsApp != lead.hasWhatsApp;
 
     return Scaffold(
       appBar: AppBar(),
@@ -77,6 +84,14 @@ class _BusinessDetailsPageState extends State<BusinessDetailsPage> {
             ],
             const SizedBox(height: 28),
             _ReviewCard(review: lead.badReview),
+            const SizedBox(height: 32),
+            Text('WhatsApp Validation',
+                style: Theme.of(context).textTheme.headlineSmall),
+            const SizedBox(height: 14),
+            _WhatsAppToggle(
+              value: _hasWhatsApp,
+              onChanged: (val) => setState(() => _hasWhatsApp = val),
+            ),
             const SizedBox(height: 32),
             Text('Where does this lead stand?',
                 style: Theme.of(context).textTheme.headlineSmall),
@@ -98,10 +113,61 @@ class _BusinessDetailsPageState extends State<BusinessDetailsPage> {
                           strokeWidth: 2.5, color: t.onFill),
                     )
                   : const Icon(AppIcons.check, size: 20),
-              label: Text(dirty ? 'Save new status' : 'Status up to date'),
+              label: Text(dirty ? 'Save changes' : 'Data up to date'),
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _WhatsAppToggle extends StatelessWidget {
+  const _WhatsAppToggle({required this.value, required this.onChanged});
+
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    return Container(
+      decoration: BoxDecoration(
+        color: t.surface,
+        borderRadius: BorderRadius.circular(AppTheme.radius + 4),
+      ),
+      child: SwitchListTile(
+        value: value,
+        onChanged: onChanged,
+        title: Text(
+          'WhatsApp Validated',
+          style: TextStyle(
+            fontWeight: FontWeight.w700,
+            fontSize: 15,
+            color: value ? t.sageTextStrong : t.ink,
+          ),
+        ),
+        subtitle: Text(
+          value
+              ? 'This number is confirmed on WhatsApp'
+              : 'Status not yet validated',
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+        secondary: Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            color: value ? t.sageTint : t.neutralTint,
+            shape: BoxShape.circle,
+          ),
+          child: Icon(
+            AppIcons.chat,
+            size: 20,
+            color: value ? t.sage : t.subtle,
+          ),
+        ),
+        activeColor: t.sage,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       ),
     );
   }

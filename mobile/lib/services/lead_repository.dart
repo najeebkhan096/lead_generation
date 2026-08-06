@@ -79,7 +79,21 @@ class LeadRepository {
     await _db.collection('leads').doc(leadId).update(updates);
   }
 
-  Future<void> updateReputationStatus(String leadId, String status, String? userId) async {
+  Future<void> updateWhatsAppStatus(
+      String leadId, bool hasWhatsApp, String? userId) async {
+    final updates = <String, dynamic>{
+      'hasWhatsApp': hasWhatsApp,
+      'whatsAppCheckedAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    };
+    if (userId != null) {
+      updates['assignedTo'] = userId;
+    }
+    await _db.collection('leads').doc(leadId).update(updates);
+  }
+
+  Future<void> updateReputationStatus(
+      String leadId, String status, String? userId) async {
     final updates = <String, dynamic>{
       'reputationStatus': status,
       'updatedAt': FieldValue.serverTimestamp(),
