@@ -1,17 +1,24 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/constants/business_categories.dart';
 import '../../core/theme/app_theme.dart';
+import '../../domain/repositories/lead_repository.dart';
 import '../bloc/search/search_bloc.dart';
 import '../bloc/search/search_event.dart';
 import '../bloc/search/search_state.dart';
-import 'active_search_page.dart';
-import 'results_page.dart';
-import 'saved_businesses_page.dart';
-import 'whatsapp_checker_page.dart';
+import 'multi_scan_page.dart';
 
+/// Configures and kicks off a new nationwide scan. Reachable from the
+/// Dashboard's "New Search" action.
+///
+/// A single category still runs through the classic [SearchBloc] flow —
+/// the shell above this page owns navigating to `ActiveSearchPage` the
+/// moment that search starts. Two or more categories run through the
+/// concurrent worker-pool endpoint instead (each category scans
+/// independently, picking up the next queued one as soon as it finishes,
+/// rather than one at a time), landing on [MultiScanPage] for live
+/// per-category progress.
 class SearchPage extends StatefulWidget {
   const SearchPage({super.key});
 
@@ -27,6 +34,8 @@ class _SearchPageState extends State<SearchPage> {
   String _dateRange = '30';
   bool _autoSave = true;
   bool _analyze = false;
+  int _concurrency = 4;
+  bool _startingMultiSearch = false;
 
   static const _dateRanges = <String, String>{
     '7': 'Last 7 days',
@@ -34,15 +43,6 @@ class _SearchPageState extends State<SearchPage> {
     '90': 'Last 90 days',
     '365': 'Last 365 days',
   };
-
-  @override
-  void initState() {
-    super.initState();
-    // Search progress lives only in the backend's in-memory store, so on a
-    // fresh page load, check whether a search is already running or just
-    // finished server-side instead of silently showing a blank form.
-    context.read<SearchBloc>().add(const SearchResumeChecked());
-  }
 
   @override
   void dispose() {
@@ -67,323 +67,280 @@ class _SearchPageState extends State<SearchPage> {
     });
   }
 
-  void _submit() {
+  Future<void> _submit() async {
     if (_targetServices.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Add at least one service to start searching')),
       );
       return;
     }
-    context.read<SearchBloc>().add(
-          SearchSubmitted(
+
+    if (_targetServices.length == 1) {
+      context.read<SearchBloc>().add(
+            SearchSubmitted(
+              categories: List.from(_targetServices),
+              dateRange: _dateRange,
+              nationwide: true,
+              autoSave: _autoSave,
+              analyze: _analyze,
+            ),
+          );
+      return;
+    }
+
+    setState(() => _startingMultiSearch = true);
+    try {
+      await context.read<LeadRepository>().startMultiSearch(
             categories: List.from(_targetServices),
+            concurrency: _concurrency,
             dateRange: _dateRange,
-            nationwide: true,
-            autoSave: _autoSave,
             analyze: _analyze,
-          ),
-        );
+          );
+      if (!mounted) return;
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => const MultiScanPage()),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+      );
+    } finally {
+      if (mounted) setState(() => _startingMultiSearch = false);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    return BlocConsumer<SearchBloc, SearchState>(
-      listenWhen: (prev, next) => prev.status != next.status,
-      listener: (context, state) {
-        if (state.status == SearchStatus.loading) {
-          Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const ActiveSearchPage()),
-          );
-        }
-      },
+    return BlocBuilder<SearchBloc, SearchState>(
       builder: (context, state) {
-        final loading = state.status == SearchStatus.loading;
+        final isMulti = _targetServices.length > 1;
+        final loading = isMulti ? _startingMultiSearch : state.status == SearchStatus.loading;
 
         return Scaffold(
-          body: Container(
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  Color(0xFFF0F4F8),
-                  Color(0xFFE8F5F3),
-                  Color(0xFFF7F3EB),
-                ],
-              ),
-            ),
-            child: SafeArea(
-              child: Center(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 560),
-                    child: Form(
-                      key: _formKey,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  'LeadFinder',
-                                  style: Theme.of(context).textTheme.displaySmall,
-                                ),
-                              ),
-                              _ActionButton(
-                                icon: Icons.chat_outlined,
-                                label: 'WhatsApp',
-                                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const WhatsAppCheckerPage())),
-                              ),
-                              const SizedBox(width: 12),
-                              _ActionButton(
-                                icon: Icons.history_rounded,
-                                label: 'History',
-                                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SavedBusinessesPage())),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 10),
-                          Text(
-                            'Select multiple services to scan across the entire USA. The search will process each service sequentially and auto-save results to Firebase.',
-                            style: Theme.of(context).textTheme.bodyLarge,
-                          ),
-                          const SizedBox(height: 36),
-                          Text(
-                            'Coverage',
-                            style: Theme.of(context).textTheme.titleLarge?.copyWith(fontSize: 15),
-                          ),
-                          const SizedBox(height: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFECFDF5),
-                              borderRadius: BorderRadius.circular(10),
-                              border: Border.all(color: const Color(0xFF6EE7B7)),
-                            ),
-                            child: Row(
+          appBar: AppBar(title: const Text('New Search')),
+          body: SafeArea(
+            child: Center(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 560),
+                  child: Form(
+                    key: _formKey,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Text(
+                          'Select multiple services to scan across the entire USA. The search runs each service in sequence and auto-saves results to Firebase.',
+                          style: Theme.of(context).textTheme.bodyLarge,
+                        ),
+                        const SizedBox(height: 28),
+                        _SectionLabel('Coverage'),
+                        const SizedBox(height: 8),
+                        _InfoBanner(
+                          icon: AppIcons.globe,
+                          color: AppTheme.sage700,
+                          background: AppTheme.sage100,
+                          text: 'All 50 U.S. states + D.C. (automatic)',
+                        ),
+                        const SizedBox(height: 20),
+                        _SectionLabel('Business categories'),
+                        const SizedBox(height: 8),
+                        Autocomplete<String>(
+                          optionsBuilder: (TextEditingValue textEditingValue) {
+                            if (textEditingValue.text == '') {
+                              return const Iterable<String>.empty();
+                            }
+                            return BusinessCategories.top100.where((String option) {
+                              return option.toLowerCase().contains(textEditingValue.text.toLowerCase());
+                            });
+                          },
+                          onSelected: (String selection) {
+                            _addService(selection);
+                          },
+                          fieldViewBuilder: (context, controller, focusNode, onFieldSubmitted) {
+                            return Row(
+                              crossAxisAlignment: CrossAxisAlignment.center,
                               children: [
-                                const Icon(Icons.public, color: AppTheme.accent, size: 20),
-                                const SizedBox(width: 8),
-                                const Expanded(
-                                  child: Text(
-                                    'All 50 U.S. states + D.C. (automatic)',
-                                    style: TextStyle(
-                                      color: AppTheme.accent,
-                                      fontWeight: FontWeight.w700,
+                                Expanded(
+                                  child: TextFormField(
+                                    controller: controller,
+                                    focusNode: focusNode,
+                                    decoration: const InputDecoration(
+                                      hintText: 'Select or type a category…',
+                                      prefixIcon: Icon(AppIcons.search, size: 19),
+                                      isDense: true,
                                     ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 20),
-                          Text(
-                            'Business Categories',
-                            style: Theme.of(context).textTheme.titleLarge?.copyWith(fontSize: 15),
-                          ),
-                          const SizedBox(height: 8),
-                          Autocomplete<String>(
-                            optionsBuilder: (TextEditingValue textEditingValue) {
-                              if (textEditingValue.text == '') {
-                                return const Iterable<String>.empty();
-                              }
-                              return BusinessCategories.top100.where((String option) {
-                                return option.toLowerCase().contains(textEditingValue.text.toLowerCase());
-                              });
-                            },
-                            onSelected: (String selection) {
-                              _addService(selection);
-                            },
-                            fieldViewBuilder: (context, controller, focusNode, onFieldSubmitted) {
-                              return Row(
-                                children: [
-                                  Expanded(
-                                    child: TextFormField(
-                                      controller: controller,
-                                      focusNode: focusNode,
-                                      decoration: const InputDecoration(
-                                        hintText: 'Select or type a category...',
-                                        isDense: true,
-                                      ),
-                                      enabled: !loading,
-                                      onFieldSubmitted: (v) {
-                                        _addService(v);
-                                        controller.clear();
-                                      },
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  IconButton.filled(
-                                    onPressed: loading ? null : () {
-                                      _addService(controller.text);
+                                    enabled: !loading,
+                                    onFieldSubmitted: (v) {
+                                      _addService(v);
                                       controller.clear();
                                     },
-                                    icon: const Icon(Icons.add),
-                                    style: IconButton.styleFrom(
-                                      backgroundColor: AppTheme.accent,
-                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                    ),
-                                  ),
-                                ],
-                              );
-                            },
-                            optionsViewBuilder: (context, onSelected, options) {
-                              return Align(
-                                alignment: Alignment.topLeft,
-                                child: Material(
-                                  elevation: 4.0,
-                                  borderRadius: BorderRadius.circular(10),
-                                  child: Container(
-                                    width: 512,
-                                    constraints: const BoxConstraints(maxHeight: 250),
-                                    child: ListView.builder(
-                                      padding: EdgeInsets.zero,
-                                      shrinkWrap: true,
-                                      itemCount: options.length,
-                                      itemBuilder: (BuildContext context, int index) {
-                                        final String option = options.elementAt(index);
-                                        return InkWell(
-                                          onTap: () => onSelected(option),
-                                          child: Padding(
-                                            padding: const EdgeInsets.all(16.0),
-                                            child: Text(option),
-                                          ),
-                                        );
-                                      },
-                                    ),
                                   ),
                                 ),
-                              );
-                            },
-                          ),
-                          const SizedBox(height: 12),
-                          if (_targetServices.isNotEmpty) ...[
-                            Text(
-                              'Target Services:',
-                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                fontWeight: FontWeight.bold,
-                                color: AppTheme.slate,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Wrap(
-                              spacing: 8,
-                              runSpacing: 8,
-                              children: _targetServices.map((service) => Chip(
-                                label: Text(service),
-                                deleteIcon: const Icon(Icons.close, size: 14),
-                                onDeleted: loading ? null : () => _removeService(service),
-                                backgroundColor: Colors.white,
-                                labelStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                  side: const BorderSide(color: AppTheme.line),
-                                ),
-                              )).toList(),
-                            ),
-                            const SizedBox(height: 16),
-                          ],
-                          const SizedBox(height: 20),
-                          Text(
-                            'Review Filter',
-                            style: Theme.of(context).textTheme.titleLarge?.copyWith(fontSize: 15),
-                          ),
-                          const SizedBox(height: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-                            decoration: BoxDecoration(
-                              color: AppTheme.warnSoft,
-                              borderRadius: BorderRadius.circular(10),
-                              border: Border.all(color: const Color(0xFFFCD34D)),
-                            ),
-                            child: Row(
-                              children: [
-                                Icon(Icons.star, color: AppTheme.warn, size: 20),
-                                const SizedBox(width: 8),
-                                const Expanded(
-                                  child: Text(
-                                    '1 star only · phone + Google Maps · exhaustive scan',
-                                    style: TextStyle(
-                                      color: Color(0xFFB45309),
-                                      fontWeight: FontWeight.w700,
-                                    ),
+                                const SizedBox(width: 10),
+                                IconButton.filled(
+                                  onPressed: loading
+                                      ? null
+                                      : () {
+                                          _addService(controller.text);
+                                          controller.clear();
+                                        },
+                                  icon: const Icon(AppIcons.plus, size: 19),
+                                  style: IconButton.styleFrom(
+                                    backgroundColor: AppTheme.accent,
+                                    foregroundColor: AppTheme.surface,
+                                    shape: const CircleBorder(),
+                                    padding: const EdgeInsets.all(14),
                                   ),
                                 ),
                               ],
-                            ),
-                          ),
-                          const SizedBox(height: 20),
-                          Text(
-                            'Date Range',
-                            style: Theme.of(context).textTheme.titleLarge?.copyWith(fontSize: 15),
-                          ),
-                          const SizedBox(height: 8),
-                          DropdownButtonFormField<String>(
-                            initialValue: _dateRange,
-                            items: _dateRanges.entries
-                                .map(
-                                  (e) => DropdownMenuItem(
-                                    value: e.key,
-                                    child: Text(e.value),
+                            );
+                          },
+                          optionsViewBuilder: (context, onSelected, options) {
+                            return Align(
+                              alignment: Alignment.topLeft,
+                              child: Material(
+                                elevation: 4.0,
+                                borderRadius: BorderRadius.circular(AppTheme.radius),
+                                color: AppTheme.surface,
+                                child: Container(
+                                  width: 512,
+                                  constraints: const BoxConstraints(maxHeight: 260),
+                                  child: ListView.builder(
+                                    padding: const EdgeInsets.symmetric(vertical: 6),
+                                    shrinkWrap: true,
+                                    itemCount: options.length,
+                                    itemBuilder: (BuildContext context, int index) {
+                                      final String option = options.elementAt(index);
+                                      return InkWell(
+                                        onTap: () => onSelected(option),
+                                        child: Padding(
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 18, vertical: 13),
+                                          child: Text(option),
+                                        ),
+                                      );
+                                    },
                                   ),
-                                )
-                                .toList(),
-                            onChanged: loading
-                                ? null
-                                : (v) {
-                                    if (v != null) setState(() => _dateRange = v);
-                                  },
-                          ),
-                          const SizedBox(height: 20),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                        const SizedBox(height: 12),
+                        if (_targetServices.isNotEmpty) ...[
                           Text(
-                            'Search Options',
-                            style: Theme.of(context).textTheme.titleLarge?.copyWith(fontSize: 15),
-                          ),
-                          const SizedBox(height: 8),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: CheckboxListTile(
-                                  title: const Text('Auto-save to Firebase', style: TextStyle(fontSize: 14)),
-                                  subtitle: const Text('Saves each niche immediately', style: TextStyle(fontSize: 11)),
-                                  value: _autoSave,
-                                  onChanged: loading ? null : (v) => setState(() => _autoSave = v ?? true),
-                                  contentPadding: EdgeInsets.zero,
-                                  controlAffinity: ListTileControlAffinity.leading,
-                                  dense: true,
+                            'Target services',
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                  color: AppTheme.subtle,
                                 ),
-                              ),
-                              Expanded(
-                                child: CheckboxListTile(
-                                  title: const Text('Analyze Reviews', style: TextStyle(fontSize: 14)),
-                                  subtitle: const Text('Categorize complaints', style: TextStyle(fontSize: 11)),
-                                  value: _analyze,
-                                  onChanged: loading ? null : (v) => setState(() => _analyze = v ?? false),
-                                  contentPadding: EdgeInsets.zero,
-                                  controlAffinity: ListTileControlAffinity.leading,
-                                  dense: true,
+                          ),
+                          const SizedBox(height: 10),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: _targetServices
+                                .map((service) => Chip(
+                                      label: Text(service),
+                                      deleteIcon: const Icon(AppIcons.close, size: 14),
+                                      onDeleted: loading ? null : () => _removeService(service),
+                                    ))
+                                .toList(),
+                          ),
+                          const SizedBox(height: 16),
+                        ],
+                        const SizedBox(height: 8),
+                        _SectionLabel('Review filter'),
+                        const SizedBox(height: 8),
+                        _InfoBanner(
+                          icon: AppIcons.star,
+                          color: AppTheme.accent700,
+                          background: AppTheme.accent100,
+                          text: '1 star only · phone + Google Maps · exhaustive scan',
+                        ),
+                        const SizedBox(height: 20),
+                        _SectionLabel('Date range'),
+                        const SizedBox(height: 8),
+                        DropdownButtonFormField<String>(
+                          initialValue: _dateRange,
+                          icon: const Icon(AppIcons.chevronDown, size: 18, color: AppTheme.accent),
+                          items: _dateRanges.entries
+                              .map(
+                                (e) => DropdownMenuItem(
+                                  value: e.key,
+                                  child: Text(e.value),
                                 ),
+                              )
+                              .toList(),
+                          onChanged: loading
+                              ? null
+                              : (v) {
+                                  if (v != null) setState(() => _dateRange = v);
+                                },
+                        ),
+                        const SizedBox(height: 20),
+                        _SectionLabel('Search options'),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _OptionToggle(
+                                title: 'Auto-save to Firebase',
+                                subtitle: 'Saves each niche immediately',
+                                value: _autoSave,
+                                onChanged: loading ? null : (v) => setState(() => _autoSave = v),
                               ),
-                            ],
-                          ),
-                          const SizedBox(height: 28),
-                          ElevatedButton(
-                            onPressed: loading ? null : _submit,
-                            child: const Text('Start Sequential Search'),
-                          ),
-                          if (state.status == SearchStatus.failure && state.error != null) ...[
-                            const SizedBox(height: 16),
-                            Text(
-                              state.error!,
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(color: Color(0xFFB91C1C)),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: _OptionToggle(
+                                title: 'Analyze reviews',
+                                subtitle: 'Categorize complaints',
+                                value: _analyze,
+                                onChanged: loading ? null : (v) => setState(() => _analyze = v),
+                              ),
                             ),
                           ],
+                        ),
+                        if (isMulti) ...[
+                          const SizedBox(height: 20),
+                          _SectionLabel('Parallel workers'),
+                          const SizedBox(height: 8),
+                          _InfoBanner(
+                            icon: AppIcons.zap,
+                            color: AppTheme.sage700,
+                            background: AppTheme.sage100,
+                            text:
+                                '${_targetServices.length} categories will scan concurrently instead of one at a time — each worker picks up the next category as soon as it finishes.',
+                          ),
+                          const SizedBox(height: 10),
+                          _ConcurrencySlider(
+                            value: _concurrency,
+                            onChanged: loading ? null : (v) => setState(() => _concurrency = v),
+                          ),
                         ],
-                      ),
+                        const SizedBox(height: 28),
+                        ElevatedButton(
+                          onPressed: loading ? null : _submit,
+                          child: loading && isMulti
+                              ? const SizedBox(
+                                  height: 22,
+                                  width: 22,
+                                  child: CircularProgressIndicator(strokeWidth: 2.4, color: AppTheme.surface),
+                                )
+                              : Text(isMulti ? 'Start $_concurrency-worker scan' : 'Start search'),
+                        ),
+                        if (state.status == SearchStatus.failure && state.error != null) ...[
+                          const SizedBox(height: 16),
+                          Text(
+                            state.error!,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(color: AppTheme.danger),
+                          ),
+                        ],
+                      ],
                     ),
                   ),
                 ),
@@ -396,30 +353,151 @@ class _SearchPageState extends State<SearchPage> {
   }
 }
 
-class _ActionButton extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
+class _ConcurrencySlider extends StatelessWidget {
+  const _ConcurrencySlider({required this.value, required this.onChanged});
 
-  const _ActionButton({required this.icon, required this.label, required this.onTap});
+  final int value;
+  final ValueChanged<int>? onChanged;
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          border: Border.all(color: AppTheme.accent.withOpacity(0.2)),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Column(
-          children: [
-            Icon(icon, color: AppTheme.accent, size: 20),
-            const SizedBox(height: 4),
-            Text(label, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppTheme.accent)),
-          ],
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      decoration: BoxDecoration(color: AppTheme.surface, borderRadius: BorderRadius.circular(AppTheme.radius)),
+      child: Row(
+        children: [
+          const Icon(AppIcons.users, size: 18, color: AppTheme.accent700),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Slider(
+              value: value.toDouble(),
+              min: 2,
+              max: 8,
+              divisions: 6,
+              activeColor: AppTheme.accent500,
+              label: '$value workers',
+              onChanged: onChanged == null ? null : (v) => onChanged!(v.round()),
+            ),
+          ),
+          SizedBox(
+            width: 64,
+            child: Text(
+              '$value workers',
+              textAlign: TextAlign.end,
+              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: AppTheme.ink),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SectionLabel extends StatelessWidget {
+  const _SectionLabel(this.label);
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      label,
+      style: Theme.of(context).textTheme.titleSmall?.copyWith(fontSize: 14.5),
+    );
+  }
+}
+
+class _InfoBanner extends StatelessWidget {
+  const _InfoBanner({
+    required this.icon,
+    required this.color,
+    required this.background,
+    required this.text,
+  });
+
+  final IconData icon;
+  final Color color;
+  final Color background;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(AppTheme.radius),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: color, size: 19),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(color: color, fontWeight: FontWeight.w700, fontSize: 13.5),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _OptionToggle extends StatelessWidget {
+  const _OptionToggle({
+    required this.title,
+    required this.subtitle,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final String title;
+  final String subtitle;
+  final bool value;
+  final ValueChanged<bool>? onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: value ? AppTheme.accent100 : AppTheme.surface,
+      borderRadius: BorderRadius.circular(AppTheme.radius),
+      child: InkWell(
+        onTap: onChanged == null ? null : () => onChanged!(!value),
+        borderRadius: BorderRadius.circular(AppTheme.radius),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                value ? AppIcons.checkCircle : Icons.circle_outlined,
+                size: 20,
+                color: value ? AppTheme.accent700 : AppTheme.neutral400,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: value ? AppTheme.accent800 : AppTheme.ink,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: const TextStyle(fontSize: 11, color: AppTheme.faint),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

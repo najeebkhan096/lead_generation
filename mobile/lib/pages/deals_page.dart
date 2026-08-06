@@ -1,3 +1,4 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import '../models/lead.dart';
 import '../services/lead_repository.dart';
@@ -16,43 +17,103 @@ class DealsPage extends StatefulWidget {
 
 class _DealsPageState extends State<DealsPage> {
   final _repo = LeadRepository();
+  String _searchQuery = '';
+  final _searchController = TextEditingController();
+  late final Stream<List<Lead>> _leadsStream;
+
+  @override
+  void initState() {
+    super.initState();
+    _leadsStream = _repo.getLeadsStream();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final t = context.tokens;
+    final user = FirebaseAuth.instance.currentUser;
+
     return DefaultTabController(
       length: 3,
       child: Scaffold(
         body: SafeArea(
           child: StreamBuilder<List<Lead>>(
-            stream: _repo.getLeadsStream(),
+            stream: _leadsStream,
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
                 return const Center(child: CircularProgressIndicator());
               }
 
               final allLeads = snapshot.data ?? [];
-              final contacted =
-                  allLeads.where((l) => l.status == LeadStatus.contacted).toList();
-              final booked =
-                  allLeads.where((l) => l.status == LeadStatus.booked).toList();
-              final done =
-                  allLeads.where((l) => l.status == LeadStatus.dealDone).toList();
+              final myLeads = allLeads.where((l) => l.assignedTo == user?.uid).toList();
+
+              var contacted =
+                  myLeads.where((l) => l.status == LeadStatus.contacted).toList();
+              var booked =
+                  myLeads.where((l) => l.status == LeadStatus.booked).toList();
+              var done =
+                  myLeads.where((l) => l.status == LeadStatus.dealDone).toList();
+
+              if (_searchQuery.isNotEmpty) {
+                final query = _searchQuery.toLowerCase();
+                contacted = contacted
+                    .where((l) => l.business.toLowerCase().contains(query))
+                    .toList();
+                booked = booked
+                    .where((l) => l.business.toLowerCase().contains(query))
+                    .toList();
+                done = done
+                    .where((l) => l.business.toLowerCase().contains(query))
+                    .toList();
+              }
+
+              final totalFiltered = contacted.length + booked.length + done.length;
 
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   PageHeader(
                     title: 'Active deals',
-                    subtitle: done.isEmpty
+                    subtitle: totalFiltered == 0
                         ? 'Your pipeline at a glance'
-                        : '${done.length} ${done.length == 1 ? 'deal' : 'deals'} won so far — keep going',
+                        : '$totalFiltered ${totalFiltered == 1 ? 'deal' : 'deals'} in your pipeline',
                     trailing: HeaderBadge(
                       icon: AppIcons.handshake,
                       background: t.sageTint,
                       foreground: t.sageDeep,
                     ),
                   ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: TextField(
+                      controller: _searchController,
+                      onChanged: (value) => setState(() => _searchQuery = value),
+                      decoration: InputDecoration(
+                        hintText: 'Search deals...',
+                        prefixIcon: Padding(
+                          padding: const EdgeInsets.only(left: 20, right: 12),
+                          child: Icon(AppIcons.search, size: 19, color: t.faint),
+                        ),
+                        suffixIcon: _searchQuery.isNotEmpty
+                            ? IconButton(
+                                icon: const Icon(AppIcons.x, size: 18),
+                                onPressed: () {
+                                  _searchController.clear();
+                                  setState(() => _searchQuery = '');
+                                },
+                              )
+                            : null,
+                        prefixIconConstraints:
+                            const BoxConstraints(minWidth: 0, minHeight: 0),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
                   Padding(
                     padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
                     child: Row(

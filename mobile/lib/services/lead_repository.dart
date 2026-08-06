@@ -57,11 +57,15 @@ class LeadRepository {
     }
   }
 
-  Future<void> updateFavorite(String leadId, bool isFavorite) async {
-    await _db.collection('leads').doc(leadId).update({
+  Future<void> updateFavorite(String leadId, bool isFavorite, String? userId) async {
+    final updates = <String, dynamic>{
       'isFavorite': isFavorite,
       'updatedAt': FieldValue.serverTimestamp(),
-    });
+    };
+    if (userId != null) {
+      updates['assignedTo'] = userId;
+    }
+    await _db.collection('leads').doc(leadId).update(updates);
   }
 
   Future<void> updateStatus(String leadId, LeadStatus status, String? userId) async {

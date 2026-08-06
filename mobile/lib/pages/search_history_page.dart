@@ -4,21 +4,42 @@ import '../models/search_batch.dart';
 import '../services/lead_repository.dart';
 import '../theme/app_theme.dart';
 import '../utils/date_format.dart';
+import '../widgets/page_header.dart';
 import 'saved_businesses_page.dart' show StateBadge;
 
 /// Every past search run, live from Firestore's `searches` collection.
-class SearchHistoryPage extends StatelessWidget {
-  SearchHistoryPage({super.key});
+class SearchHistoryPage extends StatefulWidget {
+  const SearchHistoryPage({super.key});
 
+  @override
+  State<SearchHistoryPage> createState() => _SearchHistoryPageState();
+}
+
+class _SearchHistoryPageState extends State<SearchHistoryPage> {
   final _repo = LeadRepository();
+  String _searchQuery = '';
+  final _searchController = TextEditingController();
+  late final Stream<List<SavedSearch>> _searchesStream;
+
+  @override
+  void initState() {
+    super.initState();
+    _searchesStream = _repo.getSearchesStream();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
+    final t = context.tokens;
     return Scaffold(
-      appBar: AppBar(title: const Text('Search history')),
       body: SafeArea(
         child: StreamBuilder<List<SavedSearch>>(
-          stream: _repo.getSearchesStream(),
+          stream: _searchesStream,
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
               return const Center(child: CircularProgressIndicator());
@@ -33,21 +54,78 @@ class SearchHistoryPage extends StatelessWidget {
               );
             }
 
-            final searches = snapshot.data ?? const <SavedSearch>[];
-            if (searches.isEmpty) {
-              return const _CenteredMessage(
-                icon: AppIcons.history,
-                title: 'No searches yet',
-                message:
-                    'Searches you run in LeadFinder web will show up here.',
-              );
+            final allSearches = snapshot.data ?? const <SavedSearch>[];
+            var searches = allSearches;
+
+            if (_searchQuery.isNotEmpty) {
+              final query = _searchQuery.toLowerCase();
+              searches = searches.where((s) {
+                return s.category.toLowerCase().contains(query) ||
+                    s.location.toLowerCase().contains(query);
+              }).toList();
             }
 
-            return ListView.builder(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
-              itemCount: searches.length,
-              itemBuilder: (context, index) =>
-                  _SearchCard(search: searches[index]),
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                PageHeader(
+                  title: 'Search history',
+                  subtitle: searches.isEmpty && _searchQuery.isEmpty
+                      ? 'Past searches live here'
+                      : '${searches.length} ${searches.length == 1 ? 'search' : 'searches'} performed',
+                  trailing: HeaderBadge(
+                    icon: AppIcons.history,
+                    background: t.neutralTint,
+                    foreground: t.subtle,
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: TextField(
+                    controller: _searchController,
+                    onChanged: (value) => setState(() => _searchQuery = value),
+                    decoration: InputDecoration(
+                      hintText: 'Search history...',
+                      prefixIcon: Padding(
+                        padding: const EdgeInsets.only(left: 20, right: 12),
+                        child: Icon(AppIcons.search, size: 19, color: t.faint),
+                      ),
+                      suffixIcon: _searchQuery.isNotEmpty
+                          ? IconButton(
+                              icon: const Icon(AppIcons.x, size: 18),
+                              onPressed: () {
+                                _searchController.clear();
+                                setState(() => _searchQuery = '');
+                              },
+                            )
+                          : null,
+                      prefixIconConstraints:
+                          const BoxConstraints(minWidth: 0, minHeight: 0),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Expanded(
+                  child: searches.isEmpty
+                      ? _CenteredMessage(
+                          icon: _searchQuery.isNotEmpty
+                              ? AppIcons.searchX
+                              : AppIcons.history,
+                          title: _searchQuery.isNotEmpty
+                              ? 'No matches'
+                              : 'No searches yet',
+                          message: _searchQuery.isNotEmpty
+                              ? 'Try a different category or location.'
+                              : 'Searches you run in LeadFinder web will show up here.',
+                        )
+                      : ListView.builder(
+                          padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
+                          itemCount: searches.length,
+                          itemBuilder: (context, index) =>
+                              _SearchCard(search: searches[index]),
+                        ),
+                ),
+              ],
             );
           },
         ),

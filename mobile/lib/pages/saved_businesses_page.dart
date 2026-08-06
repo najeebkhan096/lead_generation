@@ -20,6 +20,21 @@ const _allCategories = 'All';
 class _SavedBusinessesPageState extends State<SavedBusinessesPage> {
   final _repo = LeadRepository();
   String _selectedCategory = _allCategories;
+  String _searchQuery = '';
+  final _searchController = TextEditingController();
+  late final Stream<List<Lead>> _leadsStream;
+
+  @override
+  void initState() {
+    super.initState();
+    _leadsStream = _repo.getLeadsStream();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
 
   /// Categories actually present among the leads with "New" status.
   List<String> _categoriesFrom(List<Lead> leads) {
@@ -40,7 +55,7 @@ class _SavedBusinessesPageState extends State<SavedBusinessesPage> {
     return Scaffold(
       body: SafeArea(
         child: StreamBuilder<List<Lead>>(
-          stream: _repo.getLeadsStream(),
+          stream: _leadsStream,
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
               return const Center(child: CircularProgressIndicator());
@@ -64,18 +79,30 @@ class _SavedBusinessesPageState extends State<SavedBusinessesPage> {
                 ? _selectedCategory
                 : _allCategories;
 
-            final filtered = effectiveCategory == _allCategories
+            var filtered = effectiveCategory == _allCategories
                 ? newLeads
                 : newLeads.where((lead) => lead.category == effectiveCategory).toList();
+
+            if (_searchQuery.isNotEmpty) {
+              final query = _searchQuery.toLowerCase();
+              filtered = filtered.where((lead) {
+                final name = lead.business.toLowerCase();
+                final location = lead.location.toLowerCase();
+                final phone = (lead.phone ?? '').toLowerCase();
+                return name.contains(query) ||
+                    location.contains(query) ||
+                    phone.contains(query);
+              }).toList();
+            }
 
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 PageHeader(
                   title: 'Discover leads',
-                  subtitle: newLeads.isEmpty
+                  subtitle: filtered.isEmpty && _searchQuery.isEmpty
                       ? 'New businesses will land here'
-                      : '${newLeads.length} fresh ${newLeads.length == 1 ? 'business' : 'businesses'} to win over',
+                      : '${filtered.length} ${filtered.length == 1 ? 'business' : 'businesses'} found',
                   trailing: HeaderBadge(
                     icon: AppIcons.sparkles,
                     background: t.accentTint,
@@ -87,16 +114,46 @@ class _SavedBusinessesPageState extends State<SavedBusinessesPage> {
                 else ...[
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: _CategoryDropdown(
-                      categories: categories,
-                      selected: effectiveCategory,
-                      countFor: (category) => category == _allCategories
-                          ? newLeads.length
-                          : newLeads
-                              .where((l) => l.category == category)
-                              .length,
-                      onSelected: (value) =>
-                          setState(() => _selectedCategory = value),
+                    child: Column(
+                      children: [
+                        TextField(
+                          controller: _searchController,
+                          onChanged: (value) =>
+                              setState(() => _searchQuery = value),
+                          decoration: InputDecoration(
+                            hintText: 'Search leads...',
+                            prefixIcon: Padding(
+                              padding:
+                                  const EdgeInsets.only(left: 20, right: 12),
+                              child:
+                                  Icon(AppIcons.search, size: 19, color: t.faint),
+                            ),
+                            suffixIcon: _searchQuery.isNotEmpty
+                                ? IconButton(
+                                    icon: const Icon(AppIcons.x, size: 18),
+                                    onPressed: () {
+                                      _searchController.clear();
+                                      setState(() => _searchQuery = '');
+                                    },
+                                  )
+                                : null,
+                            prefixIconConstraints:
+                                const BoxConstraints(minWidth: 0, minHeight: 0),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        _CategoryDropdown(
+                          categories: categories,
+                          selected: effectiveCategory,
+                          countFor: (category) => category == _allCategories
+                              ? newLeads.length
+                              : newLeads
+                                  .where((l) => l.category == category)
+                                  .length,
+                          onSelected: (value) =>
+                              setState(() => _selectedCategory = value),
+                        ),
+                      ],
                     ),
                   ),
                   const SizedBox(height: 4),

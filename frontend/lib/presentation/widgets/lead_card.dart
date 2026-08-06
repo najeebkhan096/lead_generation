@@ -26,13 +26,15 @@ class LeadCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final letter = lead.business.trim().isEmpty ? '?' : lead.business.trim()[0].toUpperCase();
+    final warm = lead.business.hashCode.isEven;
+
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppTheme.line),
+        color: AppTheme.surface,
+        borderRadius: BorderRadius.circular(AppTheme.radiusCard),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -40,15 +42,33 @@ class LeadCard extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Container(
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(
+                  color: warm ? AppTheme.accent100 : AppTheme.sage100,
+                  shape: BoxShape.circle,
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  letter,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 18,
+                    color: warm ? AppTheme.accent700 : AppTheme.sage700,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       lead.business,
-                      style: Theme.of(context).textTheme.titleLarge,
+                      style: Theme.of(context).textTheme.titleMedium,
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 3),
                     Text(
                       '${lead.category} · ${lead.location}',
                       style: Theme.of(context).textTheme.bodyMedium,
@@ -60,15 +80,23 @@ class LeadCard extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                   decoration: BoxDecoration(
-                    color: AppTheme.accentSoft,
-                    borderRadius: BorderRadius.circular(8),
+                    color: AppTheme.accent100,
+                    borderRadius: BorderRadius.circular(AppTheme.radiusPill),
                   ),
-                  child: Text(
-                    '${lead.rating} ★',
-                    style: const TextStyle(
-                      color: AppTheme.accent,
-                      fontWeight: FontWeight.w700,
-                    ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(AppIcons.star, size: 13, color: AppTheme.accent700),
+                      const SizedBox(width: 4),
+                      Text(
+                        '${lead.rating}',
+                        style: const TextStyle(
+                          color: AppTheme.accent800,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 12.5,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
             ],
@@ -76,30 +104,34 @@ class LeadCard extends StatelessWidget {
           const SizedBox(height: 14),
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: AppTheme.warnSoft,
-              borderRadius: BorderRadius.circular(8),
+              color: AppTheme.accent100,
+              borderRadius: BorderRadius.circular(AppTheme.radius),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'Latest 1-star · ${lead.badReview.date}',
-                  style: TextStyle(
-                    color: AppTheme.warn,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 12,
-                  ),
+                Row(
+                  children: [
+                    const Icon(AppIcons.thumbsDown, size: 13, color: AppTheme.accent700),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Latest 1-star · ${lead.badReview.date}',
+                      style: const TextStyle(
+                        color: AppTheme.accent700,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 6),
+                const SizedBox(height: 8),
                 Text(
                   lead.badReview.text.isEmpty
                       ? '(No review text captured)'
                       : lead.badReview.text,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: AppTheme.ink,
-                      ),
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppTheme.ink),
                 ),
               ],
             ),
@@ -108,7 +140,7 @@ class LeadCard extends StatelessWidget {
             const SizedBox(height: 12),
             Row(
               children: [
-                const Icon(Icons.phone_outlined, size: 18, color: AppTheme.slate),
+                const Icon(AppIcons.phone, size: 16, color: AppTheme.faint),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
@@ -124,14 +156,22 @@ class LeadCard extends StatelessWidget {
           ],
           if (lead.website != null && lead.website!.isNotEmpty) ...[
             const SizedBox(height: 6),
-            Text(
-              lead.website!,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: AppTheme.accent,
+            Row(
+              children: [
+                const Icon(AppIcons.globe, size: 16, color: AppTheme.faint),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    lead.website!,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppTheme.accent700),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
+                ),
+              ],
             ),
           ],
-          const SizedBox(height: 14),
+          const SizedBox(height: 16),
           Wrap(
             spacing: 8,
             runSpacing: 8,
@@ -140,26 +180,22 @@ class LeadCard extends StatelessWidget {
                 onPressed: lead.mapsUrl == null || lead.mapsUrl!.isEmpty
                     ? null
                     : () => _open(lead.mapsUrl),
-                icon: const Icon(Icons.map_outlined, size: 16),
+                icon: const Icon(AppIcons.mapPin, size: 16),
                 label: const Text('Google Maps'),
-                style: FilledButton.styleFrom(
-                  backgroundColor: AppTheme.accent,
-                  foregroundColor: Colors.white,
-                ),
               ),
               if (_whatsAppUrl != null)
                 FilledButton.icon(
                   onPressed: () => _open(_whatsAppUrl),
-                  icon: const Icon(Icons.chat, size: 16),
+                  icon: const Icon(AppIcons.chat, size: 16),
                   label: const Text('WhatsApp'),
                   style: FilledButton.styleFrom(
-                    backgroundColor: const Color(0xFF25D366),
-                    foregroundColor: Colors.white,
+                    backgroundColor: AppTheme.sage500,
+                    foregroundColor: AppTheme.surface,
                   ),
                 ),
               OutlinedButton.icon(
                 onPressed: lead.website == null ? null : () => _open(lead.website),
-                icon: const Icon(Icons.language, size: 16),
+                icon: const Icon(AppIcons.globe, size: 16),
                 label: const Text('Website'),
               ),
               OutlinedButton.icon(
@@ -171,7 +207,7 @@ class LeadCard extends StatelessWidget {
                     );
                   }
                 },
-                icon: const Icon(Icons.copy, size: 16),
+                icon: const Icon(AppIcons.copy, size: 16),
                 label: const Text('Copy'),
               ),
             ],

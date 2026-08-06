@@ -58,7 +58,7 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
           // Use this.state to ensure we are building on the latest state
           // instead of the stale state from the start of _onSubmitted
           emit(
-            this.state.copyWith(
+            state.copyWith(
               status: SearchStatus.loading,
               progress: progress,
               leads: liveLeads,

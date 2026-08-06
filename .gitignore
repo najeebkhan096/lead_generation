@@ -7,6 +7,8 @@ backend/data/*.db-*
 backend/firebase-service-account.json
 backend/.env
 backend/public/
+backend/.wwebjs_auth/
+backend/.wwebjs_cache/
 
 # Flutter
 frontend/.dart_tool/

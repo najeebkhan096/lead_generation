@@ -16,6 +16,8 @@
     "dotenv": "^17.4.2",
     "express": "^4.21.2",
     "firebase-admin": "^14.2.0",
-    "playwright": "1.61.1"
+    "playwright": "1.61.1",
+    "qrcode": "^1.5.4",
+    "whatsapp-web.js": "^1.34.7"
   }
 }

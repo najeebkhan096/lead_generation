@@ -564,6 +564,7 @@ class AppIcons {
   static const inbox = LucideIcons.inbox600;
   static const search = LucideIcons.search600;
   static const searchX = LucideIcons.searchX600;
+  static const x = LucideIcons.x600;
   static const alert = LucideIcons.circleAlert600;
   static const refresh = LucideIcons.refreshCw600;
   static const tag = LucideIcons.tag600;

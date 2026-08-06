@@ -6,7 +6,7 @@ import 'data/datasources/lead_remote_datasource.dart';
 import 'data/repositories/lead_repository_impl.dart';
 import 'domain/repositories/lead_repository.dart';
 import 'presentation/bloc/search/search_bloc.dart';
-import 'presentation/pages/search_page.dart';
+import 'presentation/widgets/admin_shell.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -29,7 +29,7 @@ class LeadGenerationApp extends StatelessWidget {
           title: 'LeadFinder',
           debugShowCheckedModeBanner: false,
           theme: AppTheme.light(),
-          home: const SearchPage(),
+          home: const AdminShell(),
         ),
       ),
     );

@@ -7,7 +7,7 @@
  */
 
 import crypto from 'crypto';
-import { FieldValue } from 'firebase-admin/firestore';
+import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 import { getFirestore } from '../firebase/admin.js';
 import { getStore } from '../utils/memoryStore.js';
 
@@ -24,7 +24,7 @@ function leadDocId(lead) {
 
 function toFirestoreLead(lead, searchId) {
   const bad = lead.badReview || {};
-  return {
+  const payload = {
     externalId: lead.id || null,
     business: lead.business || 'Unknown',
     category: lead.category || null,
@@ -35,7 +35,6 @@ function toFirestoreLead(lead, searchId) {
     mapsUrl: lead.mapsUrl || null,
     rating: lead.rating ?? null,
     totalReviews: lead.totalReviews ?? null,
-    hasWhatsApp: lead.hasWhatsApp === true,
     waLink: lead.waLink || null,
     badReview: {
       stars: bad.stars ?? 1,
@@ -47,6 +46,19 @@ function toFirestoreLead(lead, searchId) {
     source: lead.source || null,
     updatedAt: FieldValue.serverTimestamp(),
   };
+
+  // Only include the WhatsApp check fields when this lead was actually
+  // checked during this scan (inline validation while scraping — see
+  // leadService.js's inlineValidateWhatsApp). Omitting them otherwise lets
+  // `merge: true` below leave an already-checked lead's status alone
+  // instead of clobbering it back to "unchecked" the next time the same
+  // lead resurfaces in a scrape.
+  if (lead.whatsAppCheckedAt) {
+    payload.hasWhatsApp = lead.hasWhatsApp === true;
+    payload.whatsAppCheckedAt = Timestamp.fromDate(new Date(lead.whatsAppCheckedAt));
+  }
+
+  return payload;
 }
 
 /**
@@ -150,10 +162,24 @@ export async function listFirebaseLeads({ limit = 200 } = {}) {
       badReview: d.badReview || { stars: 1, text: '', date: 'Unknown' },
       searchId: d.searchId,
       savedAt: d.updatedAt?.toDate?.()?.toISOString?.() || null,
+      whatsAppCheckedAt: d.whatsAppCheckedAt?.toDate?.()?.toISOString?.() || null,
     };
   });
 
   return { total: leads.length, leads, provider: 'firebase' };
+}
+
+/**
+ * Flags a saved lead with the result of a real WhatsApp Web check.
+ * `leadId` must be the Firestore document id (`dbId` in the API response
+ * shape) — not the display `id`, which may be an externalId instead.
+ */
+export async function updateLeadWhatsAppStatus(leadId, { hasWhatsApp }) {
+  const db = getFirestore();
+  await db.collection('leads').doc(leadId).update({
+    hasWhatsApp: Boolean(hasWhatsApp),
+    whatsAppCheckedAt: FieldValue.serverTimestamp(),
+  });
 }
 
 export async function listFirebaseSearches({ limit = 50 } = {}) {
@@ -174,6 +200,32 @@ export async function listFirebaseSearches({ limit = 50 } = {}) {
         createdAt: d.createdAt?.toDate?.()?.toISOString?.() || null,
       };
     }),
+  };
+}
+
+/**
+ * Deletes every document in `leads` and `searches` — the only two
+ * collections this app writes to (see firestore.rules). Firebase Auth
+ * accounts live in a completely separate system and are never touched by
+ * anything here, regardless.
+ */
+export async function clearAllData() {
+  const db = getFirestore();
+  const deleted = {};
+
+  for (const name of ['leads', 'searches']) {
+    const refs = await db.collection(name).listDocuments();
+    deleted[name] = refs.length;
+    for (let i = 0; i < refs.length; i += 400) {
+      const batch = db.batch();
+      refs.slice(i, i + 400).forEach((ref) => batch.delete(ref));
+      await batch.commit();
+    }
+  }
+
+  return {
+    deleted,
+    message: `Cleared ${deleted.leads} lead(s) and ${deleted.searches} search record(s). User accounts were not affected.`,
   };
 }
 

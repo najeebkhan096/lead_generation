@@ -39,7 +39,7 @@ async function withTimeout(promise, ms, label = 'operation') {
   }
 }
 
-async function launchBrowser() {
+export async function launchBrowser() {
   return chromium.launch({
     headless: true,
     args: [
@@ -96,8 +96,17 @@ async function scrollResultsFeed(page, maxScrolls = 5) {
   }
 }
 
-export async function searchBusinesses(category, location, { maxResults = 10, onProgress } = {}) {
-  const browser = await launchBrowser();
+/**
+ * @param {object} opts
+ * @param {import('playwright').Browser} [opts.browser] - reuse an
+ *   already-launched browser (e.g. one shared across a worker pool's
+ *   categories) instead of launching + closing a fresh process per call.
+ *   Each call still gets its own isolated `BrowserContext`, so callers
+ *   sharing a browser never share cookies/storage with each other.
+ */
+export async function searchBusinesses(category, location, { maxResults = 10, onProgress, browser: sharedBrowser } = {}) {
+  const ownsBrowser = !sharedBrowser;
+  const browser = sharedBrowser || (await launchBrowser());
   const context = await createContext(browser);
   const page = await context.newPage();
   const businesses = [];
@@ -181,7 +190,8 @@ export async function searchBusinesses(category, location, { maxResults = 10, on
       }
     }
   } finally {
-    await browser.close();
+    await context.close().catch(() => {});
+    if (ownsBrowser) await browser.close();
   }
 
   return businesses;

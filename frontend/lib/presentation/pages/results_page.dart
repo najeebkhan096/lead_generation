@@ -63,31 +63,24 @@ class ResultsPage extends StatelessWidget {
                           height: 16,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : const Icon(Icons.storage_outlined, size: 18),
+                      : const Icon(AppIcons.cloudUpload, size: 18),
                   label: Text(state.savingToDb ? 'Saving…' : 'Firebase'),
                 ),
                 TextButton.icon(
                   onPressed: () => _handleExport(context, bloc, csv: true),
-                  icon: const Icon(Icons.table_chart_outlined, size: 18),
+                  icon: const Icon(AppIcons.download, size: 18),
                   label: const Text('CSV'),
                 ),
                 TextButton.icon(
                   onPressed: () => _handleExport(context, bloc, csv: false),
-                  icon: const Icon(Icons.code, size: 18),
+                  icon: const Icon(AppIcons.download, size: 18),
                   label: const Text('JSON'),
                 ),
                 const SizedBox(width: 8),
               ],
             ],
           ),
-          body: Container(
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [Color(0xFFF0F4F8), Color(0xFFE8F5F3)],
-              ),
-            ),
+          body: SafeArea(
             child: Center(
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 820),
@@ -97,12 +90,21 @@ class ResultsPage extends StatelessWidget {
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
+                            Container(
+                              width: 88,
+                              height: 88,
+                              decoration: const BoxDecoration(
+                                  color: AppTheme.accent100, shape: BoxShape.circle),
+                              child: const Icon(AppIcons.searchX,
+                                  size: 36, color: AppTheme.accent700),
+                            ),
+                            const SizedBox(height: 20),
                             Text(
                               'No businesses found',
                               style: Theme.of(context).textTheme.headlineMedium,
                               textAlign: TextAlign.center,
                             ),
-                            const SizedBox(height: 12),
+                            const SizedBox(height: 10),
                             Text(
                               'Try a different category or date range, then run the search again.',
                               style: Theme.of(context).textTheme.bodyLarge,
@@ -111,18 +113,18 @@ class ResultsPage extends StatelessWidget {
                             const SizedBox(height: 24),
                             ElevatedButton(
                               onPressed: () => Navigator.of(context).pop(),
-                              child: const Text('New Search'),
+                              child: const Text('Back to dashboard'),
                             ),
                           ],
                         ),
                       )
                     : ListView(
-                        padding: const EdgeInsets.fromLTRB(20, 8, 20, 40),
+                        padding: const EdgeInsets.fromLTRB(20, 12, 20, 40),
                         children: [
                           Text(
                             '${state.leads.length} leads · ${state.category} in ${state.location}',
                             style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                                  fontWeight: FontWeight.w600,
+                                  fontWeight: FontWeight.w700,
                                   color: AppTheme.ink,
                                 ),
                           ),
@@ -131,7 +133,7 @@ class ResultsPage extends StatelessWidget {
                             '1-star reviews · last ${state.dateRange} days · phone + Maps · tap Save to Firebase for the mobile app',
                             style: Theme.of(context).textTheme.bodyMedium,
                           ),
-                          const SizedBox(height: 14),
+                          const SizedBox(height: 16),
                           Align(
                             alignment: Alignment.centerLeft,
                             child: FilledButton.icon(
@@ -144,22 +146,14 @@ class ResultsPage extends StatelessWidget {
                                       height: 18,
                                       child: CircularProgressIndicator(
                                         strokeWidth: 2,
-                                        color: Colors.white,
+                                        color: AppTheme.surface,
                                       ),
                                     )
-                                  : const Icon(Icons.cloud_upload_outlined, size: 20),
+                                  : const Icon(AppIcons.cloudUpload, size: 19),
                               label: Text(
                                 state.savingToDb
                                     ? 'Saving to Firebase…'
                                     : 'Save to Firebase',
-                              ),
-                              style: FilledButton.styleFrom(
-                                backgroundColor: AppTheme.accent,
-                                foregroundColor: Colors.white,
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 18,
-                                  vertical: 14,
-                                ),
                               ),
                             ),
                           ),

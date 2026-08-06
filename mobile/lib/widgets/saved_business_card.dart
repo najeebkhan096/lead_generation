@@ -29,9 +29,10 @@ class _SavedBusinessCardState extends State<SavedBusinessCard> {
   }
 
   Future<void> _toggleFavorite() async {
+    final user = FirebaseAuth.instance.currentUser;
     setState(() => _isFavorite = !_isFavorite);
     try {
-      await _repo.updateFavorite(widget.lead.id, _isFavorite);
+      await _repo.updateFavorite(widget.lead.id, _isFavorite, user?.uid);
     } catch (e) {
       if (mounted) {
         setState(() => _isFavorite = !_isFavorite);

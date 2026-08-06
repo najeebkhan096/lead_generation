@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import 'saved_businesses_page.dart';
+import 'whatsapp_leads_page.dart';
 import 'favorites_page.dart';
 import 'deals_page.dart';
 import 'profile_page.dart';
@@ -17,6 +18,7 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
 
   static const List<Widget> _pages = [
     SavedBusinessesPage(),
+    WhatsAppLeadsPage(),
     FavoritesPage(),
     DealsPage(),
     ProfilePage(),
@@ -37,6 +39,10 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
           NavigationDestination(
             icon: Icon(AppIcons.compass),
             label: 'Leads',
+          ),
+          NavigationDestination(
+            icon: Icon(AppIcons.chat),
+            label: 'WhatsApp',
           ),
           NavigationDestination(
             icon: Icon(AppIcons.heart),

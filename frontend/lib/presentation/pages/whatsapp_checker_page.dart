@@ -1,17 +1,20 @@
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../domain/entities/whatsapp_check_result.dart';
+import '../../domain/entities/whatsapp_web_status.dart';
 import '../../domain/repositories/lead_repository.dart';
 
-/// Lets a user type a phone number, validates its format, and hands them a
-/// wa.me deep link to confirm WhatsApp registration directly in WhatsApp.
-///
-/// WhatsApp does not expose registration status through any public,
-/// unauthenticated endpoint, so this page is intentionally honest about
-/// what it can and can't confirm rather than guessing.
+/// WhatsApp Web connection (top) + a single-number format checker
+/// (below). Real validation of *other* numbers — the kind used to flag
+/// leads — only exists once WhatsApp Web is connected here; the format
+/// checker below only ever confirms shape, not registration, which is
+/// why it still hands off to a wa.me link instead of a yes/no answer.
 class WhatsAppCheckerPage extends StatefulWidget {
   const WhatsAppCheckerPage({super.key});
 
@@ -29,10 +32,69 @@ class _WhatsAppCheckerPageState extends State<WhatsAppCheckerPage> {
   WhatsAppCheckResult? _result;
   String? _error;
 
+  WhatsAppWebStatus? _webStatus;
+  Timer? _webPollTimer;
+  bool _webActionInFlight = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _pollWebStatus();
+  }
+
   @override
   void dispose() {
     _phoneController.dispose();
+    _webPollTimer?.cancel();
     super.dispose();
+  }
+
+  Future<void> _pollWebStatus() async {
+    try {
+      final status = await context.read<LeadRepository>().getWhatsAppWebStatus();
+      if (!mounted) return;
+      setState(() => _webStatus = status);
+      if (status.status.isConnecting) {
+        _webPollTimer ??= Timer.periodic(const Duration(seconds: 2), (_) => _pollWebStatus());
+      } else {
+        _webPollTimer?.cancel();
+        _webPollTimer = null;
+      }
+    } catch (_) {
+      // Backend unreachable — leave last-known status showing.
+    }
+  }
+
+  Future<void> _connectWebSession() async {
+    setState(() => _webActionInFlight = true);
+    try {
+      await context.read<LeadRepository>().connectWhatsAppWeb();
+      await _pollWebStatus();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _webActionInFlight = false);
+    }
+  }
+
+  Future<void> _disconnectWebSession() async {
+    setState(() => _webActionInFlight = true);
+    try {
+      await context.read<LeadRepository>().disconnectWhatsAppWeb();
+      await _pollWebStatus();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _webActionInFlight = false);
+    }
   }
 
   String? _validatePhone(String? value) {
@@ -81,76 +143,382 @@ class _WhatsAppCheckerPageState extends State<WhatsAppCheckerPage> {
     final loading = _status == _CheckStatus.loading;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('WhatsApp Checker')),
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xFFF0F4F8), Color(0xFFE8F5F3), Color(0xFFF7F3EB)],
-          ),
-        ),
-        child: SafeArea(
-          child: Center(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 520),
-                child: Form(
-                  key: _formKey,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
+      appBar: AppBar(title: const Text('WhatsApp Tool')),
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 520),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _WhatsAppWebConnectionCard(
+                    status: _webStatus,
+                    busy: _webActionInFlight,
+                    onConnect: _connectWebSession,
+                    onDisconnect: _disconnectWebSession,
+                  ),
+                  const SizedBox(height: 32),
+                  Row(
                     children: [
-                      Text(
-                        'WhatsApp Checker',
-                        style: Theme.of(context).textTheme.displaySmall,
+                      Expanded(child: Divider(color: AppTheme.neutral300)),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        child: Text('Quick format check', style: Theme.of(context).textTheme.bodySmall),
                       ),
-                      const SizedBox(height: 10),
-                      Text(
-                        'Enter a phone number with country code (e.g. +1 415 555 0100). '
-                        'WhatsApp doesn\'t expose registration status publicly, so we '
-                        'validate the number and hand you a direct link to confirm in WhatsApp.',
-                        style: Theme.of(context).textTheme.bodyLarge,
-                      ),
-                      const SizedBox(height: 28),
-                      TextFormField(
-                        controller: _phoneController,
-                        keyboardType: TextInputType.phone,
-                        enabled: !loading,
-                        decoration: const InputDecoration(
-                          labelText: 'Phone number',
-                          hintText: '+14155550100',
-                          prefixIcon: Icon(Icons.phone_outlined),
-                        ),
-                        validator: _validatePhone,
-                        onFieldSubmitted: (_) => loading ? null : _check(),
-                      ),
-                      const SizedBox(height: 20),
-                      ElevatedButton(
-                        onPressed: loading ? null : _check,
-                        child: loading
-                            ? const SizedBox(
-                                height: 22,
-                                width: 22,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2.4,
-                                  color: Colors.white,
-                                ),
-                              )
-                            : const Text('Validate Number'),
-                      ),
-                      const SizedBox(height: 24),
-                      if (_status == _CheckStatus.success && _result != null)
-                        _ResultCard(result: _result!, onOpenChat: _openChat),
-                      if (_status == _CheckStatus.failure && _error != null)
-                        _ErrorCard(message: _error!),
+                      Expanded(child: Divider(color: AppTheme.neutral300)),
                     ],
                   ),
-                ),
+                  const SizedBox(height: 24),
+                  Form(
+                    key: _formKey,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Text(
+                          'Enter a phone number with country code (e.g. +1 415 555 0100). '
+                          'This only checks the format — for a real yes/no answer on any '
+                          'number, connect WhatsApp Web above and use Validate WhatsApp on '
+                          'the Leads page.',
+                          style: Theme.of(context).textTheme.bodyMedium,
+                        ),
+                        const SizedBox(height: 20),
+                        TextFormField(
+                          controller: _phoneController,
+                          keyboardType: TextInputType.phone,
+                          enabled: !loading,
+                          decoration: const InputDecoration(
+                            labelText: 'Phone number',
+                            hintText: '+14155550100',
+                            prefixIcon: Icon(AppIcons.phone, size: 19),
+                          ),
+                          validator: _validatePhone,
+                          onFieldSubmitted: (_) => loading ? null : _check(),
+                        ),
+                        const SizedBox(height: 16),
+                        OutlinedButton(
+                          onPressed: loading ? null : _check,
+                          child: loading
+                              ? const SizedBox(
+                                  height: 20,
+                                  width: 20,
+                                  child: CircularProgressIndicator(strokeWidth: 2.2),
+                                )
+                              : const Text('Check format'),
+                        ),
+                        const SizedBox(height: 20),
+                        if (_status == _CheckStatus.success && _result != null)
+                          _ResultCard(result: _result!, onOpenChat: _openChat),
+                        if (_status == _CheckStatus.failure && _error != null)
+                          _ErrorCard(message: _error!),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _WhatsAppWebConnectionCard extends StatelessWidget {
+  const _WhatsAppWebConnectionCard({
+    required this.status,
+    required this.busy,
+    required this.onConnect,
+    required this.onDisconnect,
+  });
+
+  final WhatsAppWebStatus? status;
+  final bool busy;
+  final VoidCallback onConnect;
+  final VoidCallback onDisconnect;
+
+  @override
+  Widget build(BuildContext context) {
+    final s = status?.status ?? WhatsAppWebConnectionStatus.disconnected;
+
+    return Container(
+      padding: const EdgeInsets.all(22),
+      decoration: BoxDecoration(
+        color: AppTheme.surface,
+        borderRadius: BorderRadius.circular(AppTheme.radiusCard),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: s == WhatsAppWebConnectionStatus.ready ? AppTheme.sage100 : AppTheme.accent100,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  s == WhatsAppWebConnectionStatus.ready ? AppIcons.checkCircle : AppIcons.shieldCheck,
+                  size: 19,
+                  color: s == WhatsAppWebConnectionStatus.ready ? AppTheme.sage700 : AppTheme.accent700,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('WhatsApp Web connection', style: Theme.of(context).textTheme.titleMedium),
+                    const SizedBox(height: 2),
+                    Text(_subtitleFor(s), style: Theme.of(context).textTheme.bodySmall),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          _buildBody(context, s),
+        ],
+      ),
+    );
+  }
+
+  String _subtitleFor(WhatsAppWebConnectionStatus s) {
+    switch (s) {
+      case WhatsAppWebConnectionStatus.ready:
+        return 'Connected — real validation is available';
+      case WhatsAppWebConnectionStatus.qr:
+        return 'Scan the QR code to link a WhatsApp account';
+      case WhatsAppWebConnectionStatus.initializing:
+        return 'Starting session…';
+      case WhatsAppWebConnectionStatus.authenticated:
+        return 'Signed in — finishing setup…';
+      case WhatsAppWebConnectionStatus.authFailure:
+        return 'Authentication failed';
+      case WhatsAppWebConnectionStatus.error:
+        return 'Something went wrong';
+      case WhatsAppWebConnectionStatus.disconnected:
+        return 'Not connected — required for real WhatsApp validation';
+    }
+  }
+
+  Widget _buildBody(BuildContext context, WhatsAppWebConnectionStatus s) {
+    switch (s) {
+      case WhatsAppWebConnectionStatus.ready:
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: AppTheme.sage100,
+                borderRadius: BorderRadius.circular(AppTheme.radius),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(AppIcons.checkCircle, size: 15, color: AppTheme.sage700),
+                  const SizedBox(width: 8),
+                  Text(
+                    status?.pushname?.isNotEmpty == true
+                        ? 'Linked as ${status!.pushname}'
+                        : status?.phoneNumber != null
+                            ? 'Linked as +${status!.phoneNumber}'
+                            : 'Linked',
+                    style: const TextStyle(color: AppTheme.sage800, fontWeight: FontWeight.w700, fontSize: 12.5),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+            _SafetyStatusPanel(safety: status?.safety ?? const WhatsAppSafetyStatus()),
+            const SizedBox(height: 14),
+            OutlinedButton.icon(
+              onPressed: busy ? null : onDisconnect,
+              icon: const Icon(AppIcons.close, size: 16),
+              label: const Text('Disconnect'),
+              style: OutlinedButton.styleFrom(foregroundColor: AppTheme.danger),
+            ),
+          ],
+        );
+
+      case WhatsAppWebConnectionStatus.qr:
+        final qr = status?.qrDataUrl;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            if (qr != null)
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(AppTheme.radius),
+                ),
+                child: Image.memory(
+                  base64Decode(qr.split(',').last),
+                  width: 220,
+                  height: 220,
+                  gaplessPlayback: true,
+                ),
+              ),
+            const SizedBox(height: 14),
+            Text(
+              'Open WhatsApp on your phone → Settings → Linked Devices → '
+              'Link a Device, then scan this code.',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const SizedBox(height: 14),
+            TextButton(
+              onPressed: busy ? null : onDisconnect,
+              child: const Text('Cancel'),
+            ),
+          ],
+        );
+
+      case WhatsAppWebConnectionStatus.initializing:
+      case WhatsAppWebConnectionStatus.authenticated:
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 12),
+              child: Center(child: CircularProgressIndicator(strokeWidth: 2.4)),
+            ),
+            TextButton(
+              onPressed: busy ? null : onDisconnect,
+              child: const Text('Cancel'),
+            ),
+          ],
+        );
+
+      case WhatsAppWebConnectionStatus.authFailure:
+      case WhatsAppWebConnectionStatus.error:
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (status?.error != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Text(status!.error!, style: const TextStyle(color: AppTheme.danger, fontSize: 12.5)),
+              ),
+            ElevatedButton(onPressed: busy ? null : onConnect, child: const Text('Try again')),
+          ],
+        );
+
+      case WhatsAppWebConnectionStatus.disconnected:
+        return ElevatedButton.icon(
+          onPressed: busy ? null : onConnect,
+          icon: busy
+              ? const SizedBox(
+                  height: 18,
+                  width: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2.2, color: AppTheme.surface),
+                )
+              : const Icon(AppIcons.chat, size: 18),
+          label: const Text('Connect WhatsApp Web'),
+        );
+    }
+  }
+}
+
+/// Shows today's WhatsApp-check budget plus any warm-up/cooldown/circuit
+/// state, so it's clear why bulk validation might be slow or blocked.
+class _SafetyStatusPanel extends StatelessWidget {
+  const _SafetyStatusPanel({required this.safety});
+
+  final WhatsAppSafetyStatus safety;
+
+  @override
+  Widget build(BuildContext context) {
+    final usedFraction = safety.dailyCap > 0 ? (safety.checksToday / safety.dailyCap).clamp(0.0, 1.0) : 0.0;
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppTheme.neutral100,
+        borderRadius: BorderRadius.circular(AppTheme.radius),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(AppIcons.shieldCheck, size: 15, color: AppTheme.neutral600),
+              const SizedBox(width: 8),
+              Text(
+                '${safety.checksToday} / ${safety.dailyCap} checks used today',
+                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: AppTheme.neutral800),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: usedFraction,
+              minHeight: 5,
+              backgroundColor: AppTheme.neutral200,
+              valueColor: AlwaysStoppedAnimation(usedFraction >= 1 ? AppTheme.danger : AppTheme.sage500),
+            ),
+          ),
+          if (safety.warmUpActive) ...[
+            const SizedBox(height: 10),
+            _SafetyBadge(
+              icon: AppIcons.clock,
+              color: AppTheme.accent700,
+              bg: AppTheme.accent100,
+              text: 'New device warm-up — ${safety.warmUpDaysRemaining}d left, checks limited & slower',
+            ),
+          ],
+          if (safety.circuitOpen) ...[
+            const SizedBox(height: 10),
+            _SafetyBadge(
+              icon: AppIcons.alert,
+              color: AppTheme.danger,
+              bg: AppTheme.accent100,
+              text: 'Paused after repeated failures — resumes in ${(safety.circuitResetInMs / 60000).ceil()} min',
+            ),
+          ] else if (safety.cooldownActive) ...[
+            const SizedBox(height: 10),
+            _SafetyBadge(
+              icon: AppIcons.clock,
+              color: AppTheme.neutral700,
+              bg: AppTheme.neutral200,
+              text: 'Cooling down between runs — ${(safety.cooldownRemainingMs / 1000).ceil()}s',
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _SafetyBadge extends StatelessWidget {
+  const _SafetyBadge({required this.icon, required this.color, required this.bg, required this.text});
+
+  final IconData icon;
+  final Color color;
+  final Color bg;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(AppTheme.radius)),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 13, color: color),
+          const SizedBox(width: 7),
+          Flexible(
+            child: Text(text, style: TextStyle(color: color, fontWeight: FontWeight.w600, fontSize: 11.5)),
+          ),
+        ],
       ),
     );
   }
@@ -165,16 +533,15 @@ class _ResultCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final valid = result.validFormat;
-    final color = valid ? AppTheme.accent : const Color(0xFFB91C1C);
-    final bg = valid ? AppTheme.accentSoft : const Color(0xFFFEE2E2);
+    final color = valid ? AppTheme.sage700 : AppTheme.danger;
+    final bg = valid ? AppTheme.sage100 : AppTheme.accent100;
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: bg,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withValues(alpha: 0.4)),
+        borderRadius: BorderRadius.circular(AppTheme.radiusCard),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -182,24 +549,24 @@ class _ResultCard extends StatelessWidget {
           Row(
             children: [
               Icon(
-                valid ? Icons.check_circle_outline : Icons.cancel_outlined,
+                valid ? AppIcons.checkCircle : AppIcons.alert,
                 color: color,
               ),
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
                   valid ? 'Valid phone number format' : 'Invalid phone number',
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(color: color),
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(color: color),
                 ),
               ),
             ],
           ),
           if (result.e164 != null) ...[
-            const SizedBox(height: 8),
+            const SizedBox(height: 10),
             Text('Number: +${result.e164}', style: Theme.of(context).textTheme.bodyMedium),
           ],
           if (valid && result.waLink != null) ...[
-            const SizedBox(height: 10),
+            const SizedBox(height: 12),
             Text(
               'This confirms the format only. Tap below to open WhatsApp — '
               'it will tell you directly if this number isn\'t registered.',
@@ -208,11 +575,11 @@ class _ResultCard extends StatelessWidget {
             const SizedBox(height: 14),
             FilledButton.icon(
               onPressed: () => onOpenChat(result.waLink),
-              icon: const Icon(Icons.chat, size: 18),
+              icon: const Icon(AppIcons.chat, size: 18),
               label: const Text('Open in WhatsApp to Verify'),
               style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFF25D366),
-                foregroundColor: Colors.white,
+                backgroundColor: AppTheme.sage500,
+                foregroundColor: AppTheme.surface,
               ),
             ),
           ],
@@ -231,15 +598,14 @@ class _ErrorCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: const Color(0xFFFEE2E2),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFB91C1C).withValues(alpha: 0.4)),
+        color: AppTheme.accent100,
+        borderRadius: BorderRadius.circular(AppTheme.radiusCard),
       ),
       child: Text(
         message,
-        style: const TextStyle(color: Color(0xFFB91C1C)),
+        style: const TextStyle(color: AppTheme.danger, fontWeight: FontWeight.w600),
       ),
     );
   }

@@ -29,6 +29,7 @@ class BadReview extends Equatable {
 class Lead extends Equatable {
   const Lead({
     required this.id,
+    this.dbId,
     required this.business,
     required this.category,
     required this.location,
@@ -43,9 +44,16 @@ class Lead extends Equatable {
     required this.badReview,
     this.email,
     this.savedAt,
+    this.whatsAppCheckedAt,
   });
 
   final String id;
+
+  /// The Firestore document id. Not always the same as [id] (which may be
+  /// an externalId from the original scrape) — this is the one to send
+  /// back for anything that writes to this lead's doc, like WhatsApp
+  /// validation.
+  final String? dbId;
   final String business;
   final String category;
   final String location;
@@ -55,15 +63,23 @@ class Lead extends Equatable {
   final String? mapsUrl;
   final double? rating;
   final int? totalReviews;
+
+  /// True once a real WhatsApp Web check has confirmed this number is
+  /// registered — not just "has a phone number that might work".
   final bool hasWhatsApp;
   final String? waLink;
   final BadReview badReview;
   final String? email;
   final DateTime? savedAt;
 
+  /// When [hasWhatsApp] was last determined by an actual check. `null`
+  /// means it's never been checked (unverified, not "not on WhatsApp").
+  final DateTime? whatsAppCheckedAt;
+
   factory Lead.fromJson(Map<String, dynamic> json) {
     return Lead(
       id: (json['id'] as String?) ?? json['business']?.toString() ?? '',
+      dbId: json['dbId'] as String?,
       business: (json['business'] as String?) ?? '',
       category: (json['category'] as String?) ?? '',
       location: (json['location'] as String?) ?? '',
@@ -80,6 +96,29 @@ class Lead extends Equatable {
       ),
       email: json['email'] as String?,
       savedAt: DateTime.tryParse((json['savedAt'] as String?) ?? ''),
+      whatsAppCheckedAt: DateTime.tryParse((json['whatsAppCheckedAt'] as String?) ?? ''),
+    );
+  }
+
+  Lead copyWith({bool? hasWhatsApp, DateTime? whatsAppCheckedAt}) {
+    return Lead(
+      id: id,
+      dbId: dbId,
+      business: business,
+      category: category,
+      location: location,
+      address: address,
+      phone: phone,
+      website: website,
+      mapsUrl: mapsUrl,
+      rating: rating,
+      totalReviews: totalReviews,
+      hasWhatsApp: hasWhatsApp ?? this.hasWhatsApp,
+      waLink: waLink,
+      badReview: badReview,
+      email: email,
+      savedAt: savedAt,
+      whatsAppCheckedAt: whatsAppCheckedAt ?? this.whatsAppCheckedAt,
     );
   }
 

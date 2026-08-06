@@ -4,8 +4,13 @@ exports/*.csv
 !exports/.gitkeep
 data/*.db
 data/*.db-*
+data/whatsapp-safety.json
 !data/.gitkeep
 firebase-service-account.json
 .env
 scripts/debug-out/
 .DS_Store
+
+# WhatsApp Web session (whatsapp-web.js) — linked-device auth tokens, never commit
+.wwebjs_auth/
+.wwebjs_cache/

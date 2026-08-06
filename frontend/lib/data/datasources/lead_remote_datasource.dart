@@ -4,8 +4,10 @@ import 'package:http/http.dart' as http;
 
 import '../../core/constants/api_constants.dart';
 import '../../domain/entities/lead.dart';
+import '../../domain/entities/multi_search_snapshot.dart';
 import '../../domain/entities/search_progress.dart';
 import '../../domain/entities/whatsapp_check_result.dart';
+import '../../domain/entities/whatsapp_web_status.dart';
 
 class LeadRemoteDataSource {
   LeadRemoteDataSource({http.Client? client}) : _client = client ?? http.Client();
@@ -244,6 +246,39 @@ class LeadRemoteDataSource {
         .toList();
   }
 
+  /// Records a manually-checked WhatsApp result for one lead (e.g. checked
+  /// by hand on a phone rather than through the automated validation job).
+  /// [leadId] must be the lead's Firestore [Lead.dbId].
+  Future<void> markLeadWhatsAppStatus(String leadId, bool hasWhatsApp) async {
+    final response = await _client.patch(
+      _uri(ApiConstants.leadWhatsAppStatus(leadId)),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'hasWhatsApp': hasWhatsApp}),
+    );
+    if (response.statusCode >= 400) {
+      final body = _tryDecode(response.body);
+      throw Exception(body['error'] ?? 'Failed to update WhatsApp status');
+    }
+  }
+
+  /// Deletes every lead and search record from Firestore. Requires the
+  /// backend's exact confirm phrase — see [ApiConstants.clearDb].
+  Future<String> clearAllData() async {
+    final response = await _client
+        .post(
+          _uri(ApiConstants.clearDb),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'confirm': 'DELETE ALL DATA'}),
+        )
+        .timeout(const Duration(seconds: 60));
+
+    final body = _tryDecode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['error'] ?? 'Failed to clear database');
+    }
+    return (body['message'] as String?) ?? 'All data cleared.';
+  }
+
   /// Checks whether [phone] is reachable on WhatsApp.
   Future<WhatsAppCheckResult> checkWhatsApp(String phone) async {
     final response = await _client
@@ -259,6 +294,119 @@ class LeadRemoteDataSource {
       throw Exception(body['error'] ?? 'WhatsApp check failed');
     }
     return WhatsAppCheckResult.fromJson(body);
+  }
+
+  Future<void> startMultiSearch({
+    required List<String> categories,
+    int concurrency = 4,
+    String dateRange = '30',
+    int maxResultsPerState = 16,
+    int targetLeadCount = 100,
+    bool analyze = false,
+  }) async {
+    final response = await _client
+        .post(
+          _uri(ApiConstants.multiSearch),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'categories': categories,
+            'concurrency': concurrency,
+            'dateRange': dateRange,
+            'maxResultsPerState': maxResultsPerState,
+            'targetLeadCount': targetLeadCount,
+            'analyze': analyze,
+          }),
+        )
+        .timeout(const Duration(seconds: 30));
+
+    if (response.statusCode >= 400) {
+      final body = _tryDecode(response.body);
+      throw Exception(body['error'] ?? 'Failed to start multi-category search');
+    }
+  }
+
+  Future<MultiSearchSnapshot> getMultiSearchStatus() async {
+    final response = await _client.get(_uri(ApiConstants.multiSearchStatus));
+    if (response.statusCode >= 400) {
+      throw Exception('Failed to load multi-search status');
+    }
+    return MultiSearchSnapshot.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  Future<void> _postControl(String path, {String? category}) async {
+    final response = await _client.post(
+      _uri(path),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(category == null ? {} : {'category': category}),
+    );
+    if (response.statusCode >= 400) {
+      final body = _tryDecode(response.body);
+      throw Exception(body['error'] ?? 'Request failed');
+    }
+  }
+
+  Future<void> cancelMultiSearchJob() => _postControl(ApiConstants.multiSearchCancel);
+  Future<void> cancelMultiSearchCategory(String category) =>
+      _postControl(ApiConstants.multiSearchCancelCategory, category: category);
+  Future<void> pauseMultiSearchJob() => _postControl(ApiConstants.multiSearchPause);
+  Future<void> resumeMultiSearchJob() => _postControl(ApiConstants.multiSearchResume);
+  Future<void> pauseMultiSearchCategory(String category) =>
+      _postControl(ApiConstants.multiSearchPauseCategory, category: category);
+  Future<void> resumeMultiSearchCategory(String category) =>
+      _postControl(ApiConstants.multiSearchResumeCategory, category: category);
+
+  Future<WhatsAppWebStatus> getWhatsAppWebStatus() async {
+    final response = await _client.get(_uri(ApiConstants.whatsAppWebStatus));
+    if (response.statusCode >= 400) {
+      throw Exception('Failed to load WhatsApp Web status');
+    }
+    return WhatsAppWebStatus.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  Future<void> connectWhatsAppWeb() async {
+    final response = await _client.post(_uri(ApiConstants.whatsAppWebConnect));
+    if (response.statusCode >= 400) {
+      final body = _tryDecode(response.body);
+      throw Exception(body['error'] ?? 'Failed to start WhatsApp Web connection');
+    }
+  }
+
+  Future<void> disconnectWhatsAppWeb() async {
+    final response = await _client.post(_uri(ApiConstants.whatsAppWebDisconnect));
+    if (response.statusCode >= 400) {
+      final body = _tryDecode(response.body);
+      throw Exception(body['error'] ?? 'Failed to disconnect WhatsApp Web');
+    }
+  }
+
+  /// [leads] is a list of `{id, phone, business}` maps — `id` must be the
+  /// lead's Firestore `dbId`, not its display id.
+  Future<void> startWhatsAppValidation(List<Map<String, String>> leads) async {
+    final response = await _client.post(
+      _uri(ApiConstants.whatsAppWebValidate),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'leads': leads}),
+    );
+    if (response.statusCode >= 400) {
+      final body = _tryDecode(response.body);
+      throw Exception(body['error'] ?? 'Failed to start WhatsApp validation');
+    }
+  }
+
+  Future<WhatsAppValidationSnapshot> getWhatsAppValidationStatus() async {
+    final response = await _client.get(_uri(ApiConstants.whatsAppWebValidateStatus));
+    if (response.statusCode >= 400) {
+      throw Exception('Failed to load validation status');
+    }
+    return WhatsAppValidationSnapshot.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  Future<void> cancelWhatsAppValidation() async {
+    final response = await _client.post(_uri(ApiConstants.whatsAppWebValidateCancel));
+    if (response.statusCode >= 400) {
+      final body = _tryDecode(response.body);
+      throw Exception(body['error'] ?? 'Failed to cancel validation');
+    }
   }
 
   Map<String, dynamic> _tryDecode(String body) {
