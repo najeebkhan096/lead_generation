@@ -10,6 +10,7 @@ import crypto from 'crypto';
 import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 import { getFirestore } from '../firebase/admin.js';
 import { getStore } from '../utils/memoryStore.js';
+import { countryMeta } from '../data/countries.js';
 
 function leadDocId(lead) {
   const maps = (lead.mapsUrl || '').split('?')[0].trim().toLowerCase();
@@ -22,12 +23,25 @@ function leadDocId(lead) {
   return crypto.createHash('sha256').update(`name:${key}`).digest('hex').slice(0, 40);
 }
 
-function toFirestoreLead(lead, searchId) {
+/**
+ * Tags a category with its country ("cleaning services" -> "cleaning
+ * services USA") so the same category searched across different countries
+ * doesn't collide — in the saved-leads category filter, or in
+ * `checkIfCategorySearched`'s "already searched recently" dedupe check.
+ */
+function withCountrySuffix(category, countrySuffix) {
+  const trimmed = String(category || '').trim();
+  if (!trimmed) return null;
+  if (trimmed.endsWith(countrySuffix)) return trimmed;
+  return `${trimmed} ${countrySuffix}`;
+}
+
+function toFirestoreLead(lead, searchId, countrySuffix) {
   const bad = lead.badReview || {};
   const payload = {
     externalId: lead.id || null,
     business: lead.business || 'Unknown',
-    category: lead.category || null,
+    category: withCountrySuffix(lead.category, countrySuffix),
     location: lead.location || null,
     address: lead.address || null,
     phone: lead.phone || null,
@@ -44,6 +58,8 @@ function toFirestoreLead(lead, searchId) {
     },
     searchId,
     source: lead.source || null,
+    whatsAppCheckedAt: null, // Default to null for unvalidated leads
+    hasWhatsApp: false,
     updatedAt: FieldValue.serverTimestamp(),
   };
 
@@ -76,10 +92,11 @@ export async function saveLeadsToFirebase(leadsInput) {
 
   const db = getFirestore();
   const last = store.lastSearch || {};
+  const countrySuffix = countryMeta(last.country).shortName;
 
   const searchRef = db.collection('searches').doc();
   const searchPayload = {
-    category: last.category || leads[0]?.category || null,
+    category: withCountrySuffix(last.category || leads[0]?.category, countrySuffix),
     location: last.location || 'All US states',
     dateRange: last.dateRange || null,
     nationwide: Boolean(last.nationwide),
@@ -110,7 +127,7 @@ export async function saveLeadsToFirebase(leadsInput) {
       if (exists) updated += 1;
       else inserted += 1;
 
-      const payload = toFirestoreLead(lead, searchRef.id);
+      const payload = toFirestoreLead(lead, searchRef.id, countrySuffix);
       if (!exists) {
         payload.createdAt = FieldValue.serverTimestamp();
       }
@@ -170,6 +187,27 @@ export async function listFirebaseLeads({ limit = 200 } = {}) {
 }
 
 /**
+ * Fetches leads that have not yet been checked for WhatsApp validation.
+ */
+export async function listUnvalidatedLeads({ limit = 100 } = {}) {
+  const db = getFirestore();
+  const snap = await db
+    .collection('leads')
+    .where('whatsAppCheckedAt', '==', null)
+    .limit(Math.min(limit, 500))
+    .get();
+
+  return snap.docs.map((doc) => {
+    const d = doc.data();
+    return {
+      dbId: doc.id,
+      phone: d.phone,
+      business: d.business,
+    };
+  });
+}
+
+/**
  * Flags a saved lead with the result of a real WhatsApp Web check.
  * `leadId` must be the Firestore document id (`dbId` in the API response
  * shape) — not the display `id`, which may be an externalId instead.
@@ -180,6 +218,41 @@ export async function updateLeadWhatsAppStatus(leadId, { hasWhatsApp }) {
     hasWhatsApp: Boolean(hasWhatsApp),
     whatsAppCheckedAt: FieldValue.serverTimestamp(),
   });
+}
+
+/**
+ * Deletes a single saved lead. `leadId` must be the Firestore document id
+ * (`dbId` in the API response shape) — not the display `id`.
+ */
+export async function deleteLead(leadId) {
+  const db = getFirestore();
+  const ref = db.collection('leads').doc(leadId);
+  const snap = await ref.get();
+  if (!snap.exists) {
+    const err = new Error('Lead not found');
+    err.status = 404;
+    throw err;
+  }
+  await ref.delete();
+}
+
+/**
+ * Deletes every saved lead in an exact category — e.g. "cleaning services
+ * UK" (the country-tagged form leads are actually stored under, see
+ * `withCountrySuffix`). Does not touch the `searches` collection.
+ */
+export async function deleteLeadsByCategory(category) {
+  const db = getFirestore();
+  const snap = await db.collection('leads').where('category', '==', category).get();
+  const refs = snap.docs.map((doc) => doc.ref);
+
+  for (let i = 0; i < refs.length; i += 400) {
+    const batch = db.batch();
+    refs.slice(i, i + 400).forEach((ref) => batch.delete(ref));
+    await batch.commit();
+  }
+
+  return { deleted: refs.length };
 }
 
 export async function listFirebaseSearches({ limit = 50 } = {}) {
@@ -236,17 +309,21 @@ export async function getFirebaseLeadCount() {
 }
 
 /**
- * Checks if a specific category has already been searched within the last N days.
+ * Checks if a specific category (for a given country) has already been
+ * searched within the last N days. `country` must match what the category
+ * was actually tagged with in `searches` (see `withCountrySuffix`) — the
+ * same category name searched for a different country is not a duplicate.
  */
-export async function checkIfCategorySearched(category, days = 7) {
+export async function checkIfCategorySearched(category, country, days = 7) {
   if (!category) return false;
+  const taggedCategory = withCountrySuffix(category, countryMeta(country).shortName);
   const db = getFirestore();
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - days);
 
   const snap = await db
     .collection('searches')
-    .where('category', '==', category)
+    .where('category', '==', taggedCategory)
     .where('createdAt', '>', cutoff)
     .limit(1)
     .get();

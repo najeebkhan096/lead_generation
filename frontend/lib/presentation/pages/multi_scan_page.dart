@@ -6,6 +6,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../core/theme/app_theme.dart';
 import '../../domain/entities/multi_search_snapshot.dart';
 import '../../domain/repositories/lead_repository.dart';
+import '../utils/duration_format.dart';
 
 const _pollInterval = Duration(milliseconds: 1500);
 
@@ -135,12 +136,18 @@ class _MultiScanPageState extends State<MultiScanPage> {
                     : _DashboardBody(
                         snapshot: snap,
                         expanded: _expanded,
-                        onToggleExpand: (category) => setState(() {
-                          _expanded.contains(category) ? _expanded.remove(category) : _expanded.add(category);
+                        onToggleExpand: (key) => setState(() {
+                          _expanded.contains(key) ? _expanded.remove(key) : _expanded.add(key);
                         }),
-                        onCancelCategory: (c) => _runControl(() => _repo.cancelMultiSearchCategory(c)),
-                        onPauseCategory: (c) => _runControl(() => _repo.pauseMultiSearchCategory(c)),
-                        onResumeCategory: (c) => _runControl(() => _repo.resumeMultiSearchCategory(c)),
+                        onCancelCategory: (p) => _runControl(
+                          () => _repo.cancelMultiSearchCategory(p.category, country: p.country),
+                        ),
+                        onPauseCategory: (p) => _runControl(
+                          () => _repo.pauseMultiSearchCategory(p.category, country: p.country),
+                        ),
+                        onResumeCategory: (p) => _runControl(
+                          () => _repo.resumeMultiSearchCategory(p.category, country: p.country),
+                        ),
                       ),
       ),
     );
@@ -225,9 +232,9 @@ class _DashboardBody extends StatelessWidget {
   final MultiSearchSnapshot snapshot;
   final Set<String> expanded;
   final ValueChanged<String> onToggleExpand;
-  final ValueChanged<String> onCancelCategory;
-  final ValueChanged<String> onPauseCategory;
-  final ValueChanged<String> onResumeCategory;
+  final ValueChanged<CategoryProgress> onCancelCategory;
+  final ValueChanged<CategoryProgress> onPauseCategory;
+  final ValueChanged<CategoryProgress> onResumeCategory;
 
   @override
   Widget build(BuildContext context) {
@@ -292,16 +299,7 @@ class _DashboardBody extends StatelessWidget {
   }
 }
 
-String _formatDuration(int ms) {
-  if (ms <= 0) return '0s';
-  final totalSeconds = (ms / 1000).round();
-  final h = totalSeconds ~/ 3600;
-  final m = (totalSeconds % 3600) ~/ 60;
-  final s = totalSeconds % 60;
-  if (h > 0) return '${h}h ${m}m ${s}s';
-  if (m > 0) return '${m}m ${s}s';
-  return '${s}s';
-}
+String _formatDuration(int ms) => formatDuration(Duration(milliseconds: ms));
 
 String? _formatEta(int? ms) {
   if (ms == null) return null;
@@ -360,12 +358,15 @@ class _OverallCard extends StatelessWidget {
                   : constraints.maxWidth >= 620
                       ? 3
                       : 2;
+              final multiCountry = overall.totalCountries > 1;
               final tiles = [
-                _StatTile('Categories', '${overall.totalCategories}', AppIcons.tag),
+                _StatTile(multiCountry ? 'Scans' : 'Categories', '${overall.totalCategories}', AppIcons.tag),
+                if (multiCountry) _StatTile('Countries', '${overall.totalCountries}', AppIcons.globe),
                 _StatTile('Completed', '${overall.completed}', AppIcons.checkCircle),
                 _StatTile('Running', '${overall.running}', AppIcons.zap),
                 _StatTile('Queued', '${overall.queued}', AppIcons.clock),
                 _StatTile('States done', '${overall.totalStatesDone}', AppIcons.mapPinned),
+                _StatTile('Businesses scanned', '${overall.totalBusinessesProcessed}', AppIcons.search),
                 _StatTile('Leads found', '${overall.totalLeads}', AppIcons.trendingUp),
               ];
               return GridView.builder(
@@ -479,9 +480,9 @@ class _CategoryList extends StatelessWidget {
   final List<CategoryProgress> categories;
   final Set<String> expanded;
   final ValueChanged<String> onToggleExpand;
-  final ValueChanged<String> onCancelCategory;
-  final ValueChanged<String> onPauseCategory;
-  final ValueChanged<String> onResumeCategory;
+  final ValueChanged<CategoryProgress> onCancelCategory;
+  final ValueChanged<CategoryProgress> onPauseCategory;
+  final ValueChanged<CategoryProgress> onResumeCategory;
 
   @override
   Widget build(BuildContext context) {
@@ -496,14 +497,16 @@ class _CategoryList extends StatelessWidget {
             child: Text('Categories', style: Theme.of(context).textTheme.titleMedium),
           ),
           const SizedBox(height: 12),
+          // `label` (not `category`) is unique per work item — the same
+          // category can appear multiple times when searching all countries.
           for (final c in categories)
             _CategoryCard(
               progress: c,
-              isExpanded: expanded.contains(c.category),
-              onToggleExpand: () => onToggleExpand(c.category),
-              onCancel: () => onCancelCategory(c.category),
-              onPause: () => onPauseCategory(c.category),
-              onResume: () => onResumeCategory(c.category),
+              isExpanded: expanded.contains(c.label),
+              onToggleExpand: () => onToggleExpand(c.label),
+              onCancel: () => onCancelCategory(c),
+              onPause: () => onPauseCategory(c),
+              onResume: () => onResumeCategory(c),
             ),
         ],
       ),
@@ -552,7 +555,7 @@ class _CategoryCard extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(progress.category, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+                        Text(progress.label, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
                         const SizedBox(height: 2),
                         Text(
                           '$label${progress.currentState != null && progress.status.isRunning ? ' · ${progress.currentState}' : ''} · ${progress.statesDone}/${progress.statesTotal} states · ${progress.leadsCollected} leads',

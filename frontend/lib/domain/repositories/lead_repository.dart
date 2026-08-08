@@ -14,6 +14,7 @@ abstract class LeadRepository {
     int targetLeadCount = 100,
     bool analyze = false,
     bool autoSave = true,
+    String country = 'US',
     void Function(SearchProgress progress, List<Lead> liveLeads)? onProgress,
   });
 
@@ -40,6 +41,14 @@ abstract class LeadRepository {
   /// WhatsApp Web validation job. `leadId` must be [Lead.dbId].
   Future<void> markLeadWhatsAppStatus(String leadId, bool hasWhatsApp);
 
+  /// Deletes a single saved lead from Firestore. Irreversible. `leadId`
+  /// must be [Lead.dbId].
+  Future<void> deleteLead(String leadId);
+
+  /// Deletes every saved lead in an exact category. Irreversible. Returns
+  /// how many were deleted.
+  Future<int> deleteLeadsByCategory(String category);
+
   /// Deletes every lead and search record from Firestore. Irreversible.
   /// Does not touch Firebase Auth accounts.
   Future<String> clearAllData();
@@ -47,15 +56,21 @@ abstract class LeadRepository {
   Future<WhatsAppCheckResult> checkWhatsAppNumber(String phone);
 
   /// Starts a concurrent multi-category search — a worker pool where each
-  /// category runs independently and picks up the next queued category as
-  /// soon as it finishes, instead of running one category at a time.
+  /// (category, country) pair runs independently and picks up the next
+  /// queued one as soon as it finishes, instead of running one at a time.
+  ///
+  /// [countries] with more than one entry runs every category against
+  /// every country concurrently — "search this category in all countries."
+  /// Omit it for the ordinary single-country multi-category search.
   Future<void> startMultiSearch({
     required List<String> categories,
+    List<String>? countries,
     int concurrency = 4,
     String dateRange = '30',
-    int maxResultsPerState = 16,
+    int maxResultsPerState = 150,
     int targetLeadCount = 100,
     bool analyze = false,
+    String country = 'US',
   });
 
   /// Live dashboard snapshot for the current (or most recently finished)
@@ -63,11 +78,14 @@ abstract class LeadRepository {
   Future<MultiSearchSnapshot> getMultiSearchStatus();
 
   Future<void> cancelMultiSearchJob();
-  Future<void> cancelMultiSearchCategory(String category);
+
+  /// [country] disambiguates which country's run of [category] to target —
+  /// required when the job covers that category in more than one country.
+  Future<void> cancelMultiSearchCategory(String category, {String? country});
   Future<void> pauseMultiSearchJob();
   Future<void> resumeMultiSearchJob();
-  Future<void> pauseMultiSearchCategory(String category);
-  Future<void> resumeMultiSearchCategory(String category);
+  Future<void> pauseMultiSearchCategory(String category, {String? country});
+  Future<void> resumeMultiSearchCategory(String category, {String? country});
 
   /// Live status of the backend's WhatsApp Web session — must show
   /// [WhatsAppWebConnectionStatus.ready] before validation can run.
@@ -84,6 +102,9 @@ abstract class LeadRepository {
   /// `{id, phone, business}` per lead, where `id` is the Firestore [Lead.dbId].
   /// Capped server-side at 100 leads per run.
   Future<void> startWhatsAppValidation(List<Map<String, String>> leads);
+
+  /// Automatically discovers and validates unchecked leads from Firestore.
+  Future<void> startWhatsAppAutoValidation();
 
   Future<WhatsAppValidationSnapshot> getWhatsAppValidationStatus();
 

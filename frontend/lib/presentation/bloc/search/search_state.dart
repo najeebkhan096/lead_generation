@@ -14,6 +14,8 @@ class SearchState extends Equatable {
     this.category = '',
     this.categories = const [],
     this.dateRange = '30',
+    this.country = 'US',
+    this.startedAt,
     this.exportMessage,
     this.progress,
     this.saveMessage,
@@ -27,6 +29,13 @@ class SearchState extends Equatable {
   final String category;
   final List<String> categories;
   final String dateRange;
+  final String country;
+
+  /// When this search session started (client-side) — used to show a live
+  /// elapsed-time stat on the active-search page. On resume-after-reload
+  /// this is set to the reconnect time, not the true original start, since
+  /// the backend doesn't track a start timestamp itself.
+  final DateTime? startedAt;
   final String? exportMessage;
   final SearchProgress? progress;
   final String? saveMessage;
@@ -40,6 +49,8 @@ class SearchState extends Equatable {
     String? category,
     List<String>? categories,
     String? dateRange,
+    String? country,
+    DateTime? startedAt,
     String? exportMessage,
     SearchProgress? progress,
     String? saveMessage,
@@ -57,6 +68,8 @@ class SearchState extends Equatable {
       category: category ?? this.category,
       categories: categories ?? this.categories,
       dateRange: dateRange ?? this.dateRange,
+      country: country ?? this.country,
+      startedAt: startedAt ?? this.startedAt,
       exportMessage: clearExport ? null : (exportMessage ?? this.exportMessage),
       progress: clearProgress ? null : (progress ?? this.progress),
       saveMessage: clearSave ? null : (saveMessage ?? this.saveMessage),
@@ -73,6 +86,8 @@ class SearchState extends Equatable {
         category,
         categories,
         dateRange,
+        country,
+        startedAt,
         exportMessage,
         progress,
         saveMessage,

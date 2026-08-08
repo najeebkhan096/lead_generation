@@ -33,6 +33,7 @@ class LeadRemoteDataSource {
     int targetLeadCount = 100,
     bool analyze = false,
     bool autoSave = true,
+    String country = 'US',
     void Function(SearchProgress progress, List<Lead> liveLeads)? onProgress,
   }) async {
     final start = await _client
@@ -48,7 +49,8 @@ class LeadRemoteDataSource {
             'autoSave': autoSave,
             'nationwide': nationwide,
             'targetLeadCount': targetLeadCount,
-            'maxResultsPerState': 16,
+            'maxResultsPerState': 150,
+            'country': country,
           }),
         )
         .timeout(const Duration(seconds: 60));
@@ -66,7 +68,7 @@ class LeadRemoteDataSource {
     onProgress?.call(
       SearchProgress(
         message: nationwide
-            ? 'Nationwide search started — scanning U.S. states…'
+            ? 'Nationwide search started — scanning regions…'
             : 'Search started…',
         targetCount: targetLeadCount,
       ),
@@ -155,6 +157,7 @@ class LeadRemoteDataSource {
         statesTotal: (progressMap?['statesTotal'] as num?)?.toInt() ?? 0,
         businessesScraped: (progressMap?['processed'] as num?)?.toInt() ?? 0,
         currentCategory: lastSearch?['category'] as String? ?? '',
+        currentState: (progressMap?['state'] as String?) ?? '',
       );
 
       if (leadCount > 0 && leadCount != lastLeadFetch) {
@@ -261,6 +264,30 @@ class LeadRemoteDataSource {
     }
   }
 
+  /// Deletes a single saved lead from Firestore. [leadId] must be the
+  /// lead's Firestore [Lead.dbId].
+  Future<void> deleteLead(String leadId) async {
+    final response = await _client.delete(_uri(ApiConstants.leadDelete(leadId)));
+    if (response.statusCode >= 400) {
+      final body = _tryDecode(response.body);
+      throw Exception(body['error'] ?? 'Failed to delete lead');
+    }
+  }
+
+  /// Deletes every saved lead in an exact category (the country-tagged
+  /// string, e.g. "cleaning services UK" — see [Lead.category]). Returns
+  /// the number of leads deleted.
+  Future<int> deleteLeadsByCategory(String category) async {
+    final response = await _client.delete(
+      _uri(ApiConstants.savedLeads).replace(queryParameters: {'category': category}),
+    );
+    final body = _tryDecode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['error'] ?? 'Failed to delete leads');
+    }
+    return (body['deleted'] as num?)?.toInt() ?? 0;
+  }
+
   /// Deletes every lead and search record from Firestore. Requires the
   /// backend's exact confirm phrase — see [ApiConstants.clearDb].
   Future<String> clearAllData() async {
@@ -296,13 +323,20 @@ class LeadRemoteDataSource {
     return WhatsAppCheckResult.fromJson(body);
   }
 
+  /// [countries], when given more than one code, runs every category in
+  /// [categories] against every country concurrently (one worker per
+  /// (category, country) pair) — "search this category in all countries."
+  /// Omit it (or pass a single-element list) for the ordinary single-country
+  /// multi-category search.
   Future<void> startMultiSearch({
     required List<String> categories,
+    List<String>? countries,
     int concurrency = 4,
     String dateRange = '30',
-    int maxResultsPerState = 16,
+    int maxResultsPerState = 150,
     int targetLeadCount = 100,
     bool analyze = false,
+    String country = 'US',
   }) async {
     final response = await _client
         .post(
@@ -310,11 +344,13 @@ class LeadRemoteDataSource {
           headers: {'Content-Type': 'application/json'},
           body: jsonEncode({
             'categories': categories,
+            if (countries != null) 'countries': countries,
             'concurrency': concurrency,
             'dateRange': dateRange,
             'maxResultsPerState': maxResultsPerState,
             'targetLeadCount': targetLeadCount,
             'analyze': analyze,
+            'country': country,
           }),
         )
         .timeout(const Duration(seconds: 30));
@@ -333,11 +369,14 @@ class LeadRemoteDataSource {
     return MultiSearchSnapshot.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
   }
 
-  Future<void> _postControl(String path, {String? category}) async {
+  Future<void> _postControl(String path, {String? category, String? country}) async {
     final response = await _client.post(
       _uri(path),
       headers: {'Content-Type': 'application/json'},
-      body: jsonEncode(category == null ? {} : {'category': category}),
+      body: jsonEncode({
+        if (category != null) 'category': category,
+        if (country != null) 'country': country,
+      }),
     );
     if (response.statusCode >= 400) {
       final body = _tryDecode(response.body);
@@ -346,14 +385,18 @@ class LeadRemoteDataSource {
   }
 
   Future<void> cancelMultiSearchJob() => _postControl(ApiConstants.multiSearchCancel);
-  Future<void> cancelMultiSearchCategory(String category) =>
-      _postControl(ApiConstants.multiSearchCancelCategory, category: category);
+
+  /// [country] disambiguates which country's run of [category] to target —
+  /// required when the job covers more than one country for the same
+  /// category (see [startMultiSearch]'s `countries`), optional otherwise.
+  Future<void> cancelMultiSearchCategory(String category, {String? country}) =>
+      _postControl(ApiConstants.multiSearchCancelCategory, category: category, country: country);
   Future<void> pauseMultiSearchJob() => _postControl(ApiConstants.multiSearchPause);
   Future<void> resumeMultiSearchJob() => _postControl(ApiConstants.multiSearchResume);
-  Future<void> pauseMultiSearchCategory(String category) =>
-      _postControl(ApiConstants.multiSearchPauseCategory, category: category);
-  Future<void> resumeMultiSearchCategory(String category) =>
-      _postControl(ApiConstants.multiSearchResumeCategory, category: category);
+  Future<void> pauseMultiSearchCategory(String category, {String? country}) =>
+      _postControl(ApiConstants.multiSearchPauseCategory, category: category, country: country);
+  Future<void> resumeMultiSearchCategory(String category, {String? country}) =>
+      _postControl(ApiConstants.multiSearchResumeCategory, category: category, country: country);
 
   Future<WhatsAppWebStatus> getWhatsAppWebStatus() async {
     final response = await _client.get(_uri(ApiConstants.whatsAppWebStatus));
@@ -390,6 +433,14 @@ class LeadRemoteDataSource {
     if (response.statusCode >= 400) {
       final body = _tryDecode(response.body);
       throw Exception(body['error'] ?? 'Failed to start WhatsApp validation');
+    }
+  }
+
+  Future<void> startWhatsAppAutoValidation() async {
+    final response = await _client.post(_uri(ApiConstants.whatsAppWebValidateAuto));
+    if (response.statusCode >= 400) {
+      final body = _tryDecode(response.body);
+      throw Exception(body['error'] ?? 'Failed to start auto WhatsApp validation');
     }
   }
 

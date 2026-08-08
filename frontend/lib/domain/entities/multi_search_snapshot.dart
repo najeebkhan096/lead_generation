@@ -66,6 +66,8 @@ class CategoryWarning extends Equatable {
 class CategoryProgress extends Equatable {
   const CategoryProgress({
     required this.category,
+    this.country = 'US',
+    required this.label,
     required this.status,
     this.workerId,
     required this.progressPercent,
@@ -85,6 +87,12 @@ class CategoryProgress extends Equatable {
   });
 
   final String category;
+  final String country;
+
+  /// Display label — just [category] for a single-country job, or
+  /// "category · country" when the same category is running across
+  /// multiple countries concurrently (see [MultiSearchSnapshot]).
+  final String label;
   final CategoryScanStatus status;
   final int? workerId;
   final int progressPercent;
@@ -106,8 +114,11 @@ class CategoryProgress extends Equatable {
     DateTime? ms(dynamic v) =>
         v == null ? null : DateTime.fromMillisecondsSinceEpoch((v as num).toInt());
 
+    final category = (json['category'] as String?) ?? '';
     return CategoryProgress(
-      category: (json['category'] as String?) ?? '',
+      category: category,
+      country: (json['country'] as String?) ?? 'US',
+      label: (json['label'] as String?) ?? category,
       status: CategoryScanStatus.fromJson(json['status'] as String?),
       workerId: (json['workerId'] as num?)?.toInt(),
       progressPercent: (json['progressPercent'] as num?)?.toInt() ?? 0,
@@ -132,6 +143,8 @@ class CategoryProgress extends Equatable {
   @override
   List<Object?> get props => [
         category,
+        country,
+        label,
         status,
         workerId,
         progressPercent,
@@ -148,6 +161,8 @@ class OverallProgress extends Equatable {
   const OverallProgress({
     required this.percent,
     required this.totalCategories,
+    this.totalUniqueCategories = 0,
+    this.totalCountries = 1,
     required this.completed,
     required this.failed,
     required this.cancelled,
@@ -156,6 +171,7 @@ class OverallProgress extends Equatable {
     required this.totalStatesDone,
     required this.totalStatesRemaining,
     required this.totalLeads,
+    this.totalBusinessesProcessed = 0,
     required this.elapsedMs,
     this.etaMs,
     required this.activeWorkers,
@@ -163,7 +179,12 @@ class OverallProgress extends Equatable {
   });
 
   final int percent;
+
+  /// Total (category, country) work items — matches completed/failed/
+  /// running/queued below.
   final int totalCategories;
+  final int totalUniqueCategories;
+  final int totalCountries;
   final int completed;
   final int failed;
   final int cancelled;
@@ -172,6 +193,11 @@ class OverallProgress extends Equatable {
   final int totalStatesDone;
   final int totalStatesRemaining;
   final int totalLeads;
+
+  /// Total businesses opened/checked across every category and country in
+  /// this job — most of these won't qualify as leads (see the review
+  /// filter), so this is the "full scan" count, not just qualifying leads.
+  final int totalBusinessesProcessed;
   final int elapsedMs;
   final int? etaMs;
   final int activeWorkers;
@@ -181,6 +207,8 @@ class OverallProgress extends Equatable {
     return OverallProgress(
       percent: (json['percent'] as num?)?.toInt() ?? 0,
       totalCategories: (json['totalCategories'] as num?)?.toInt() ?? 0,
+      totalUniqueCategories: (json['totalUniqueCategories'] as num?)?.toInt() ?? 0,
+      totalCountries: (json['totalCountries'] as num?)?.toInt() ?? 1,
       completed: (json['completed'] as num?)?.toInt() ?? 0,
       failed: (json['failed'] as num?)?.toInt() ?? 0,
       cancelled: (json['cancelled'] as num?)?.toInt() ?? 0,
@@ -189,6 +217,7 @@ class OverallProgress extends Equatable {
       totalStatesDone: (json['totalStatesDone'] as num?)?.toInt() ?? 0,
       totalStatesRemaining: (json['totalStatesRemaining'] as num?)?.toInt() ?? 0,
       totalLeads: (json['totalLeads'] as num?)?.toInt() ?? 0,
+      totalBusinessesProcessed: (json['totalBusinessesProcessed'] as num?)?.toInt() ?? 0,
       elapsedMs: (json['elapsedMs'] as num?)?.toInt() ?? 0,
       etaMs: (json['etaMs'] as num?)?.toInt(),
       activeWorkers: (json['activeWorkers'] as num?)?.toInt() ?? 0,

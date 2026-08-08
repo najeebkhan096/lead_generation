@@ -17,6 +17,7 @@ class SearchSubmitted extends SearchEvent {
     this.targetLeadCount = 100,
     this.analyze = false,
     this.autoSave = true,
+    this.country = 'US',
   });
 
   final String location;
@@ -27,6 +28,7 @@ class SearchSubmitted extends SearchEvent {
   final int targetLeadCount;
   final bool analyze;
   final bool autoSave;
+  final String country;
 
   @override
   List<Object?> get props => [
@@ -38,6 +40,7 @@ class SearchSubmitted extends SearchEvent {
         targetLeadCount,
         analyze,
         autoSave,
+        country,
       ];
 }
 

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../core/constants/business_categories.dart';
+import '../../core/constants/search_countries.dart';
 import '../../core/theme/app_theme.dart';
 import '../../domain/repositories/lead_repository.dart';
 import '../bloc/search/search_bloc.dart';
@@ -31,7 +32,9 @@ class _SearchPageState extends State<SearchPage> {
   final _categoryController = TextEditingController();
   final List<String> _targetServices = [];
 
-  String _dateRange = '30';
+  String _dateRange = '365';
+  String _country = 'US';
+  bool _allCountries = false;
   bool _autoSave = true;
   bool _analyze = false;
   int _concurrency = 4;
@@ -75,7 +78,11 @@ class _SearchPageState extends State<SearchPage> {
       return;
     }
 
-    if (_targetServices.length == 1) {
+    // A single category normally runs through the classic sequential flow —
+    // but "all countries" needs true concurrency (one worker per country),
+    // which only the worker-pool endpoint provides, so it always routes
+    // there even for just one category.
+    if (_targetServices.length == 1 && !_allCountries) {
       context.read<SearchBloc>().add(
             SearchSubmitted(
               categories: List.from(_targetServices),
@@ -83,6 +90,7 @@ class _SearchPageState extends State<SearchPage> {
               nationwide: true,
               autoSave: _autoSave,
               analyze: _analyze,
+              country: _country,
             ),
           );
       return;
@@ -92,9 +100,11 @@ class _SearchPageState extends State<SearchPage> {
     try {
       await context.read<LeadRepository>().startMultiSearch(
             categories: List.from(_targetServices),
+            countries: _allCountries ? SearchCountries.list.map((c) => c.code).toList() : null,
             concurrency: _concurrency,
             dateRange: _dateRange,
             analyze: _analyze,
+            country: _country,
           );
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
@@ -115,7 +125,8 @@ class _SearchPageState extends State<SearchPage> {
     return BlocBuilder<SearchBloc, SearchState>(
       builder: (context, state) {
         final isMulti = _targetServices.length > 1;
-        final loading = isMulti ? _startingMultiSearch : state.status == SearchStatus.loading;
+        final usesWorkerPool = isMulti || _allCountries;
+        final loading = usesWorkerPool ? _startingMultiSearch : state.status == SearchStatus.loading;
 
         return Scaffold(
           appBar: AppBar(title: const Text('New Search')),
@@ -131,17 +142,46 @@ class _SearchPageState extends State<SearchPage> {
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         Text(
-                          'Select multiple services to scan across the entire USA. The search runs each service in sequence and auto-saves results to Firebase.',
+                          'Select multiple services to scan across the entire country. The search runs each service in sequence and auto-saves results to Firebase.',
                           style: Theme.of(context).textTheme.bodyLarge,
                         ),
                         const SizedBox(height: 28),
+                        _SectionLabel('Country'),
+                        const SizedBox(height: 8),
+                        DropdownButtonFormField<String>(
+                          initialValue: _country,
+                          icon: const Icon(AppIcons.chevronDown, size: 18, color: AppTheme.accent),
+                          items: SearchCountries.list
+                              .map(
+                                (c) => DropdownMenuItem(
+                                  value: c.code,
+                                  child: Text(c.name),
+                                ),
+                              )
+                              .toList(),
+                          onChanged: (loading || _allCountries)
+                              ? null
+                              : (v) {
+                                  if (v != null) setState(() => _country = v);
+                                },
+                        ),
+                        const SizedBox(height: 10),
+                        _OptionToggle(
+                          title: 'Search in all countries',
+                          subtitle: 'Runs every category against USA, UK, Germany & Canada at once, in parallel',
+                          value: _allCountries,
+                          onChanged: loading ? null : (v) => setState(() => _allCountries = v),
+                        ),
+                        const SizedBox(height: 12),
                         _SectionLabel('Coverage'),
                         const SizedBox(height: 8),
                         _InfoBanner(
                           icon: AppIcons.globe,
                           color: AppTheme.sage700,
                           background: AppTheme.sage100,
-                          text: 'All 50 U.S. states + D.C. (automatic)',
+                          text: _allCountries
+                              ? 'All 4 countries at once — ${SearchCountries.list.map((c) => c.shortName).join(', ')} (parallel)'
+                              : SearchCountries.byCode(_country).coverageLabel,
                         ),
                         const SizedBox(height: 20),
                         _SectionLabel('Business categories'),
@@ -304,7 +344,7 @@ class _SearchPageState extends State<SearchPage> {
                             ),
                           ],
                         ),
-                        if (isMulti) ...[
+                        if (usesWorkerPool) ...[
                           const SizedBox(height: 20),
                           _SectionLabel('Parallel workers'),
                           const SizedBox(height: 8),
@@ -312,8 +352,9 @@ class _SearchPageState extends State<SearchPage> {
                             icon: AppIcons.zap,
                             color: AppTheme.sage700,
                             background: AppTheme.sage100,
-                            text:
-                                '${_targetServices.length} categories will scan concurrently instead of one at a time — each worker picks up the next category as soon as it finishes.',
+                            text: _allCountries
+                                ? '${_targetServices.length} categor${_targetServices.length == 1 ? 'y' : 'ies'} × ${SearchCountries.list.length} countries = ${_targetServices.length * SearchCountries.list.length} scans will run concurrently — each worker picks up the next one as soon as it finishes.'
+                                : '${_targetServices.length} categories will scan concurrently instead of one at a time — each worker picks up the next category as soon as it finishes.',
                           ),
                           const SizedBox(height: 10),
                           _ConcurrencySlider(
@@ -324,13 +365,13 @@ class _SearchPageState extends State<SearchPage> {
                         const SizedBox(height: 28),
                         ElevatedButton(
                           onPressed: loading ? null : _submit,
-                          child: loading && isMulti
+                          child: loading && usesWorkerPool
                               ? const SizedBox(
                                   height: 22,
                                   width: 22,
                                   child: CircularProgressIndicator(strokeWidth: 2.4, color: AppTheme.surface),
                                 )
-                              : Text(isMulti ? 'Start $_concurrency-worker scan' : 'Start search'),
+                              : Text(usesWorkerPool ? 'Start $_concurrency-worker scan' : 'Start search'),
                         ),
                         if (state.status == SearchStatus.failure && state.error != null) ...[
                           const SizedBox(height: 16),

@@ -5,6 +5,8 @@ import {
   getFirebaseLeadCount,
   clearAllData,
   updateLeadWhatsAppStatus,
+  deleteLead,
+  deleteLeadsByCategory,
 } from '../services/firebaseLeadStore.js';
 import { getFirebaseStatus } from '../firebase/admin.js';
 
@@ -53,6 +55,42 @@ export async function setLeadWhatsAppStatus(req, res) {
   } catch (err) {
     const status = err.status || 500;
     return res.status(status).json({ error: err.message || 'Failed to update WhatsApp status' });
+  }
+}
+
+/**
+ * DELETE /api/db/leads/:id — deletes a single saved lead. `:id` is the
+ * Firestore document id (`dbId` in the API response shape).
+ */
+export async function deleteSavedLead(req, res) {
+  try {
+    await deleteLead(req.params.id);
+    return res.json({ success: true });
+  } catch (err) {
+    const status = err.status || 500;
+    return res.status(status).json({ error: err.message || 'Failed to delete lead' });
+  }
+}
+
+/**
+ * DELETE /api/db/leads?category=... — deletes every saved lead in an
+ * exact category (the country-tagged string, e.g. "cleaning services UK").
+ */
+export async function deleteSavedLeadsByCategory(req, res) {
+  try {
+    const category = String(req.query.category || '').trim();
+    if (!category) {
+      return res.status(400).json({ error: 'category query param is required' });
+    }
+    const result = await deleteLeadsByCategory(category);
+    return res.json({
+      success: true,
+      ...result,
+      message: `Deleted ${result.deleted} lead(s) in category "${category}".`,
+    });
+  } catch (err) {
+    const status = err.status || 500;
+    return res.status(status).json({ error: err.message || 'Failed to delete leads' });
   }
 }
 

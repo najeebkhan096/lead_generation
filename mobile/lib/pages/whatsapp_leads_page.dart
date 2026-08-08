@@ -57,7 +57,8 @@ class _WhatsAppLeadsPageState extends State<WhatsAppLeadsPage> {
 
             final allLeads = snapshot.data ?? const <Lead>[];
             // Filter only WhatsApp validated leads
-            var waLeads = allLeads.where((l) => l.hasWhatsApp).toList();
+            final totalWaLeads = allLeads.where((l) => l.hasWhatsApp).toList();
+            var waLeads = totalWaLeads;
 
             if (_searchQuery.isNotEmpty) {
               final query = _searchQuery.toLowerCase();
@@ -76,9 +77,11 @@ class _WhatsAppLeadsPageState extends State<WhatsAppLeadsPage> {
               children: [
                 PageHeader(
                   title: 'WhatsApp Leads',
-                  subtitle: waLeads.isEmpty && _searchQuery.isEmpty
+                  subtitle: totalWaLeads.isEmpty
                       ? 'Validated leads will show up here'
-                      : '${waLeads.length} ${waLeads.length == 1 ? 'lead' : 'leads'} found',
+                      : _searchQuery.isEmpty
+                          ? '${totalWaLeads.length} total ${totalWaLeads.length == 1 ? 'lead' : 'leads'}'
+                          : '${waLeads.length} of ${totalWaLeads.length} leads found',
                   trailing: HeaderBadge(
                     icon: AppIcons.chat,
                     background: t.sageTint,
@@ -87,27 +90,33 @@ class _WhatsAppLeadsPageState extends State<WhatsAppLeadsPage> {
                 ),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: TextField(
-                    controller: _searchController,
-                    onChanged: (value) => setState(() => _searchQuery = value),
-                    decoration: InputDecoration(
-                      hintText: 'Search WhatsApp leads...',
-                      prefixIcon: Padding(
-                        padding: const EdgeInsets.only(left: 20, right: 12),
-                        child: Icon(AppIcons.search, size: 19, color: t.faint),
+                  child: Column(
+                    children: [
+                      TextField(
+                        controller: _searchController,
+                        onChanged: (value) =>
+                            setState(() => _searchQuery = value),
+                        decoration: InputDecoration(
+                          hintText: 'Search WhatsApp leads...',
+                          prefixIcon: Padding(
+                            padding: const EdgeInsets.only(left: 20, right: 12),
+                            child:
+                                Icon(AppIcons.search, size: 19, color: t.faint),
+                          ),
+                          suffixIcon: _searchQuery.isNotEmpty
+                              ? IconButton(
+                                  icon: const Icon(AppIcons.x, size: 18),
+                                  onPressed: () {
+                                    _searchController.clear();
+                                    setState(() => _searchQuery = '');
+                                  },
+                                )
+                              : null,
+                          prefixIconConstraints:
+                              const BoxConstraints(minWidth: 0, minHeight: 0),
+                        ),
                       ),
-                      suffixIcon: _searchQuery.isNotEmpty
-                          ? IconButton(
-                              icon: const Icon(AppIcons.x, size: 18),
-                              onPressed: () {
-                                _searchController.clear();
-                                setState(() => _searchQuery = '');
-                              },
-                            )
-                          : null,
-                      prefixIconConstraints:
-                          const BoxConstraints(minWidth: 0, minHeight: 0),
-                    ),
+                    ],
                   ),
                 ),
                 const SizedBox(height: 12),

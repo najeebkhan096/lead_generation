@@ -25,6 +25,7 @@ class ApiConstants {
   static const String saveToDb = '/api/db/save';
   static const String savedLeads = '/api/db/leads';
   static String leadWhatsAppStatus(String leadId) => '/api/db/leads/$leadId/whatsapp';
+  static String leadDelete(String leadId) => '/api/db/leads/$leadId';
   static const String clearDb = '/api/db/clear';
   static const String checkWhatsApp = '/api/whatsapp/check';
 
@@ -32,6 +33,7 @@ class ApiConstants {
   static const String whatsAppWebConnect = '/api/whatsapp-web/connect';
   static const String whatsAppWebDisconnect = '/api/whatsapp-web/disconnect';
   static const String whatsAppWebValidate = '/api/whatsapp-web/validate';
+  static const String whatsAppWebValidateAuto = '/api/whatsapp-web/validate-auto';
   static const String whatsAppWebValidateStatus = '/api/whatsapp-web/validate/status';
   static const String whatsAppWebValidateCancel = '/api/whatsapp-web/validate/cancel';
 }

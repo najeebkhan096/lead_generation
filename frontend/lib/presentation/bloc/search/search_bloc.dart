@@ -34,6 +34,8 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
         category: primaryCategory,
         categories: event.categories,
         dateRange: event.dateRange,
+        country: event.country,
+        startedAt: DateTime.now(),
         leads: const [],
         progress: SearchProgress(
           message: 'Starting search…',
@@ -54,6 +56,7 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
         targetLeadCount: event.targetLeadCount,
         analyze: event.analyze,
         autoSave: event.autoSave,
+        country: event.country,
         onProgress: (progress, liveLeads) {
           // Use this.state to ensure we are building on the latest state
           // instead of the stale state from the start of _onSubmitted
@@ -106,6 +109,7 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
     final categories = (lastSearch?['categories'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [];
     final dateRange = lastSearch?['dateRange'] as String? ?? state.dateRange;
     final location = lastSearch?['location'] as String? ?? state.location;
+    final country = lastSearch?['country'] as String? ?? state.country;
     final status = snapshot['status'] as String? ?? '';
 
     if (status == 'done') {
@@ -120,6 +124,7 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
               categories: categories,
               dateRange: dateRange,
               location: location,
+              country: country,
             ),
           );
         }
@@ -138,6 +143,8 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
         categories: categories,
         dateRange: dateRange,
         location: location,
+        country: country,
+        startedAt: DateTime.now(),
         progress: const SearchProgress(message: 'Reconnecting to running search…'),
       ),
     );

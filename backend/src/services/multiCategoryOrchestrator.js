@@ -27,7 +27,7 @@ import { launchBrowser } from '../scraper/googleMapsScraper.js';
 import { scrapeCategoryNationwide } from './leadService.js';
 import { saveLeadsToFirebase } from './firebaseLeadStore.js';
 import { setLastSearch } from '../utils/memoryStore.js';
-import { US_STATES } from '../data/usStates.js';
+import { countryMeta, regionsForCountry } from '../data/countries.js';
 import { Mutex } from '../utils/asyncMutex.js';
 
 const MIN_CONCURRENCY = 2;
@@ -60,15 +60,26 @@ function humanDuration(ms) {
   return `${s}s`;
 }
 
-function newCategoryRecord(category) {
+/** Unique id for one (category, country) unit of work in the queue/records map. */
+function workKey(category, country) {
+  return `${category}::${country}`;
+}
+
+function newWorkItemRecord(category, country, label, statesTotal) {
   return {
     category,
+    country,
+    label,
     status: 'queued', // queued | starting | searching | scraping | saving | completed | failed | cancelled
     workerId: null,
     statesDone: 0,
-    statesTotal: US_STATES.length,
+    statesTotal,
     currentState: null,
     businessesProcessed: 0,
+    // Businesses processed across states fully completed so far — the
+    // baseline `businessesProcessed` is added to as the current state's
+    // live listing count comes in (see 'scraper-message' below).
+    completedBusinessesTotal: 0,
     leadsCollected: 0,
     startedAt: null,
     finishedAt: null,
@@ -97,26 +108,36 @@ function applyCategoryProgress(thisJob, rec, evt) {
       rec.statesTotal = evt.statesTotal;
       rec.status = 'searching';
       break;
-    case 'scraper-message':
+    case 'scraper-message': {
       rec.status = 'scraping';
+      // "Opening listing X/Y" fires on every listing attempted — the only
+      // reliable live signal for progress within the current state. Without
+      // this, businessesProcessed only jumped once per state (on
+      // 'businesses-scraped' below), sitting frozen for most of a scan.
+      const openingMatch = evt.message.match(/^Opening listing (\d+)\/(\d+)/);
+      if (openingMatch) {
+        rec.businessesProcessed = rec.completedBusinessesTotal + parseInt(openingMatch[1], 10);
+      }
       break;
+    }
     case 'businesses-scraped':
+      rec.completedBusinessesTotal = evt.total;
       rec.businessesProcessed = evt.total;
       break;
     case 'leads-found':
       rec.leadsCollected = evt.total;
       logActivity(
         thisJob,
-        `"${rec.category}" +${evt.newLeads.length} lead${evt.newLeads.length === 1 ? '' : 's'} in ${rec.currentState} (${evt.total} total)`
+        `"${rec.label}" +${evt.newLeads.length} lead${evt.newLeads.length === 1 ? '' : 's'} in ${rec.currentState} (${evt.total} total)`
       );
       break;
     case 'state-error':
       rec.warnings.push({ timestamp: Date.now(), message: evt.message });
-      logActivity(thisJob, `"${rec.category}" — ${evt.message}`, 'warn');
+      logActivity(thisJob, `"${rec.label}" — ${evt.message}`, 'warn');
       break;
     case 'state-done':
       rec.statesDone = evt.statesDone;
-      logActivity(thisJob, `"${rec.category}" — ${evt.state} completed (${evt.statesDone}/${evt.statesTotal})`);
+      logActivity(thisJob, `"${rec.label}" — ${evt.state} completed (${evt.statesDone}/${evt.statesTotal})`);
       break;
   }
 }
@@ -127,12 +148,17 @@ async function waitWhilePausedFor(thisJob, rec) {
   }
 }
 
-async function saveCategoryLeads(thisJob, category, leads) {
+async function saveCategoryLeads(thisJob, rec, leads) {
   // Serializes the read-check-write sequence inside saveLeadsToFirebase
   // (and the shared `lastSearch` metadata it reads) so two workers'
   // Firebase writes can never interleave.
   return thisJob.firebaseMutex.runExclusive(async () => {
-    setLastSearch({ category, location: 'All US states', nationwide: true });
+    setLastSearch({
+      category: rec.category,
+      location: countryMeta(rec.country).label,
+      country: rec.country,
+      nationwide: true,
+    });
     return thisJob.saveLeadsFn(leads);
   });
 }
@@ -142,22 +168,23 @@ async function runWorker(workerId, scrapeLocationFn, thisJob) {
 
   while (true) {
     if (thisJob.cancelled) break;
-    const category = thisJob.queue.shift();
-    if (!category) break;
+    const key = thisJob.queue.shift();
+    if (!key) break;
 
-    const rec = thisJob.records[category];
+    const rec = thisJob.records[key];
     rec.workerId = workerId;
     rec.status = 'starting';
     rec.startedAt = Date.now();
     rec.lastActivityAt = Date.now();
-    logActivity(thisJob, `Worker ${workerId} started "${category}"`);
+    logActivity(thisJob, `Worker ${workerId} started "${rec.label}"`);
 
     try {
-      const { leads, meta } = await scrapeCategoryNationwide(category, {
+      const { leads, meta } = await scrapeCategoryNationwide(rec.category, {
         dateRange: thisJob.dateRange,
         maxResultsPerState: thisJob.maxResultsPerState,
         targetLeadCount: thisJob.targetLeadCount,
         analyze: thisJob.analyze,
+        country: rec.country,
         browser: thisJob.browser,
         stopAtTarget: true,
         scrapeLocationFn,
@@ -172,13 +199,13 @@ async function runWorker(workerId, scrapeLocationFn, thisJob) {
         rec.status = 'saving';
         logActivity(
           thisJob,
-          `"${category}" scraping ${cancelled ? 'stopped' : 'complete'} — saving ${leads.length} lead${leads.length === 1 ? '' : 's'}...`
+          `"${rec.label}" scraping ${cancelled ? 'stopped' : 'complete'} — saving ${leads.length} lead${leads.length === 1 ? '' : 's'}...`
         );
         try {
-          await saveCategoryLeads(thisJob, category, leads);
+          await saveCategoryLeads(thisJob, rec, leads);
         } catch (saveErr) {
           rec.warnings.push({ timestamp: Date.now(), message: `Save failed: ${saveErr.message}` });
-          logActivity(thisJob, `"${category}" — Firebase save failed: ${saveErr.message}`, 'warn');
+          logActivity(thisJob, `"${rec.label}" — Firebase save failed: ${saveErr.message}`, 'warn');
         }
       }
 
@@ -187,14 +214,14 @@ async function runWorker(workerId, scrapeLocationFn, thisJob) {
       rec.status = cancelled ? 'cancelled' : 'completed';
       logActivity(
         thisJob,
-        `"${category}" ${cancelled ? 'cancelled' : 'completed'} in ${humanDuration(rec.finishedAt - rec.startedAt)} — ${leads.length} leads.`
+        `"${rec.label}" ${cancelled ? 'cancelled' : 'completed'} in ${humanDuration(rec.finishedAt - rec.startedAt)} — ${leads.length} leads.`
       );
     } catch (err) {
       rec.status = 'failed';
       rec.error = err.message;
       rec.finishedAt = Date.now();
-      logActivity(thisJob, `"${category}" failed: ${err.message}`, 'error');
-      // Swallow and continue — one category's failure must not stop the rest.
+      logActivity(thisJob, `"${rec.label}" failed: ${err.message}`, 'error');
+      // Swallow and continue — one work item's failure must not stop the rest.
     }
   }
 
@@ -212,9 +239,12 @@ async function finishJob(thisJob) {
     // ignore
   }
   const totalLeads = Object.values(thisJob.records).reduce((sum, r) => sum + (r.leadsCollected || 0), 0);
+  const scope = thisJob.countries.length > 1
+    ? `${thisJob.categories.length} categor${thisJob.categories.length === 1 ? 'y' : 'ies'} × ${thisJob.countries.length} countries`
+    : `${thisJob.categories.length} categories`;
   logActivity(
     thisJob,
-    `Multi-category search finished in ${humanDuration(thisJob.finishedAt - thisJob.startedAt)} — ${totalLeads} total leads across ${thisJob.categories.length} categories.`
+    `Multi-category search finished in ${humanDuration(thisJob.finishedAt - thisJob.startedAt)} — ${totalLeads} total leads across ${scope}.`
   );
 }
 
@@ -225,6 +255,14 @@ function isRunningStatus(status) {
 /**
  * @param {object} opts
  * @param {string[]} opts.categories
+ * @param {string[]} [opts.countries] - country codes to run every category
+ *   against, e.g. ['US','UK','DE','CA'] for "search this category in all
+ *   countries". Each (category, country) pair becomes its own queued work
+ *   item, scraped by its own worker — so N categories × M countries runs
+ *   up to `concurrency` of the N×M items truly concurrently. Defaults to
+ *   `[country]` for backward compatibility with the single-country form.
+ * @param {string} [opts.country] - convenience single-country shorthand,
+ *   used only when `countries` isn't provided.
  * @param {number} [opts.concurrency] - 2-8, default 4
  * @param {string} [opts.dateRange]
  * @param {number} [opts.maxResultsPerState]
@@ -236,11 +274,13 @@ function isRunningStatus(status) {
  */
 export async function startMultiCategorySearch({
   categories,
+  countries,
   concurrency = DEFAULT_CONCURRENCY,
   dateRange = '30',
-  maxResultsPerState = 16,
+  maxResultsPerState = 150,
   targetLeadCount = 100,
   analyze = false,
+  country = 'US',
   scrapeLocationFn,
   saveLeadsFn = saveLeadsToFirebase,
 }) {
@@ -257,21 +297,33 @@ export async function startMultiCategorySearch({
   if (!uniqueCategories.length) {
     throw new Error('categories array is required');
   }
+
+  const countryInput = Array.isArray(countries) && countries.length ? countries : [country];
+  const uniqueCountries = [...new Set(countryInput.map((c) => countryMeta(c).code))];
+  const multiCountry = uniqueCountries.length > 1;
+
   const poolSize = clampConcurrency(concurrency);
 
   const records = {};
+  const queue = [];
   for (const category of uniqueCategories) {
-    records[category] = newCategoryRecord(category);
+    for (const countryCode of uniqueCountries) {
+      const key = workKey(category, countryCode);
+      const label = multiCountry ? `${category} · ${countryMeta(countryCode).shortName}` : category;
+      records[key] = newWorkItemRecord(category, countryCode, label, regionsForCountry(countryCode).length);
+      queue.push(key);
+    }
   }
 
   const thisJob = {
     categories: uniqueCategories,
+    countries: uniqueCountries,
     concurrency: poolSize,
     dateRange: String(dateRange),
-    maxResultsPerState: Number(maxResultsPerState) || 16,
+    maxResultsPerState: Number(maxResultsPerState) || 150,
     targetLeadCount: Number(targetLeadCount) || 100,
     analyze: Boolean(analyze),
-    queue: [...uniqueCategories],
+    queue,
     records,
     activityLog: [],
     startedAt: Date.now(),
@@ -286,7 +338,10 @@ export async function startMultiCategorySearch({
   };
   currentJob = thisJob;
 
-  logActivity(thisJob, `Starting multi-category search: ${uniqueCategories.length} categories, ${poolSize} workers.`);
+  const scopeDesc = multiCountry
+    ? `${uniqueCategories.length} categor${uniqueCategories.length === 1 ? 'y' : 'ies'} × ${uniqueCountries.length} countries (${queue.length} total)`
+    : `${uniqueCategories.length} categories, ${countryMeta(uniqueCountries[0]).name}`;
+  logActivity(thisJob, `Starting multi-category search: ${scopeDesc}, ${poolSize} workers.`);
 
   thisJob.browser = await launchBrowser();
 
@@ -296,7 +351,7 @@ export async function startMultiCategorySearch({
     logActivity(thisJob, `Worker pool error: ${err.message}`, 'error');
   });
 
-  return { started: true, categories: uniqueCategories, concurrency: poolSize };
+  return { started: true, categories: uniqueCategories, countries: uniqueCountries, concurrency: poolSize };
 }
 
 function categorySnapshot(rec) {
@@ -310,6 +365,8 @@ function categorySnapshot(rec) {
 
   return {
     category: rec.category,
+    country: rec.country,
+    label: rec.label,
     status: rec.status,
     workerId: rec.workerId,
     progressPercent,
@@ -347,6 +404,7 @@ export function getMultiJobSnapshot() {
   const totalStatesPlanned = records.reduce((sum, r) => sum + r.statesTotal, 0);
   const totalStatesRemaining = Math.max(0, totalStatesPlanned - totalStatesDone);
   const totalLeads = records.reduce((sum, r) => sum + r.leadsCollected, 0);
+  const totalBusinessesProcessed = records.reduce((sum, r) => sum + r.businessesProcessed, 0);
 
   const now = Date.now();
   const elapsedMs = (job.finishedAt || now) - job.startedAt;
@@ -361,7 +419,11 @@ export function getMultiJobSnapshot() {
     concurrency: job.concurrency,
     overall: {
       percent: overallPercent,
-      totalCategories: job.categories.length,
+      // Total (category, country) work items — matches completed/failed/
+      // running/queued below, which are all counted over `records`.
+      totalCategories: records.length,
+      totalUniqueCategories: job.categories.length,
+      totalCountries: job.countries.length,
       completed,
       failed,
       cancelled,
@@ -370,6 +432,7 @@ export function getMultiJobSnapshot() {
       totalStatesDone,
       totalStatesRemaining,
       totalLeads,
+      totalBusinessesProcessed,
       elapsedMs,
       etaMs: overallEtaMs,
       activeWorkers: job.activeWorkers,
@@ -389,7 +452,7 @@ export function getMultiJobSnapshot() {
     snapshot.finalStats = {
       totalExecutionMs: job.finishedAt - job.startedAt,
       totalLeads,
-      leadsPerCategory: Object.fromEntries(records.map((r) => [r.category, r.leadsCollected])),
+      leadsPerCategory: Object.fromEntries(records.map((r) => [r.label, r.leadsCollected])),
       statesProcessed: totalStatesDone,
       successCount: completed,
       failureCount: failed,
@@ -402,34 +465,47 @@ export function getMultiJobSnapshot() {
   return snapshot;
 }
 
+/**
+ * Resolves a (category, country) pair to its work-item key. `country` can
+ * be omitted when the job only covers one country (backward-compat with
+ * callers that only ever knew about "category") — otherwise it's required
+ * to disambiguate which country's run of that category is meant.
+ */
+function resolveWorkKey(job, category, country) {
+  if (country) return workKey(category, countryMeta(country).code);
+  if (job.countries.length === 1) return workKey(category, job.countries[0]);
+  return null;
+}
+
 export function cancelMultiJob() {
   const job = currentJob;
   if (!job || job.status === 'done') return false;
   job.cancelled = true;
   job.paused = false;
-  for (const category of job.queue) {
-    const rec = job.records[category];
+  for (const key of job.queue) {
+    const rec = job.records[key];
     rec.status = 'cancelled';
     rec.finishedAt = Date.now();
   }
   job.queue = [];
-  logActivity(job, 'Cancelling entire job — remaining queued categories skipped.', 'warn');
+  logActivity(job, 'Cancelling entire job — remaining queued work skipped.', 'warn');
   return true;
 }
 
-export function cancelCategory(category) {
+export function cancelCategory(category, country) {
   const job = currentJob;
-  const rec = job?.records?.[category];
+  const key = job && resolveWorkKey(job, category, country);
+  const rec = key ? job.records[key] : null;
   if (!rec) return false;
   if (rec.status === 'queued') {
-    job.queue = job.queue.filter((c) => c !== category);
+    job.queue = job.queue.filter((k) => k !== key);
     rec.status = 'cancelled';
     rec.finishedAt = Date.now();
-    logActivity(job, `"${category}" cancelled while queued.`, 'warn');
+    logActivity(job, `"${rec.label}" cancelled while queued.`, 'warn');
   } else if (isRunningStatus(rec.status)) {
     rec.cancelled = true;
     rec.paused = false;
-    logActivity(job, `Cancelling "${category}" — will stop after the current state.`, 'warn');
+    logActivity(job, `Cancelling "${rec.label}" — will stop after the current state.`, 'warn');
   }
   return true;
 }
@@ -450,21 +526,23 @@ export function resumeMultiJob() {
   return true;
 }
 
-export function pauseCategory(category) {
+export function pauseCategory(category, country) {
   const job = currentJob;
-  const rec = job?.records?.[category];
+  const key = job && resolveWorkKey(job, category, country);
+  const rec = key ? job.records[key] : null;
   if (!rec || !isRunningStatus(rec.status)) return false;
   rec.paused = true;
-  logActivity(job, `"${category}" paused.`, 'warn');
+  logActivity(job, `"${rec.label}" paused.`, 'warn');
   return true;
 }
 
-export function resumeCategory(category) {
+export function resumeCategory(category, country) {
   const job = currentJob;
-  const rec = job?.records?.[category];
+  const key = job && resolveWorkKey(job, category, country);
+  const rec = key ? job.records[key] : null;
   if (!rec) return false;
   rec.paused = false;
-  logActivity(job, `"${category}" resumed.`);
+  logActivity(job, `"${rec.label}" resumed.`);
   return true;
 }
 

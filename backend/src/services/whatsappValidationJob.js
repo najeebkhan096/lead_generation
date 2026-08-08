@@ -13,7 +13,7 @@ import * as whatsappWeb from './whatsappWebService.js';
 import * as whatsappSafety from './whatsappSafety.js';
 import { updateLeadWhatsAppStatus } from './firebaseLeadStore.js';
 
-const MAX_BATCH = 100;
+const MAX_BATCH = 1000;
 
 /** @type {Job | null} */
 let job = null;

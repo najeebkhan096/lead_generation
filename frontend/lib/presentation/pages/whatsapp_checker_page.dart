@@ -36,16 +36,22 @@ class _WhatsAppCheckerPageState extends State<WhatsAppCheckerPage> {
   Timer? _webPollTimer;
   bool _webActionInFlight = false;
 
+  WhatsAppValidationSnapshot? _validationStatus;
+  Timer? _validationPollTimer;
+  bool _startingValidation = false;
+
   @override
   void initState() {
     super.initState();
     _pollWebStatus();
+    _pollValidationStatus();
   }
 
   @override
   void dispose() {
     _phoneController.dispose();
     _webPollTimer?.cancel();
+    _validationPollTimer?.cancel();
     super.dispose();
   }
 
@@ -62,6 +68,36 @@ class _WhatsAppCheckerPageState extends State<WhatsAppCheckerPage> {
       }
     } catch (_) {
       // Backend unreachable — leave last-known status showing.
+    }
+  }
+
+  Future<void> _pollValidationStatus() async {
+    try {
+      final status = await context.read<LeadRepository>().getWhatsAppValidationStatus();
+      if (!mounted) return;
+      setState(() => _validationStatus = status);
+      if (status.active) {
+        _validationPollTimer ??= Timer.periodic(const Duration(seconds: 3), (_) => _pollValidationStatus());
+      } else {
+        _validationPollTimer?.cancel();
+        _validationPollTimer = null;
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _startAutoValidation() async {
+    setState(() => _startingValidation = true);
+    try {
+      await context.read<LeadRepository>().startWhatsAppAutoValidation();
+      await _pollValidationStatus();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _startingValidation = false);
     }
   }
 
@@ -159,6 +195,15 @@ class _WhatsAppCheckerPageState extends State<WhatsAppCheckerPage> {
                     onConnect: _connectWebSession,
                     onDisconnect: _disconnectWebSession,
                   ),
+                  if (_webStatus?.status == WhatsAppWebConnectionStatus.ready) ...[
+                    const SizedBox(height: 16),
+                    _AutomationCard(
+                      status: _validationStatus,
+                      busy: _startingValidation,
+                      onStart: _startAutoValidation,
+                      onRefresh: _pollValidationStatus,
+                    ),
+                  ],
                   const SizedBox(height: 32),
                   Row(
                     children: [
@@ -220,6 +265,109 @@ class _WhatsAppCheckerPageState extends State<WhatsAppCheckerPage> {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _AutomationCard extends StatelessWidget {
+  const _AutomationCard({
+    required this.status,
+    required this.busy,
+    required this.onStart,
+    required this.onRefresh,
+  });
+
+  final WhatsAppValidationSnapshot? status;
+  final bool busy;
+  final VoidCallback onStart;
+  final VoidCallback onRefresh;
+
+  @override
+  Widget build(BuildContext context) {
+    final active = status?.active ?? false;
+    final checked = status?.checked ?? 0;
+    final total = status?.total ?? 0;
+
+    return Container(
+      padding: const EdgeInsets.all(22),
+      decoration: BoxDecoration(
+        color: active ? AppTheme.sage100 : AppTheme.surface,
+        borderRadius: BorderRadius.circular(AppTheme.radiusCard),
+        border: active ? Border.all(color: AppTheme.sage500, width: 1.5) : null,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: active ? AppTheme.sage500 : AppTheme.neutral200,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  active ? AppIcons.refresh : AppIcons.zap,
+                  size: 19,
+                  color: active ? Colors.white : AppTheme.neutral600,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      active ? 'Bulk validating leads...' : 'WhatsApp Automation',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      active
+                          ? 'Checking $checked of $total leads'
+                          : 'Discover and check all unvalidated leads from Firestore',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+              ),
+              if (busy)
+                const SizedBox(
+                  height: 20,
+                  width: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2.2),
+                )
+              else if (active)
+                IconButton(
+                  icon: const Icon(AppIcons.refresh, size: 18),
+                  onPressed: onRefresh,
+                )
+              else
+                ElevatedButton(
+                  onPressed: onStart,
+                  style: ElevatedButton.styleFrom(
+                    minimumSize: const Size(100, 40),
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                  ),
+                  child: const Text('Start Now'),
+                ),
+            ],
+          ),
+          if (active) ...[
+            const SizedBox(height: 16),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: LinearProgressIndicator(
+                value: total > 0 ? (checked / total).toDouble() : 0,
+                minHeight: 6,
+                backgroundColor: AppTheme.surface,
+                valueColor: const AlwaysStoppedAnimation(AppTheme.sage500),
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }

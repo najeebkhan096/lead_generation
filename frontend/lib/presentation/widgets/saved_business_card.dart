@@ -7,10 +7,23 @@ import '../utils/date_format.dart';
 /// Compact summary card for a single saved business, used in the
 /// Leads grid. Tapping opens the full details page.
 class SavedBusinessCard extends StatelessWidget {
-  const SavedBusinessCard({super.key, required this.lead, required this.onTap});
+  const SavedBusinessCard({
+    super.key,
+    required this.lead,
+    required this.onTap,
+    this.onDelete,
+    this.deleting = false,
+  });
 
   final Lead lead;
   final VoidCallback onTap;
+
+  /// `null` hides the delete button (e.g. while its deletion is disallowed).
+  final VoidCallback? onDelete;
+
+  /// Shows a spinner in place of the delete button while a delete request
+  /// for this card is in flight.
+  final bool deleting;
 
   @override
   Widget build(BuildContext context) {
@@ -69,6 +82,23 @@ class SavedBusinessCard extends StatelessWidget {
                       ],
                     ),
                   ),
+                  if (onDelete != null)
+                    SizedBox(
+                      width: 30,
+                      height: 30,
+                      child: deleting
+                          ? const Padding(
+                              padding: EdgeInsets.all(7),
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : IconButton(
+                              tooltip: 'Delete',
+                              onPressed: onDelete,
+                              icon: const Icon(AppIcons.trash, size: 16, color: AppTheme.subtle),
+                              padding: EdgeInsets.zero,
+                              visualDensity: VisualDensity.compact,
+                            ),
+                    ),
                 ],
               ),
               const SizedBox(height: 14),

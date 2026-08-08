@@ -32,14 +32,14 @@ import { Mutex } from '../utils/asyncMutex.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const STORE_PATH = path.resolve(__dirname, '../../data/whatsapp-safety.json');
 
-const DAILY_CAP = 150;
-const WARMUP_DAILY_CAP = 30;
-const WARMUP_DAYS = 3;
+const DAILY_CAP = 1000;
+const WARMUP_DAILY_CAP = 1000;
+const WARMUP_DAYS = 0;
 
-const NORMAL_DELAY_MS = [6000, 12000];
-const WARMUP_DELAY_MS = [12000, 25000];
-const LONG_BREAK_EVERY = 15;
-const LONG_BREAK_MS = [90000, 180000];
+const NORMAL_DELAY_MS = [2000, 5000];
+const WARMUP_DELAY_MS = [2000, 5000];
+const LONG_BREAK_EVERY = 50;
+const LONG_BREAK_MS = [30000, 60000];
 
 const JOB_COOLDOWN_MS = 3 * 60 * 1000;
 const CIRCUIT_FAILURE_THRESHOLD = 3;

@@ -1,6 +1,7 @@
 import { findLeads, findLeadsNationwide, findLeadsSequential, getCurrentLeads } from '../services/leadService.js';
 import { analyzeReview, generateOutreachMessage } from '../services/reviewAnalyzer.js';
 import { clearLeads, setStatus, getStore } from '../utils/memoryStore.js';
+import { countryMeta } from '../data/countries.js';
 
 function isNationwideRequest(body = {}) {
   if (body.nationwide === true || body.nationwide === 'true') return true;
@@ -30,11 +31,12 @@ export async function startSearch(req, res) {
     category,
     categories,
     dateRange = '30',
-    maxResults = 16,
+    maxResults = 150,
     maxResultsPerState,
     targetLeadCount = 100,
     analyze = false,
     nationwide,
+    country = 'US',
   } = req.body || {};
 
   const hasCategory = (category && String(category).trim().length > 0) ||
@@ -64,8 +66,9 @@ export async function startSearch(req, res) {
       findLeadsSequential({
         categories: categories.map(c => String(c).trim()),
         dateRange: String(dateRange),
-        maxResultsPerState: Number(maxResultsPerState || maxResults) || 16,
+        maxResultsPerState: Number(maxResultsPerState || maxResults) || 150,
         analyze: Boolean(analyze),
+        country: String(country),
       }).catch((err) => {
         console.error('Background sequential search failed:', err);
         setStatus('error', err.message || 'Sequential search failed');
@@ -75,16 +78,17 @@ export async function startSearch(req, res) {
         started: true,
         sequential: true,
         categories,
-        message: 'Sequential nationwide search started. Results for each category will be auto-saved to Firebase.',
+        message: `Sequential search started (${countryMeta(country).label}). Results for each category will be auto-saved to Firebase.`,
       });
     }
 
     findLeadsNationwide({
       category: String(category).trim(),
       dateRange: String(dateRange),
-      maxResultsPerState: Number(maxResultsPerState || maxResults) || 16,
+      maxResultsPerState: Number(maxResultsPerState || maxResults) || 150,
       targetLeadCount: Number(targetLeadCount) || 100,
       analyze: Boolean(analyze),
+      country: String(country),
     }).catch((err) => {
       console.error('Background nationwide search failed:', err);
       setStatus('error', err.message || 'Search failed');
@@ -94,8 +98,7 @@ export async function startSearch(req, res) {
       started: true,
       nationwide: true,
       targetLeadCount: Number(targetLeadCount) || 100,
-      message:
-        'Nationwide US search started (all states). Poll /api/search/status until status is done or error.',
+      message: `Nationwide search started (${countryMeta(country).label}). Poll /api/search/status until status is done or error.`,
     });
   }
 
@@ -109,7 +112,7 @@ export async function startSearch(req, res) {
     location: String(location).trim(),
     category: String(category).trim(),
     dateRange: String(dateRange),
-    maxResults: Number(maxResults) || 16,
+    maxResults: Number(maxResults) || 150,
     analyze: Boolean(analyze),
   }).catch((err) => {
     console.error('Background search failed:', err);

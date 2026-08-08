@@ -2,11 +2,20 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/constants/search_countries.dart';
 import '../../core/theme/app_theme.dart';
 import '../bloc/search/search_bloc.dart';
 import '../bloc/search/search_event.dart';
 import '../bloc/search/search_state.dart';
+import '../utils/duration_format.dart';
 import 'results_page.dart';
+
+const _dateRangeLabels = <String, String>{
+  '7': 'Last 7 days',
+  '30': 'Last 30 days',
+  '90': 'Last 90 days',
+  '365': 'Last 365 days',
+};
 
 class ActiveSearchPage extends StatelessWidget {
   const ActiveSearchPage({super.key});
@@ -85,6 +94,10 @@ class ActiveSearchPage extends StatelessWidget {
     final progress = state.progress;
     final isSequential = state.categories.length > 1;
     final currentIdx = state.categories.indexOf(state.category) + 1;
+    final scanned = progress?.businessesScraped ?? 0;
+    final foundCount = state.leads.length;
+    final yieldPercent = scanned > 0 ? (foundCount / scanned * 100) : 0.0;
+    final elapsed = state.startedAt == null ? null : DateTime.now().difference(state.startedAt!);
 
     return Container(
       padding: const EdgeInsets.all(24),
@@ -115,6 +128,16 @@ class ActiveSearchPage extends StatelessWidget {
                   ),
                 ),
               ),
+              const SizedBox(width: 8),
+              _ConfigChip(
+                icon: AppIcons.globe,
+                label: SearchCountries.byCode(state.country).name,
+              ),
+              const SizedBox(width: 8),
+              _ConfigChip(
+                icon: AppIcons.calendar,
+                label: _dateRangeLabels[state.dateRange] ?? '${state.dateRange}d',
+              ),
               const Spacer(),
               if (state.status == SearchStatus.loading)
                 const SizedBox(
@@ -124,7 +147,27 @@ class ActiveSearchPage extends StatelessWidget {
                 ),
             ],
           ),
-          const SizedBox(height: 16),
+          if (progress != null && progress.currentState.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                const Icon(AppIcons.mapPin, size: 15, color: AppTheme.subtle),
+                const SizedBox(width: 6),
+                Text(
+                  progress.currentState,
+                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5, color: AppTheme.ink),
+                ),
+                if (progress.statesTotal > 0) ...[
+                  const SizedBox(width: 8),
+                  Text(
+                    '· region ${progress.statesDone + 1} of ${progress.statesTotal}',
+                    style: const TextStyle(fontSize: 12.5, color: AppTheme.faint),
+                  ),
+                ],
+              ],
+            ),
+          ],
+          const SizedBox(height: 12),
           Text(
             (progress?.message.isEmpty ?? true)
                 ? 'Preparing search sequence…'
@@ -141,17 +184,51 @@ class ActiveSearchPage extends StatelessWidget {
               minHeight: 8,
             ),
           ),
-          const SizedBox(height: 16),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              _Stat(label: 'LEADS FOUND', value: '${state.leads.length}'),
-              _Stat(label: 'SCANNED', value: '${progress?.businessesScraped ?? 0}'),
-              _Stat(
-                label: 'USA PROGRESS',
-                value: '${((progress?.statesFraction ?? 0) * 100).toStringAsFixed(0)}%',
-              ),
-            ],
+          const SizedBox(height: 18),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final columns = constraints.maxWidth >= 720
+                  ? 6
+                  : constraints.maxWidth >= 460
+                      ? 3
+                      : 2;
+              final tiles = [
+                _StatTile(icon: AppIcons.checkCircle, label: 'LEADS FOUND', value: '$foundCount'),
+                _StatTile(icon: AppIcons.search, label: 'SCANNED', value: '$scanned'),
+                _StatTile(
+                  icon: AppIcons.percent,
+                  label: 'YIELD',
+                  value: scanned > 0 ? '${yieldPercent.toStringAsFixed(1)}%' : '—',
+                ),
+                _StatTile(
+                  icon: AppIcons.mapPinned,
+                  label: 'REGIONS',
+                  value: '${progress?.statesDone ?? 0}/${progress?.statesTotal ?? 0}',
+                ),
+                _StatTile(
+                  icon: AppIcons.clock,
+                  label: 'ELAPSED',
+                  value: elapsed == null ? '—' : formatDuration(elapsed),
+                ),
+                _StatTile(
+                  icon: AppIcons.trendingUp,
+                  label: '${SearchCountries.byCode(state.country).shortName.toUpperCase()} PROGRESS',
+                  value: '${((progress?.statesFraction ?? 0) * 100).toStringAsFixed(0)}%',
+                ),
+              ];
+              return GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: tiles.length,
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: columns,
+                  mainAxisSpacing: 10,
+                  crossAxisSpacing: 10,
+                  mainAxisExtent: 74,
+                ),
+                itemBuilder: (context, i) => tiles[i],
+              );
+            },
           ),
         ],
       ),
@@ -159,6 +236,7 @@ class ActiveSearchPage extends StatelessWidget {
   }
 
   Widget _buildEmptyState(BuildContext context, SearchState state) {
+    final scanned = state.progress?.businessesScraped ?? 0;
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -173,8 +251,13 @@ class ActiveSearchPage extends StatelessWidget {
           Text('Scanning business listings…',
               style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 6),
-          Text('Matching leads will appear here live.',
-              style: Theme.of(context).textTheme.bodyMedium),
+          Text(
+            scanned > 0
+                ? '$scanned scanned so far, 0 with a qualifying recent 1★ review — that\'s expected, most businesses won\'t match.'
+                : 'Only businesses with a recent 1★ review show up here — see SCANNED above for the full count.',
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
         ],
       ),
     );
@@ -193,7 +276,7 @@ class ActiveSearchPage extends StatelessWidget {
               const Icon(AppIcons.zap, color: AppTheme.accent700, size: 18),
               const SizedBox(width: 8),
               Text(
-                'LIVE FEED',
+                'LIVE FEED · ${leads.length}',
                 style: Theme.of(context).textTheme.labelLarge?.copyWith(
                       fontWeight: FontWeight.w800,
                       letterSpacing: 1.2,
@@ -280,36 +363,79 @@ class ActiveSearchPage extends StatelessWidget {
   }
 }
 
-class _Stat extends StatelessWidget {
+/// Small pill recapping one piece of the search config (country, date
+/// range) next to the category chip, so the full setup stays visible
+/// without leaving this page.
+class _ConfigChip extends StatelessWidget {
+  final IconData icon;
   final String label;
-  final String value;
 
-  const _Stat({required this.label, required this.value});
+  const _ConfigChip({required this.icon, required this.label});
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: const TextStyle(
-            fontSize: 10,
-            fontWeight: FontWeight.w700,
-            color: AppTheme.faint,
-            letterSpacing: 1.0,
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: AppTheme.neutral100,
+        borderRadius: BorderRadius.circular(AppTheme.radiusPill),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: AppTheme.subtle),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 11, color: AppTheme.subtle),
           ),
-        ),
-        const SizedBox(height: 3),
-        Text(
-          value,
-          style: const TextStyle(
-            fontSize: 19,
-            fontWeight: FontWeight.w800,
-            color: AppTheme.ink,
+        ],
+      ),
+    );
+  }
+}
+
+class _StatTile extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+
+  const _StatTile({required this.icon, required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(color: AppTheme.neutral100, borderRadius: BorderRadius.circular(AppTheme.radius)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 13, color: AppTheme.subtle),
+              const SizedBox(width: 5),
+              Expanded(
+                child: Text(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 9.5,
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.faint,
+                    letterSpacing: 0.6,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
           ),
-        ),
-      ],
+          const Spacer(),
+          Text(
+            value,
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppTheme.ink),
+          ),
+        ],
+      ),
     );
   }
 }

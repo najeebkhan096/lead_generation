@@ -42,6 +42,17 @@ export function clearLeads() {
   store.progress = { message: '', found: 0, processed: 0 };
 }
 
+/**
+ * Clears just the leads array, leaving status/lastSearch/progress alone —
+ * for between categories in a sequential multi-category run, where the
+ * next category's "searching" status was just set and must survive. Using
+ * the full `clearLeads()` there would silently revert status back to
+ * 'idle' and lastSearch to null for the rest of that category's scan.
+ */
+export function clearLeadsArray() {
+  store.leads = [];
+}
+
 export function setStatus(status, error = null) {
   store.status = status;
   store.error = error;

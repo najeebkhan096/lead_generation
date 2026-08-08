@@ -9,6 +9,7 @@ class SearchProgress extends Equatable {
     this.statesTotal = 0,
     this.businessesScraped = 0,
     this.currentCategory = '',
+    this.currentState = '',
   });
 
   final String message;
@@ -18,6 +19,10 @@ class SearchProgress extends Equatable {
   final int statesTotal;
   final int businessesScraped;
   final String currentCategory;
+
+  /// The region/state currently being scanned (e.g. "Northern Ireland",
+  /// "Texas") — empty when not searching or not yet known.
+  final String currentState;
 
   double get leadFraction {
     if (targetCount <= 0) return 0;
@@ -38,5 +43,6 @@ class SearchProgress extends Equatable {
         statesTotal,
         businessesScraped,
         currentCategory,
+        currentState,
       ];
 }

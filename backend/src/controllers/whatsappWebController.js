@@ -5,6 +5,7 @@ import {
   getJobSnapshot,
   cancelValidationJob,
 } from '../services/whatsappValidationJob.js';
+import { listUnvalidatedLeads } from '../services/firebaseLeadStore.js';
 
 export function getStatus(_req, res) {
   return res.json({ ...whatsappWeb.getStatus(), safety: whatsappSafety.getSafetyStatus() });
@@ -35,6 +36,20 @@ export function startValidation(req, res) {
   } catch (err) {
     const status = err.status || 500;
     return res.status(status).json({ error: err.message || 'Failed to start validation' });
+  }
+}
+
+export async function startAutoValidation(_req, res) {
+  try {
+    const leads = await listUnvalidatedLeads({ limit: 100 });
+    if (!leads.length) {
+      return res.json({ success: true, message: 'No leads needing validation found.' });
+    }
+    const result = startValidationJob({ leads });
+    return res.status(202).json({ ...result, message: `Started validation for ${leads.length} leads.` });
+  } catch (err) {
+    const status = err.status || 500;
+    return res.status(status).json({ error: err.message || 'Failed to start auto validation' });
   }
 }
 

@@ -187,11 +187,71 @@ class _SavedBusinessesViewState extends State<_SavedBusinessesView> {
     context.read<SavedBusinessesBloc>().add(const SavedBusinessesRequested());
   }
 
+  Future<void> _confirmDelete(BuildContext context, Lead lead) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete this business?'),
+        content: Text(
+          '"${lead.business}" will be permanently removed from Firebase. This can\'t be undone.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete', style: TextStyle(color: AppTheme.danger)),
+          ),
+        ],
+      ),
+    );
+    if (confirm == true && lead.dbId != null && context.mounted) {
+      context.read<SavedBusinessesBloc>().add(SavedBusinessDeleted(lead.dbId!));
+    }
+  }
+
+  Future<void> _confirmDeleteCategory(BuildContext context, String category, int count) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete this category?'),
+        content: Text(
+          'All $count business${count == 1 ? '' : 'es'} in "$category" will be permanently '
+          'removed from Firebase. This can\'t be undone.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete all', style: TextStyle(color: AppTheme.danger)),
+          ),
+        ],
+      ),
+    );
+    if (confirm == true && context.mounted) {
+      context.read<SavedBusinessesBloc>().add(SavedCategoryDeleted(category));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: SafeArea(
-        child: BlocBuilder<SavedBusinessesBloc, SavedBusinessesState>(
+        child: BlocConsumer<SavedBusinessesBloc, SavedBusinessesState>(
+          listenWhen: (previous, current) =>
+              previous.deleteError != current.deleteError ||
+              previous.categoryDeleteMessage != current.categoryDeleteMessage,
+          listener: (context, state) {
+            if (state.deleteError != null) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text(state.deleteError!)),
+              );
+            }
+            if (state.categoryDeleteMessage != null) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text(state.categoryDeleteMessage!)),
+              );
+            }
+          },
           builder: (context, state) {
             return RefreshIndicator(
               onRefresh: () async {
@@ -264,6 +324,11 @@ class _SavedBusinessesViewState extends State<_SavedBusinessesView> {
     final filtered =
         _verifiedOnly ? categoryFiltered.where((b) => b.hasWhatsApp).toList() : categoryFiltered;
     final verifiedCount = state.businesses.where((b) => b.hasWhatsApp).length;
+    // Deleting a category removes every lead in it regardless of the search
+    // box or "verified only" toggle, so the confirm dialog must count from
+    // the full unfiltered list, not `categoryFiltered` (which is narrowed
+    // by the current search text).
+    final categoryTotalCount = state.businesses.where((b) => b.category == effectiveCategory).length;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -315,6 +380,28 @@ class _SavedBusinessesViewState extends State<_SavedBusinessesView> {
                 },
               ),
             ),
+            if (effectiveCategory != _allCategories) ...[
+              const SizedBox(width: 12),
+              SizedBox(
+                height: 48,
+                width: 48,
+                child: state.deletingCategory == effectiveCategory
+                    ? const Padding(
+                        padding: EdgeInsets.all(13),
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : OutlinedButton(
+                        onPressed: () =>
+                            _confirmDeleteCategory(context, effectiveCategory, categoryTotalCount),
+                        style: OutlinedButton.styleFrom(
+                          padding: EdgeInsets.zero,
+                          foregroundColor: AppTheme.danger,
+                          side: const BorderSide(color: AppTheme.danger),
+                        ),
+                        child: const Icon(AppIcons.trash, size: 18),
+                      ),
+              ),
+            ],
           ],
         ),
         if (!widget.lockToVerified) ...[
@@ -361,6 +448,8 @@ class _SavedBusinessesViewState extends State<_SavedBusinessesView> {
                         context.read<SavedBusinessesBloc>().add(const SavedBusinessesRequested());
                       }
                     },
+                    onDelete: lead.dbId == null ? null : () => _confirmDelete(context, lead),
+                    deleting: state.deletingLeadId != null && state.deletingLeadId == lead.dbId,
                   );
                 },
               );

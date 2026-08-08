@@ -23,6 +23,7 @@ class _BusinessDetailsPageState extends State<BusinessDetailsPage> {
   late Lead _lead;
   bool _updating = false;
   bool _changed = false;
+  bool _deleting = false;
 
   @override
   void initState() {
@@ -66,6 +67,41 @@ class _BusinessDetailsPageState extends State<BusinessDetailsPage> {
     }
   }
 
+  Future<void> _deleteLead() async {
+    if (_lead.dbId == null || _deleting) return;
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete this business?'),
+        content: Text(
+          '"${_lead.business}" will be permanently removed from Firebase. This can\'t be undone.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete', style: TextStyle(color: AppTheme.danger)),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true || !mounted) return;
+
+    setState(() => _deleting = true);
+    try {
+      await context.read<LeadRepository>().deleteLead(_lead.dbId!);
+      if (!mounted) return;
+      Navigator.of(context).pop(true);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _deleting = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final lead = _lead;
@@ -79,7 +115,22 @@ class _BusinessDetailsPageState extends State<BusinessDetailsPage> {
         if (!didPop) Navigator.of(context).pop(_changed);
       },
       child: Scaffold(
-      appBar: AppBar(),
+      appBar: AppBar(
+        actions: [
+          IconButton(
+            tooltip: 'Delete business',
+            onPressed: _deleting ? null : _deleteLead,
+            icon: _deleting
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(AppIcons.trash),
+          ),
+          const SizedBox(width: 8),
+        ],
+      ),
       body: SafeArea(
         child: Center(
           child: ConstrainedBox(

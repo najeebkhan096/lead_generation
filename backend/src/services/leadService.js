@@ -11,7 +11,8 @@ import { enrichLeadWithAnalysis } from './reviewAnalyzer.js';
 import { normalizeUsPhone, waMeLink } from './whatsappChecker.js';
 import * as whatsappWebService from './whatsappWebService.js';
 import * as whatsappSafety from './whatsappSafety.js';
-import { US_STATES, locationQuery, shuffleStates } from '../data/usStates.js';
+import { locationQuery, shuffleStates } from '../data/usStates.js';
+import { countryMeta, regionsForCountry } from '../data/countries.js';
 import {
   setLeads,
   appendLeads,
@@ -20,10 +21,16 @@ import {
   setLastSearch,
   getStore,
   clearLeads,
+  clearLeadsArray,
 } from '../utils/memoryStore.js';
 
 const DEFAULT_TARGET_LEADS = 100;
-const DEFAULT_PER_STATE = 16;
+// Raised from 16: the old cap meant most of the 1-star-review pool per city
+// was never even looked at. Scanning more per city costs more time per
+// region but finds far more of the qualifying leads that actually exist
+// there — 150 covers essentially all of a metro's listings for most
+// categories, short of the biggest cities.
+const DEFAULT_PER_STATE = 150;
 
 function leadKey(lead) {
   const maps = (lead.mapsUrl || '').split('?')[0].toLowerCase();
@@ -88,11 +95,12 @@ async function inlineValidateWhatsApp(leads, { shouldStop, checkFn = whatsappSaf
   }
 }
 
-async function scrapeLocation(category, location, { maxResults, onProgress, browser } = {}) {
+async function scrapeLocation(category, location, { maxResults, onProgress, browser, country } = {}) {
   let businesses = await googleMaps.searchBusinesses(category, location, {
     maxResults,
     onProgress,
     browser,
+    country,
   });
 
   if (!businesses.length) {
@@ -197,14 +205,19 @@ export async function findLeadsSequential({
   dateRange = '30',
   maxResultsPerState = DEFAULT_PER_STATE,
   analyze = false,
+  country = 'US',
 }) {
   if (!Array.isArray(categories) || !categories.length) {
     throw new Error('categories array is required');
   }
 
+  const meta = countryMeta(country);
+  const regionsTotal = meta.regions.length;
+
   setStatus('searching');
   setLastSearch({
-    location: 'All US states',
+    location: meta.label,
+    country: meta.code,
     categories,
     dateRange,
     nationwide: true,
@@ -216,14 +229,14 @@ export async function findLeadsSequential({
       const category = categories[i];
 
       // Check if we already searched this category recently
-      const alreadySearched = await checkIfCategorySearched(category);
+      const alreadySearched = await checkIfCategorySearched(category, country);
       if (alreadySearched) {
         setProgress({
           message: `Sequential search: skipping "${category}" (already searched in the last 7 days).`,
           found: 0,
           processed: 0,
-          statesDone: US_STATES.length,
-          statesTotal: US_STATES.length,
+          statesDone: regionsTotal,
+          statesTotal: regionsTotal,
         });
         // Short pause to let user see the message
         await new Promise(r => setTimeout(r, 2000));
@@ -238,17 +251,20 @@ export async function findLeadsSequential({
         found: 0,
         processed: 0,
         statesDone: 0,
-        statesTotal: US_STATES.length,
+        statesTotal: regionsTotal,
       });
 
-      // Clear previous category results from memory before starting new one
-      clearLeads();
+      // Clear previous category's leads only — status/lastSearch/progress
+      // were just set above for this category and must survive (clearLeads()
+      // would silently revert status to 'idle' for the rest of the scan).
+      clearLeadsArray();
 
       await findLeadsNationwide({
         category,
         dateRange,
         maxResultsPerState,
         analyze,
+        country,
         autoSave: true, // Handle separate storage
         skipInitialClear: true, // Don't clear what we just set up
         isSequential: true, // Don't set status to 'done' inside
@@ -310,6 +326,7 @@ export async function scrapeCategoryNationwide(category, {
   maxResultsPerState = DEFAULT_PER_STATE,
   targetLeadCount = DEFAULT_TARGET_LEADS,
   analyze = false,
+  country = 'US',
   browser,
   stopAtTarget = false,
   onProgress,
@@ -329,7 +346,7 @@ export async function scrapeCategoryNationwide(category, {
 
   const target = Math.max(1, Number(targetLeadCount) || DEFAULT_TARGET_LEADS);
   const perState = Math.max(4, Number(maxResultsPerState) || DEFAULT_PER_STATE);
-  const states = shuffleStates(US_STATES);
+  const states = shuffleStates(regionsForCountry(country));
 
   let businessesScraped = 0;
   let statesDone = 0;
@@ -370,6 +387,7 @@ export async function scrapeCategoryNationwide(category, {
         maxResults: perState,
         onProgress: onScraperMessage,
         browser,
+        country,
       });
     } catch (err) {
       onProgress?.({
@@ -435,7 +453,8 @@ export async function scrapeCategoryNationwide(category, {
   return {
     leads,
     meta: {
-      location: 'All US states',
+      location: countryMeta(country).label,
+      country: countryMeta(country).code,
       category,
       dateRange,
       nationwide: true,
@@ -463,6 +482,7 @@ export async function findLeadsNationwide({
   maxResultsPerState = DEFAULT_PER_STATE,
   targetLeadCount = DEFAULT_TARGET_LEADS,
   analyze = false,
+  country = 'US',
   autoSave = false,
   skipInitialClear = false,
   isSequential = false,
@@ -475,12 +495,14 @@ export async function findLeadsNationwide({
 
   const target = Math.max(1, Number(targetLeadCount) || DEFAULT_TARGET_LEADS);
   const perState = Math.max(4, Number(maxResultsPerState) || DEFAULT_PER_STATE);
+  const meta = countryMeta(country);
 
   if (!skipInitialClear) {
     clearLeads();
     setStatus('searching');
     setLastSearch({
-      location: 'All US states',
+      location: meta.label,
+      country: meta.code,
       category,
       dateRange,
       maxResultsPerState: perState,
@@ -491,21 +513,22 @@ export async function findLeadsNationwide({
   }
 
   setProgress({
-    message: `Nationwide search: scanning "${category}" across ${US_STATES.length} states...`,
+    message: `Nationwide search: scanning "${category}" across ${meta.regions.length} ${meta.name} regions...`,
     found: 0,
     processed: 0,
     statesDone: 0,
-    statesTotal: US_STATES.length,
+    statesTotal: meta.regions.length,
   });
 
   let businessesScraped = 0;
 
   try {
-    const { leads, meta } = await scrapeCategoryNationwide(category, {
+    const { leads, meta: resultMeta } = await scrapeCategoryNationwide(category, {
       dateRange,
       maxResultsPerState: perState,
       targetLeadCount: target,
       analyze,
+      country,
       stopAtTarget: false, // preserves this function's exact existing exhaustive-scan behavior
       scrapeLocationFn,
       onProgress: (evt) => {
@@ -513,20 +536,30 @@ export async function findLeadsNationwide({
           case 'state-start':
             setProgress({
               message: `[${evt.state}] Scanning ${category}... (${evt.statesDone}/${evt.statesTotal} states)`,
+              state: evt.state,
               found: getStore().leads.length,
               processed: businessesScraped,
-              statesDone: evt.statesDone,
+              statesDone: evt.statesDone - 1, // this state isn't done yet — matches multiCategoryOrchestrator.js
               statesTotal: evt.statesTotal,
             });
             break;
           case 'scraper-message': {
-            const scanMatch = evt.message.match(/\[(\d+)\/(\d+)\]/);
-            const currentScannedInState = scanMatch ? parseInt(scanMatch[1], 10) : 0;
-            setProgress({
+            // "Opening listing X/Y" fires on every listing attempted (success
+            // or not) — the only reliable live signal for how far into this
+            // region's listing pool the scan actually is. The old regex only
+            // matched the bracketed "Collected: ... [x/y]" message (which
+            // fires far less often), so `processed` sat frozen near 0 for
+            // most of a region's scan and never reflected real progress.
+            const openingMatch = evt.message.match(/^Opening listing (\d+)\/(\d+)/);
+            const progressUpdate = {
               message: `[${evt.state}] ${evt.message}`,
+              state: evt.state,
               found: getStore().leads.length,
-              processed: businessesScraped + currentScannedInState,
-            });
+            };
+            if (openingMatch) {
+              progressUpdate.processed = businessesScraped + parseInt(openingMatch[1], 10);
+            }
+            setProgress(progressUpdate);
             break;
           }
           case 'businesses-scraped':
@@ -535,6 +568,7 @@ export async function findLeadsNationwide({
           case 'state-error':
             setProgress({
               message: `[${evt.state}] ${evt.message}`,
+              state: evt.state,
               found: getStore().leads.length,
               processed: businessesScraped,
             });
@@ -562,11 +596,11 @@ export async function findLeadsNationwide({
       message: `Finished "${category}". Found ${leads.length} leads.`,
       found: leads.length,
       processed: businessesScraped,
-      statesDone: meta.statesSearched,
-      statesTotal: meta.statesTotal,
+      statesDone: resultMeta.statesSearched,
+      statesTotal: resultMeta.statesTotal,
     });
 
-    return { leads, meta };
+    return { leads, meta: resultMeta };
   } catch (err) {
     setStatus('error', err.message);
     setProgress({ message: `Error: ${err.message}` });

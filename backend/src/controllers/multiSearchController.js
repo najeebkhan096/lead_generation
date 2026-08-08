@@ -8,6 +8,7 @@ import {
   pauseCategory,
   resumeCategory,
 } from '../services/multiCategoryOrchestrator.js';
+import { countryMeta } from '../data/countries.js';
 
 /**
  * Starts a concurrent multi-category search in the background and returns
@@ -18,11 +19,13 @@ import {
 export async function startMultiSearch(req, res) {
   const {
     categories,
+    countries,
     concurrency = 4,
     dateRange = '30',
-    maxResultsPerState = 16,
+    maxResultsPerState = 150,
     targetLeadCount = 100,
     analyze = false,
+    country = 'US',
   } = req.body || {};
 
   if (!Array.isArray(categories) || !categories.length) {
@@ -32,17 +35,23 @@ export async function startMultiSearch(req, res) {
   try {
     const result = await startMultiCategorySearch({
       categories,
+      countries: Array.isArray(countries) && countries.length ? countries.map(String) : undefined,
       concurrency: Number(concurrency),
       dateRange: String(dateRange),
-      maxResultsPerState: Number(maxResultsPerState) || 16,
+      maxResultsPerState: Number(maxResultsPerState) || 150,
       targetLeadCount: Number(targetLeadCount) || 100,
       analyze: Boolean(analyze),
+      country: String(country),
     });
+
+    const scopeDesc = result.countries.length > 1
+      ? `${result.categories.length} categor${result.categories.length === 1 ? 'y' : 'ies'} × ${result.countries.map((c) => countryMeta(c).shortName).join(', ')}`
+      : `${result.categories.length} categories, ${countryMeta(result.countries[0]).label}`;
 
     return res.status(202).json({
       started: true,
       ...result,
-      message: `Multi-category search started: ${result.categories.length} categories, ${result.concurrency} workers.`,
+      message: `Multi-category search started: ${scopeDesc}, ${result.concurrency} workers.`,
     });
   } catch (err) {
     const status = err.status || 500;
@@ -64,9 +73,9 @@ export function cancelJob(_req, res) {
 }
 
 export function cancelOneCategory(req, res) {
-  const { category } = req.body || {};
+  const { category, country } = req.body || {};
   if (!category) return res.status(400).json({ error: 'category is required' });
-  const ok = cancelCategory(String(category));
+  const ok = cancelCategory(String(category), country ? String(country) : undefined);
   return res.json({ success: ok });
 }
 
@@ -81,15 +90,15 @@ export function resumeJob(_req, res) {
 }
 
 export function pauseOneCategory(req, res) {
-  const { category } = req.body || {};
+  const { category, country } = req.body || {};
   if (!category) return res.status(400).json({ error: 'category is required' });
-  const ok = pauseCategory(String(category));
+  const ok = pauseCategory(String(category), country ? String(country) : undefined);
   return res.json({ success: ok });
 }
 
 export function resumeOneCategory(req, res) {
-  const { category } = req.body || {};
+  const { category, country } = req.body || {};
   if (!category) return res.status(400).json({ error: 'category is required' });
-  const ok = resumeCategory(String(category));
+  const ok = resumeCategory(String(category), country ? String(country) : undefined);
   return res.json({ success: ok });
 }

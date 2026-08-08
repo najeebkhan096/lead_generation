@@ -8,17 +8,26 @@ import { chromium } from 'playwright';
 const USER_AGENT =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
 
-function buildSearchUrl(category, location) {
-  const query = encodeURIComponent(`${category} in ${location}`);
-  return `https://www.google.com/maps/search/${query}?hl=en&gl=us`;
+// Google's `gl` param biases which businesses/reviews it considers "local" —
+// leaving this hardcoded to `us` was skewing UK/Germany/Canada searches
+// toward US-relevant results instead of what's actually near the target city.
+const GL_BY_COUNTRY = { US: 'us', UK: 'gb', DE: 'de', CA: 'ca' };
+
+function glFor(country) {
+  return GL_BY_COUNTRY[String(country || 'US').toUpperCase()] || 'us';
 }
 
-function withEnglish(url) {
+function buildSearchUrl(category, location, country) {
+  const query = encodeURIComponent(`${category} in ${location}`);
+  return `https://www.google.com/maps/search/${query}?hl=en&gl=${glFor(country)}`;
+}
+
+function withEnglish(url, country) {
   if (!url) return url;
   try {
     const u = new URL(url, 'https://www.google.com');
     u.searchParams.set('hl', 'en');
-    u.searchParams.set('gl', 'us');
+    u.searchParams.set('gl', glFor(country));
     return u.toString();
   } catch {
     return url;
@@ -85,14 +94,38 @@ async function dismissConsent(page) {
   }
 }
 
-async function scrollResultsFeed(page, maxScrolls = 5) {
-  const feed = page.locator('div[role="feed"]').first();
+/**
+ * Scrolls the results feed until it stops growing (Google Maps lazy-loads
+ * more listings as you near the bottom) or `maxScrolls` is hit, instead of
+ * a blind fixed number of scrolls — a city with hundreds of matches keeps
+ * loading more, while a small town's feed stops early instead of wasting
+ * time scrolling past its actual end.
+ */
+async function scrollResultsFeed(page, { maxScrolls = 15, stallLimit = 2 } = {}) {
+  const feedSelector = 'div[role="feed"], .m67qEc, .section-layout.section-scrollbox';
+  const feed = page.locator(feedSelector).first();
   if (!(await feed.count())) return;
+
+  let lastHeight = 0;
+  let stalls = 0;
   for (let i = 0; i < maxScrolls; i++) {
-    await feed.evaluate((el) => {
-      el.scrollTop = el.scrollHeight;
-    }).catch(() => {});
-    await page.waitForTimeout(600);
+    const height = await feed
+      .evaluate((el) => {
+        el.scrollTop = el.scrollHeight;
+        return el.scrollHeight;
+      })
+      .catch(() => null);
+    if (height == null) break;
+
+    await page.waitForTimeout(1000);
+
+    if (height <= lastHeight) {
+      stalls += 1;
+      if (stalls >= stallLimit) break; // feed has stopped growing — fully loaded
+    } else {
+      stalls = 0;
+    }
+    lastHeight = height;
   }
 }
 
@@ -103,8 +136,10 @@ async function scrollResultsFeed(page, maxScrolls = 5) {
  *   categories) instead of launching + closing a fresh process per call.
  *   Each call still gets its own isolated `BrowserContext`, so callers
  *   sharing a browser never share cookies/storage with each other.
+ * @param {string} [opts.country] - country code (US/UK/DE/CA) so results
+ *   are biased toward that country instead of always the US.
  */
-export async function searchBusinesses(category, location, { maxResults = 10, onProgress, browser: sharedBrowser } = {}) {
+export async function searchBusinesses(category, location, { maxResults = 10, onProgress, browser: sharedBrowser, country = 'US' } = {}) {
   const ownsBrowser = !sharedBrowser;
   const browser = sharedBrowser || (await launchBrowser());
   const context = await createContext(browser);
@@ -113,7 +148,7 @@ export async function searchBusinesses(category, location, { maxResults = 10, on
 
   try {
     onProgress?.(`Opening Google Maps for "${category}" in ${location}...`);
-    await page.goto(buildSearchUrl(category, location), {
+    await page.goto(buildSearchUrl(category, location, country), {
       waitUntil: 'domcontentloaded',
       timeout: 60000,
     });
@@ -128,18 +163,9 @@ export async function searchBusinesses(category, location, { maxResults = 10, on
       return businesses;
     }
 
-    // Try to find the scrollable container more broadly
-    await page.evaluate(async () => {
-      const feed = document.querySelector('div[role="feed"]') ||
-                   document.querySelector('.m67qEc') ||
-                   document.querySelector('.section-layout.section-scrollbox');
-      if (feed) {
-        for (let i = 0; i < 3; i++) {
-          feed.scrollTop = feed.scrollHeight;
-          await new Promise(r => setTimeout(r, 800));
-        }
-      }
-    });
+    // Keep scrolling until the feed has enough loaded listings to satisfy
+    // maxResults (or stops growing) instead of a fixed handful of scrolls.
+    await scrollResultsFeed(page, { maxScrolls: Math.max(15, Math.ceil(maxResults / 2)) });
 
     const listings = await page.evaluate(() => {
       const seen = new Set();
@@ -173,7 +199,7 @@ export async function searchBusinesses(category, location, { maxResults = 10, on
           `Opening listing ${i + 1}/${limit}${listingName ? `: ${listingName}` : ''}...`
         );
         const business = await withTimeout(
-          scrapeOnePlace(placePage, listings[i].href, category, location),
+          scrapeOnePlace(placePage, listings[i].href, category, location, country),
           45000,
           `place ${i + 1}`
         );
@@ -197,11 +223,11 @@ export async function searchBusinesses(category, location, { maxResults = 10, on
   return businesses;
 }
 
-async function scrapeOnePlace(page, href, category, location) {
-  await page.goto(withEnglish(href), { waitUntil: 'domcontentloaded', timeout: 30000 });
+async function scrapeOnePlace(page, href, category, location, country) {
+  await page.goto(withEnglish(href, country), { waitUntil: 'domcontentloaded', timeout: 30000 });
   await page.waitForTimeout(1500);
   await dismissConsent(page);
-  return extractBusinessFromPlacePage(page, category, location);
+  return extractBusinessFromPlacePage(page, category, location, country);
 }
 
 async function textOrNull(page, selectors) {
@@ -218,7 +244,7 @@ async function textOrNull(page, selectors) {
   return null;
 }
 
-async function extractBusinessFromPlacePage(page, category, location) {
+async function extractBusinessFromPlacePage(page, category, location, country) {
   const name = await textOrNull(page, ['h1.DUwDvf', 'h1']);
   if (!name) return null;
 
@@ -271,7 +297,7 @@ async function extractBusinessFromPlacePage(page, category, location) {
     address: address || location,
     phone: phone || null,
     website: website || null,
-    mapsUrl: withEnglish(page.url()),
+    mapsUrl: withEnglish(page.url(), country),
     rating,
     totalReviews,
     reviews,

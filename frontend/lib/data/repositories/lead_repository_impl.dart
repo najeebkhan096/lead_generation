@@ -21,6 +21,7 @@ class LeadRepositoryImpl implements LeadRepository {
     int targetLeadCount = 100,
     bool analyze = false,
     bool autoSave = true,
+    String country = 'US',
     void Function(SearchProgress progress, List<Lead> liveLeads)? onProgress,
   }) {
     return _remote.searchLeads(
@@ -32,6 +33,7 @@ class LeadRepositoryImpl implements LeadRepository {
       targetLeadCount: targetLeadCount,
       analyze: analyze,
       autoSave: autoSave,
+      country: country,
       onProgress: onProgress,
     );
   }
@@ -66,6 +68,12 @@ class LeadRepositoryImpl implements LeadRepository {
       _remote.markLeadWhatsAppStatus(leadId, hasWhatsApp);
 
   @override
+  Future<void> deleteLead(String leadId) => _remote.deleteLead(leadId);
+
+  @override
+  Future<int> deleteLeadsByCategory(String category) => _remote.deleteLeadsByCategory(category);
+
+  @override
   Future<String> clearAllData() => _remote.clearAllData();
 
   @override
@@ -75,19 +83,23 @@ class LeadRepositoryImpl implements LeadRepository {
   @override
   Future<void> startMultiSearch({
     required List<String> categories,
+    List<String>? countries,
     int concurrency = 4,
     String dateRange = '30',
-    int maxResultsPerState = 16,
+    int maxResultsPerState = 150,
     int targetLeadCount = 100,
     bool analyze = false,
+    String country = 'US',
   }) =>
       _remote.startMultiSearch(
         categories: categories,
+        countries: countries,
         concurrency: concurrency,
         dateRange: dateRange,
         maxResultsPerState: maxResultsPerState,
         targetLeadCount: targetLeadCount,
         analyze: analyze,
+        country: country,
       );
 
   @override
@@ -97,8 +109,8 @@ class LeadRepositoryImpl implements LeadRepository {
   Future<void> cancelMultiSearchJob() => _remote.cancelMultiSearchJob();
 
   @override
-  Future<void> cancelMultiSearchCategory(String category) =>
-      _remote.cancelMultiSearchCategory(category);
+  Future<void> cancelMultiSearchCategory(String category, {String? country}) =>
+      _remote.cancelMultiSearchCategory(category, country: country);
 
   @override
   Future<void> pauseMultiSearchJob() => _remote.pauseMultiSearchJob();
@@ -107,12 +119,12 @@ class LeadRepositoryImpl implements LeadRepository {
   Future<void> resumeMultiSearchJob() => _remote.resumeMultiSearchJob();
 
   @override
-  Future<void> pauseMultiSearchCategory(String category) =>
-      _remote.pauseMultiSearchCategory(category);
+  Future<void> pauseMultiSearchCategory(String category, {String? country}) =>
+      _remote.pauseMultiSearchCategory(category, country: country);
 
   @override
-  Future<void> resumeMultiSearchCategory(String category) =>
-      _remote.resumeMultiSearchCategory(category);
+  Future<void> resumeMultiSearchCategory(String category, {String? country}) =>
+      _remote.resumeMultiSearchCategory(category, country: country);
 
   @override
   Future<WhatsAppWebStatus> getWhatsAppWebStatus() => _remote.getWhatsAppWebStatus();
@@ -126,6 +138,9 @@ class LeadRepositoryImpl implements LeadRepository {
   @override
   Future<void> startWhatsAppValidation(List<Map<String, String>> leads) =>
       _remote.startWhatsAppValidation(leads);
+
+  @override
+  Future<void> startWhatsAppAutoValidation() => _remote.startWhatsAppAutoValidation();
 
   @override
   Future<WhatsAppValidationSnapshot> getWhatsAppValidationStatus() =>
