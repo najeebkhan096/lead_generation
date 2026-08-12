@@ -2,11 +2,14 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../domain/entities/multi_search_snapshot.dart';
 import '../../domain/repositories/lead_repository.dart';
 import '../utils/duration_format.dart';
+import '../utils/web_download.dart';
+import 'excel_archive_page.dart';
 
 const _pollInterval = Duration(milliseconds: 1500);
 
@@ -25,6 +28,7 @@ class _MultiScanPageState extends State<MultiScanPage> {
   MultiSearchSnapshot? _snapshot;
   String? _error;
   bool _loading = true;
+  bool _exporting = false;
   final Set<String> _expanded = {};
 
   LeadRepository get _repo => context.read<LeadRepository>();
@@ -51,7 +55,11 @@ class _MultiScanPageState extends State<MultiScanPage> {
         _error = null;
         _loading = false;
       });
-      if (snap.status == 'done') {
+      // exportOnly jobs keep building/uploading the Excel archive for a
+      // little while after status flips to 'done' — keep polling until
+      // that finishes too, or the archive card would be stuck spinning.
+      final archiveSettled = !snap.exportOnly || snap.archiveStatus == 'done' || snap.archiveStatus == 'failed';
+      if (snap.status == 'done' && archiveSettled) {
         _timer?.cancel();
       }
     } catch (e) {
@@ -73,6 +81,26 @@ class _MultiScanPageState extends State<MultiScanPage> {
       );
     }
     await _poll();
+  }
+
+  Future<void> _exportExcel() async {
+    if (_exporting) return;
+    setState(() => _exporting = true);
+    try {
+      final bytes = await _repo.exportMultiExcel();
+      downloadBytesFile(
+        'scan-results.xlsx',
+        bytes,
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+      );
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
   }
 
   Future<void> _confirmCancelAll() async {
@@ -120,6 +148,19 @@ class _MultiScanPageState extends State<MultiScanPage> {
               tooltip: 'Cancel job',
               icon: const Icon(AppIcons.close),
               onPressed: _confirmCancelAll,
+            ),
+          ],
+          if (isDone && !(snap?.exportOnly ?? false) && (overall?.totalLeads ?? 0) > 0) ...[
+            TextButton.icon(
+              onPressed: _exporting ? null : _exportExcel,
+              icon: _exporting
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(AppIcons.download, size: 18),
+              label: Text(_exporting ? 'Exporting…' : 'Export to Excel'),
             ),
           ],
           IconButton(tooltip: 'Refresh', icon: const Icon(AppIcons.refresh), onPressed: _poll),
@@ -251,8 +292,16 @@ class _DashboardBody extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       if (snapshot.finalStats != null) _FinalStatsCard(stats: snapshot.finalStats!),
+                      if (snapshot.exportOnly) ...[
+                        _ArchiveStatusCard(snapshot: snapshot),
+                        const SizedBox(height: 24),
+                      ],
                       if (snapshot.overall != null) ...[
                         _OverallCard(overall: snapshot.overall!, status: snapshot.status),
+                        const SizedBox(height: 24),
+                      ],
+                      if (snapshot.categories.isNotEmpty) ...[
+                        _LeadsBarChart(categories: snapshot.categories),
                         const SizedBox(height: 24),
                       ],
                       LayoutBuilder(
@@ -401,6 +450,103 @@ class _OverallCard extends StatelessWidget {
   }
 }
 
+/// Shown in place of the normal "Export to Excel" flow for `exportOnly`
+/// jobs — these never touch Firestore, so their only output is the
+/// archive built automatically once every category finishes.
+class _ArchiveStatusCard extends StatelessWidget {
+  const _ArchiveStatusCard({required this.snapshot});
+
+  final MultiSearchSnapshot snapshot;
+
+  @override
+  Widget build(BuildContext context) {
+    final status = snapshot.archiveStatus;
+    final result = snapshot.archiveResult;
+
+    if (status == 'done' && result != null) {
+      return Container(
+        padding: const EdgeInsets.all(22),
+        decoration: BoxDecoration(color: AppTheme.sage100, borderRadius: BorderRadius.circular(AppTheme.radiusCard)),
+        child: Row(
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: const BoxDecoration(color: AppTheme.sage500, shape: BoxShape.circle),
+              child: const Icon(AppIcons.checkCircle, color: AppTheme.surface, size: 22),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Excel archive ready', style: Theme.of(context).textTheme.titleMedium?.copyWith(color: AppTheme.sage800)),
+                  const SizedBox(height: 2),
+                  Text(
+                    '${result.fileName} · ${result.totalLeads} leads',
+                    style: const TextStyle(fontSize: 12.5, color: AppTheme.sage700),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            OutlinedButton.icon(
+              onPressed: () => launchUrl(Uri.parse(result.downloadUrl)),
+              icon: const Icon(AppIcons.download, size: 16),
+              label: const Text('Download'),
+            ),
+            const SizedBox(width: 8),
+            FilledButton.icon(
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const ExcelArchivePage()),
+              ),
+              icon: const Icon(AppIcons.inbox, size: 16),
+              label: const Text('View Archive'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (status == 'failed') {
+      return Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(color: AppTheme.accent100, borderRadius: BorderRadius.circular(AppTheme.radiusCard)),
+        child: Row(
+          children: [
+            const Icon(AppIcons.alert, color: AppTheme.accent700, size: 22),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Excel archive upload failed: ${snapshot.archiveError ?? 'unknown error'}',
+                style: const TextStyle(color: AppTheme.accent700, fontWeight: FontWeight.w600, fontSize: 13),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // pending | building | null (job still running)
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(color: AppTheme.neutral100, borderRadius: BorderRadius.circular(AppTheme.radiusCard)),
+      child: Row(
+        children: [
+          const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2.2)),
+          const SizedBox(width: 14),
+          Text(
+            snapshot.status == 'done' ? 'Building Excel archive…' : 'Excel archive will be built once the scan finishes.',
+            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: AppTheme.subtle),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _StatTile extends StatelessWidget {
   const _StatTile(this.label, this.value, this.icon);
 
@@ -464,6 +610,177 @@ class _Chip extends StatelessWidget {
       return (AppTheme.accent700, AppTheme.accent100, 'Failed');
     case CategoryScanStatus.cancelled:
       return (AppTheme.neutral600, AppTheme.neutral100, 'Cancelled');
+  }
+}
+
+/// Bar color for the leads-found chart — a reduced 3-tier status encoding
+/// (running / completed / other) rather than all 8 [CategoryScanStatus]
+/// values: this app's muted palette doesn't separate that many hues well
+/// under colorblind simulation, so color here is always a secondary cue —
+/// every bar also carries a status icon and text label (see
+/// [_LeadsBarRow]), never relied on alone.
+Color _barColorForStatus(CategoryScanStatus status) {
+  if (status.isRunning) return AppTheme.accent500;
+  if (status == CategoryScanStatus.completed) return AppTheme.sage600;
+  return AppTheme.neutral400;
+}
+
+IconData _barStatusIcon(CategoryScanStatus status) {
+  if (status.isRunning) return AppIcons.zap;
+  if (status == CategoryScanStatus.completed) return AppIcons.checkCircle;
+  if (status == CategoryScanStatus.failed) return AppIcons.alert;
+  if (status == CategoryScanStatus.cancelled) return AppIcons.close;
+  return AppIcons.clock; // queued
+}
+
+/// Live-updating horizontal bar chart: one bar per (category, country) scan,
+/// length proportional to leads found so far, redrawn every poll (~1.5s) as
+/// the snapshot streams in. Row order is stable (queue order) rather than
+/// re-sorted by value each poll, so bars don't jump around while running.
+class _LeadsBarChart extends StatelessWidget {
+  const _LeadsBarChart({required this.categories});
+
+  final List<CategoryProgress> categories;
+
+  @override
+  Widget build(BuildContext context) {
+    final maxLeads = categories.fold<int>(
+      1,
+      (m, c) => c.leadsCollected > m ? c.leadsCollected : m,
+    );
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(color: AppTheme.surface, borderRadius: BorderRadius.circular(AppTheme.radiusCard)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Wrap(
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 16,
+            runSpacing: 8,
+            children: [
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(AppIcons.barChart, size: 16, color: AppTheme.accent700),
+                  const SizedBox(width: 8),
+                  Text('Leads found', style: Theme.of(context).textTheme.titleMedium),
+                ],
+              ),
+              const _ChartLegendItem(icon: AppIcons.zap, color: AppTheme.accent500, label: 'Running'),
+              const _ChartLegendItem(icon: AppIcons.checkCircle, color: AppTheme.sage600, label: 'Completed'),
+              const _ChartLegendItem(icon: AppIcons.clock, color: AppTheme.neutral400, label: 'Queued / stopped'),
+            ],
+          ),
+          const SizedBox(height: 18),
+          for (final c in categories) _LeadsBarRow(progress: c, maxLeads: maxLeads),
+        ],
+      ),
+    );
+  }
+}
+
+class _ChartLegendItem extends StatelessWidget {
+  const _ChartLegendItem({required this.icon, required this.color, required this.label});
+
+  final IconData icon;
+  final Color color;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 12, color: color),
+        const SizedBox(width: 5),
+        Text(label, style: const TextStyle(fontSize: 11, color: AppTheme.faint, fontWeight: FontWeight.w600)),
+      ],
+    );
+  }
+}
+
+class _LeadsBarRow extends StatelessWidget {
+  const _LeadsBarRow({required this.progress, required this.maxLeads});
+
+  final CategoryProgress progress;
+  final int maxLeads;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = _barColorForStatus(progress.status);
+    final fraction = maxLeads > 0 ? (progress.leadsCollected / maxLeads).clamp(0.0, 1.0) : 0.0;
+
+    return Tooltip(
+      message: '${progress.label}\n'
+          '${progress.leadsCollected} leads · ${progress.businessesProcessed} businesses scanned\n'
+          '${progress.statesDone}/${progress.statesTotal} states',
+      waitDuration: const Duration(milliseconds: 300),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 5),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 176,
+              child: Row(
+                children: [
+                  Icon(_barStatusIcon(progress.status), size: 11, color: color),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      progress.label,
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.ink),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  return Stack(
+                    alignment: Alignment.centerLeft,
+                    children: [
+                      Container(
+                        height: 14,
+                        width: constraints.maxWidth,
+                        decoration: BoxDecoration(
+                          color: AppTheme.neutral100,
+                          borderRadius: BorderRadius.circular(AppTheme.radiusPill),
+                        ),
+                      ),
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 400),
+                        curve: Curves.easeOut,
+                        height: 14,
+                        width: constraints.maxWidth * fraction,
+                        decoration: BoxDecoration(
+                          color: color,
+                          borderRadius: BorderRadius.circular(AppTheme.radiusPill),
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ),
+            const SizedBox(width: 10),
+            SizedBox(
+              width: 36,
+              child: Text(
+                '${progress.leadsCollected}',
+                textAlign: TextAlign.right,
+                style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: AppTheme.ink),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 

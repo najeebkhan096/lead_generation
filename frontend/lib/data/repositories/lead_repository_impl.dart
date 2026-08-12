@@ -1,6 +1,12 @@
+import 'dart:typed_data';
+
 import '../../domain/entities/lead.dart';
 import '../../domain/entities/multi_search_snapshot.dart';
 import '../../domain/entities/search_progress.dart';
+import '../../domain/entities/excel_archive.dart';
+import '../../domain/entities/sale.dart';
+import '../../domain/entities/sales_user.dart';
+import '../../domain/entities/watchlist_entry.dart';
 import '../../domain/entities/whatsapp_check_result.dart';
 import '../../domain/entities/whatsapp_web_status.dart';
 import '../../domain/repositories/lead_repository.dart';
@@ -58,6 +64,12 @@ class LeadRepositoryImpl implements LeadRepository {
   Future<String> exportJson() => _remote.exportJson();
 
   @override
+  Future<Uint8List> exportExcel() => _remote.exportExcel();
+
+  @override
+  Future<Uint8List> exportMultiExcel() => _remote.exportMultiExcel();
+
+  @override
   Future<String> saveToDatabase() => _remote.saveToDatabase();
 
   @override
@@ -89,6 +101,7 @@ class LeadRepositoryImpl implements LeadRepository {
     int maxResultsPerState = 150,
     int targetLeadCount = 100,
     bool analyze = false,
+    bool exportOnly = false,
     String country = 'US',
   }) =>
       _remote.startMultiSearch(
@@ -99,6 +112,7 @@ class LeadRepositoryImpl implements LeadRepository {
         maxResultsPerState: maxResultsPerState,
         targetLeadCount: targetLeadCount,
         analyze: analyze,
+        exportOnly: exportOnly,
         country: country,
       );
 
@@ -140,6 +154,10 @@ class LeadRepositoryImpl implements LeadRepository {
       _remote.startWhatsAppValidation(leads);
 
   @override
+  Future<void> validateExternalLeads(List<Map<String, String>> leads) =>
+      _remote.validateExternalLeads(leads);
+
+  @override
   Future<void> startWhatsAppAutoValidation() => _remote.startWhatsAppAutoValidation();
 
   @override
@@ -148,4 +166,130 @@ class LeadRepositoryImpl implements LeadRepository {
 
   @override
   Future<void> cancelWhatsAppValidation() => _remote.cancelWhatsAppValidation();
+
+  @override
+  Future<WatchlistEntry> addWatchlistEntry({
+    required String url,
+    String? name,
+    String country = 'US',
+    String? assignedTo,
+    String? assignedToName,
+  }) =>
+      _remote.addWatchlistEntry(
+        url: url,
+        name: name,
+        country: country,
+        assignedTo: assignedTo,
+        assignedToName: assignedToName,
+      );
+
+  @override
+  Future<List<WatchlistEntry>> listWatchlist() => _remote.listWatchlist();
+
+  @override
+  Future<void> deleteWatchlistEntry(String id) => _remote.deleteWatchlistEntry(id);
+
+  @override
+  Future<WatchlistEntry> assignWatchlistEntry(
+    String id, {
+    String? assignedTo,
+    String? assignedToName,
+  }) =>
+      _remote.assignWatchlistEntry(id, assignedTo: assignedTo, assignedToName: assignedToName);
+
+  @override
+  Future<List<SalesUser>> listSalesmen() => _remote.listSalesmen();
+
+  @override
+  Future<List<WatchlistScanResult>> scanWatchlist({String dateRange = '30'}) =>
+      _remote.scanWatchlist(dateRange: dateRange);
+
+  @override
+  Future<List<ExcelArchive>> listExcelArchives() => _remote.listExcelArchives();
+
+  @override
+  Future<List<ExcelArchiveSheet>> getExcelArchiveData(String id) => _remote.getExcelArchiveData(id);
+
+  @override
+  Future<void> deleteExcelArchive(String id) => _remote.deleteExcelArchive(id);
+
+  @override
+  Future<List<Lead>> getExcelArchiveLeads(String id) => _remote.getExcelArchiveLeads(id);
+
+  @override
+  Future<ExcelArchive> uploadValidatedArchive({
+    required List<Map<String, dynamic>> sheets,
+    String? sourceArchiveId,
+    String? sourceFileName,
+    List<String>? countries,
+  }) =>
+      _remote.uploadValidatedArchive(
+        sheets: sheets,
+        sourceArchiveId: sourceArchiveId,
+        sourceFileName: sourceFileName,
+        countries: countries,
+      );
+
+  @override
+  Future<List<ExcelArchive>> listValidatedArchives() => _remote.listValidatedArchives();
+
+  @override
+  Future<List<ExcelArchiveSheet>> getValidatedArchiveData(String id) => _remote.getValidatedArchiveData(id);
+
+  @override
+  Future<List<Lead>> getValidatedArchiveLeads(String id) => _remote.getValidatedArchiveLeads(id);
+
+  @override
+  Future<void> deleteValidatedArchive(String id) => _remote.deleteValidatedArchive(id);
+
+  @override
+  Future<Sale> createSale({
+    required String businessName,
+    String? reviewLink,
+    String? salesmanId,
+    String? salesmanName,
+    double price = 0,
+    double salesmanPrice = 0,
+    SaleStatus status = SaleStatus.orderPlaced,
+  }) =>
+      _remote.createSale(
+        businessName: businessName,
+        reviewLink: reviewLink,
+        salesmanId: salesmanId,
+        salesmanName: salesmanName,
+        price: price,
+        salesmanPrice: salesmanPrice,
+        status: status,
+      );
+
+  @override
+  Future<List<Sale>> listSales({String? salesmanId}) => _remote.listSales(salesmanId: salesmanId);
+
+  @override
+  Future<Sale> updateSale(
+    String id, {
+    String? businessName,
+    String? reviewLink,
+    String? salesmanId,
+    String? salesmanName,
+    double? price,
+    double? salesmanPrice,
+    SaleStatus? status,
+  }) =>
+      _remote.updateSale(
+        id,
+        businessName: businessName,
+        reviewLink: reviewLink,
+        salesmanId: salesmanId,
+        salesmanName: salesmanName,
+        price: price,
+        salesmanPrice: salesmanPrice,
+        status: status,
+      );
+
+  @override
+  Future<void> deleteSale(String id) => _remote.deleteSale(id);
+
+  @override
+  Future<SalesStats> getSalesStats({String? salesmanId}) => _remote.getSalesStats(salesmanId: salesmanId);
 }

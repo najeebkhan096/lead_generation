@@ -580,8 +580,15 @@ class _SafetyStatusPanel extends StatelessWidget {
 
   final WhatsAppSafetyStatus safety;
 
+  // Backend no longer enforces a real daily cap (it's a very large practical
+  // ceiling so int parsing/arithmetic stays simple) — treat anything above
+  // this as "unlimited" for display purposes rather than showing a
+  // meaningless "12 / 1000000" count and progress bar.
+  static const _uncappedThreshold = 100000;
+
   @override
   Widget build(BuildContext context) {
+    final uncapped = safety.dailyCap >= _uncappedThreshold;
     final usedFraction = safety.dailyCap > 0 ? (safety.checksToday / safety.dailyCap).clamp(0.0, 1.0) : 0.0;
 
     return Container(
@@ -598,21 +605,25 @@ class _SafetyStatusPanel extends StatelessWidget {
               const Icon(AppIcons.shieldCheck, size: 15, color: AppTheme.neutral600),
               const SizedBox(width: 8),
               Text(
-                '${safety.checksToday} / ${safety.dailyCap} checks used today',
+                uncapped
+                    ? '${safety.checksToday} checks today · no daily limit'
+                    : '${safety.checksToday} / ${safety.dailyCap} checks used today',
                 style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: AppTheme.neutral800),
               ),
             ],
           ),
-          const SizedBox(height: 8),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(4),
-            child: LinearProgressIndicator(
-              value: usedFraction,
-              minHeight: 5,
-              backgroundColor: AppTheme.neutral200,
-              valueColor: AlwaysStoppedAnimation(usedFraction >= 1 ? AppTheme.danger : AppTheme.sage500),
+          if (!uncapped) ...[
+            const SizedBox(height: 8),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: LinearProgressIndicator(
+                value: usedFraction,
+                minHeight: 5,
+                backgroundColor: AppTheme.neutral200,
+                valueColor: AlwaysStoppedAnimation(usedFraction >= 1 ? AppTheme.danger : AppTheme.sage500),
+              ),
             ),
-          ),
+          ],
           if (safety.warmUpActive) ...[
             const SizedBox(height: 10),
             _SafetyBadge(

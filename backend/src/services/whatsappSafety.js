@@ -32,8 +32,11 @@ import { Mutex } from '../utils/asyncMutex.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const STORE_PATH = path.resolve(__dirname, '../../data/whatsapp-safety.json');
 
-const DAILY_CAP = 1000;
-const WARMUP_DAILY_CAP = 1000;
+// No daily cap — set high enough to never bind while staying a real,
+// JSON-serializable number (an actual Infinity turns into `null` over the
+// wire, which the frontend's `int` parsing would treat as 0 remaining).
+const DAILY_CAP = 1_000_000;
+const WARMUP_DAILY_CAP = 1_000_000;
 const WARMUP_DAYS = 0;
 
 const NORMAL_DELAY_MS = [2000, 5000];

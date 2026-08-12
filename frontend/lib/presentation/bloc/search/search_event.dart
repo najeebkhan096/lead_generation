@@ -56,6 +56,10 @@ class ExportJsonRequested extends SearchEvent {
   const ExportJsonRequested();
 }
 
+class ExportExcelRequested extends SearchEvent {
+  const ExportExcelRequested();
+}
+
 class SaveToDatabaseRequested extends SearchEvent {
   const SaveToDatabaseRequested();
 }

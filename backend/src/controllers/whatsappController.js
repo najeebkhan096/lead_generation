@@ -1,4 +1,4 @@
-import { normalizeUsPhone, waMeLink } from '../services/whatsappChecker.js';
+import { normalizePhone, waMeLink } from '../services/whatsappChecker.js';
 
 /**
  * POST /api/whatsapp/check — validate a phone number's format and build its
@@ -11,11 +11,12 @@ import { normalizeUsPhone, waMeLink } from '../services/whatsappChecker.js';
  */
 export function checkWhatsAppNumber(req, res) {
   const phone = (req.body?.phone ?? req.query.phone ?? '').toString().trim();
+  const country = (req.body?.country ?? req.query.country ?? 'US').toString();
   if (!phone) {
     return res.status(400).json({ error: 'Phone number is required', validFormat: false });
   }
 
-  const e164 = normalizeUsPhone(phone);
+  const e164 = normalizePhone(phone, country);
   if (!e164) {
     return res.status(400).json({ error: 'Enter a valid phone number', validFormat: false });
   }

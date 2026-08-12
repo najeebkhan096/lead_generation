@@ -21,6 +21,8 @@ class ApiConstants {
   static const String multiSearchResumeCategory = '/api/search/multi/resume-category';
   static const String exportCsv = '/api/export/csv';
   static const String exportJson = '/api/export/json';
+  static const String exportXlsx = '/api/export/xlsx';
+  static const String exportXlsxMulti = '/api/export/xlsx/multi';
   static const String analyze = '/api/search/analyze';
   static const String saveToDb = '/api/db/save';
   static const String savedLeads = '/api/db/leads';
@@ -33,7 +35,30 @@ class ApiConstants {
   static const String whatsAppWebConnect = '/api/whatsapp-web/connect';
   static const String whatsAppWebDisconnect = '/api/whatsapp-web/disconnect';
   static const String whatsAppWebValidate = '/api/whatsapp-web/validate';
+  static const String whatsAppWebValidateList = '/api/whatsapp-web/validate-list';
   static const String whatsAppWebValidateAuto = '/api/whatsapp-web/validate-auto';
   static const String whatsAppWebValidateStatus = '/api/whatsapp-web/validate/status';
   static const String whatsAppWebValidateCancel = '/api/whatsapp-web/validate/cancel';
+
+  static const String watchlist = '/api/watchlist';
+  static const String watchlistScan = '/api/watchlist/scan';
+  static String watchlistDelete(String id) => '/api/watchlist/$id';
+  static String watchlistAssign(String id) => '/api/watchlist/$id/assign';
+
+  static const String users = '/api/users';
+
+  static const String excelArchives = '/api/excel-scans';
+  static String excelArchiveData(String id) => '/api/excel-scans/$id/data';
+  static String excelArchiveLeads(String id) => '/api/excel-scans/$id/leads';
+  static String excelArchiveDelete(String id) => '/api/excel-scans/$id';
+
+  static const String whatsappValidatedScans = '/api/whatsapp-validated-scans';
+  static String whatsappValidatedData(String id) => '/api/whatsapp-validated-scans/$id/data';
+  static String whatsappValidatedLeads(String id) => '/api/whatsapp-validated-scans/$id/leads';
+  static String whatsappValidatedDelete(String id) => '/api/whatsapp-validated-scans/$id';
+
+  static const String sales = '/api/sales';
+  static const String salesStats = '/api/sales/stats';
+  static String saleUpdate(String id) => '/api/sales/$id';
+  static String saleDelete(String id) => '/api/sales/$id';
 }

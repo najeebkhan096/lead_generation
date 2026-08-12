@@ -4,6 +4,7 @@ import 'saved_businesses_page.dart';
 import 'whatsapp_leads_page.dart';
 import 'favorites_page.dart';
 import 'deals_page.dart';
+import 'excel_archive_page.dart';
 import 'profile_page.dart';
 
 class MainNavigationPage extends StatefulWidget {
@@ -21,6 +22,7 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
     WhatsAppLeadsPage(),
     FavoritesPage(),
     DealsPage(),
+    ExcelArchivePage(),
     ProfilePage(),
   ];
 
@@ -51,6 +53,10 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
           NavigationDestination(
             icon: Icon(AppIcons.handshake),
             label: 'Deals',
+          ),
+          NavigationDestination(
+            icon: Icon(AppIcons.inbox),
+            label: 'Excel',
           ),
           NavigationDestination(
             icon: Icon(AppIcons.user),

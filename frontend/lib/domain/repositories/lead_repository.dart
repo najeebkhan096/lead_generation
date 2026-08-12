@@ -1,6 +1,12 @@
+import 'dart:typed_data';
+
 import '../entities/lead.dart';
 import '../entities/multi_search_snapshot.dart';
 import '../entities/search_progress.dart';
+import '../entities/excel_archive.dart';
+import '../entities/sale.dart';
+import '../entities/sales_user.dart';
+import '../entities/watchlist_entry.dart';
 import '../entities/whatsapp_check_result.dart';
 import '../entities/whatsapp_web_status.dart';
 
@@ -32,6 +38,13 @@ abstract class LeadRepository {
 
   Future<String> exportJson();
 
+  /// The current single search's leads as an .xlsx workbook (one sheet).
+  Future<Uint8List> exportExcel();
+
+  /// The most recent multi-category (and/or multi-country) scan as one
+  /// .xlsx workbook with one sheet per category.
+  Future<Uint8List> exportMultiExcel();
+
   Future<String> saveToDatabase();
 
   Future<List<Lead>> getSavedBusinesses();
@@ -62,6 +75,10 @@ abstract class LeadRepository {
   /// [countries] with more than one entry runs every category against
   /// every country concurrently — "search this category in all countries."
   /// Omit it for the ordinary single-country multi-category search.
+  /// [exportOnly] skips per-lead Firestore writes entirely — leads are
+  /// packaged into one .xlsx workbook (one sheet per category) and
+  /// uploaded to Firebase Storage once the job finishes instead. See
+  /// [MultiSearchSnapshot.archiveResult].
   Future<void> startMultiSearch({
     required List<String> categories,
     List<String>? countries,
@@ -70,6 +87,7 @@ abstract class LeadRepository {
     int maxResultsPerState = 150,
     int targetLeadCount = 100,
     bool analyze = false,
+    bool exportOnly = false,
     String country = 'US',
   });
 
@@ -103,10 +121,110 @@ abstract class LeadRepository {
   /// Capped server-side at 100 leads per run.
   Future<void> startWhatsAppValidation(List<Map<String, String>> leads);
 
+  /// Same as [startWhatsAppValidation] but for leads that were never saved
+  /// to Firestore (e.g. extracted from an Excel archive) — results are
+  /// read back from [getWhatsAppValidationStatus] and correlated by the
+  /// `id` each lead was sent with, not written to any document.
+  Future<void> validateExternalLeads(List<Map<String, String>> leads);
+
   /// Automatically discovers and validates unchecked leads from Firestore.
   Future<void> startWhatsAppAutoValidation();
 
   Future<WhatsAppValidationSnapshot> getWhatsAppValidationStatus();
 
   Future<void> cancelWhatsAppValidation();
+
+  /// Adds a business URL to the manually-curated watchlist (idempotent per
+  /// URL server-side — adding the same URL twice returns the existing entry).
+  Future<WatchlistEntry> addWatchlistEntry({
+    required String url,
+    String? name,
+    String country = 'US',
+    String? assignedTo,
+    String? assignedToName,
+  });
+
+  Future<List<WatchlistEntry>> listWatchlist();
+
+  /// Removes a business from the watchlist. Irreversible.
+  Future<void> deleteWatchlistEntry(String id);
+
+  /// Reassigns (or clears, passing both null) which salesman a watchlist
+  /// entry is assigned to.
+  Future<WatchlistEntry> assignWatchlistEntry(
+    String id, {
+    String? assignedTo,
+    String? assignedToName,
+  });
+
+  /// Salesmen (mobile app users) available to assign watchlist businesses to.
+  Future<List<SalesUser>> listSalesmen();
+
+  /// Re-scans every watchlisted business now and returns which ones picked
+  /// up new reviews since the last scan.
+  /// [dateRange] (days, e.g. '30'/'45'/'60') bounds how far back a review
+  /// can be and still count as "new" — older reviews are ignored entirely.
+  Future<List<WatchlistScanResult>> scanWatchlist({String dateRange = '30'});
+
+  /// Every Excel-archived scan (see `exportOnly` on [startMultiSearch]),
+  /// newest first.
+  Future<List<ExcelArchive>> listExcelArchives();
+
+  /// Reads one archive's workbook back into JSON for display — one entry
+  /// per worksheet (category).
+  Future<List<ExcelArchiveSheet>> getExcelArchiveData(String id);
+
+  /// Deletes an archive from Storage and its Firestore metadata. Irreversible.
+  Future<void> deleteExcelArchive(String id);
+
+  /// Extracts every business in an archive as [Lead]s for display — these
+  /// were never saved to Firestore, so [Lead.dbId] is always null.
+  Future<List<Lead>> getExcelArchiveLeads(String id);
+
+  /// Uploads WhatsApp-validated leads (one sheet per category) as a new
+  /// .xlsx archive in the separate `whatsappValidatedScans` collection.
+  Future<ExcelArchive> uploadValidatedArchive({
+    required List<Map<String, dynamic>> sheets,
+    String? sourceArchiveId,
+    String? sourceFileName,
+    List<String>? countries,
+  });
+
+  Future<List<ExcelArchive>> listValidatedArchives();
+
+  Future<List<ExcelArchiveSheet>> getValidatedArchiveData(String id);
+
+  Future<List<Lead>> getValidatedArchiveLeads(String id);
+
+  Future<void> deleteValidatedArchive(String id);
+
+  Future<Sale> createSale({
+    required String businessName,
+    String? reviewLink,
+    String? salesmanId,
+    String? salesmanName,
+    double price = 0,
+    double salesmanPrice = 0,
+    SaleStatus status = SaleStatus.orderPlaced,
+  });
+
+  /// [salesmanId] filters to one salesman's sales; omit for everyone's.
+  Future<List<Sale>> listSales({String? salesmanId});
+
+  Future<Sale> updateSale(
+    String id, {
+    String? businessName,
+    String? reviewLink,
+    String? salesmanId,
+    String? salesmanName,
+    double? price,
+    double? salesmanPrice,
+    SaleStatus? status,
+  });
+
+  Future<void> deleteSale(String id);
+
+  /// [salesmanId] scopes the dashboard to one salesman; omit for the
+  /// full-team rollup.
+  Future<SalesStats> getSalesStats({String? salesmanId});
 }

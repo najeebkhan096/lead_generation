@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../domain/entities/search_progress.dart';
@@ -11,6 +13,7 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
     on<SearchCleared>(_onCleared);
     on<ExportCsvRequested>(_onExportCsv);
     on<ExportJsonRequested>(_onExportJson);
+    on<ExportExcelRequested>(_onExportExcel);
     on<SaveToDatabaseRequested>(_onSaveToDatabase);
     on<SearchResumeChecked>(_onResumeChecked);
   }
@@ -20,6 +23,10 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
   /// Last exported payload for web download helper.
   String? lastExportContent;
   String? lastExportFilename;
+
+  /// Last exported binary payload (.xlsx) — separate from [lastExportContent]
+  /// since that's text-only.
+  Uint8List? lastExportBytes;
 
   Future<void> _onSubmitted(
     SearchSubmitted event,
@@ -214,6 +221,23 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
       lastExportContent = json;
       lastExportFilename = 'leads.json';
       emit(state.copyWith(exportMessage: 'JSON ready (${state.leads.length} leads)'));
+    } catch (e) {
+      emit(
+        state.copyWith(
+          exportMessage: e.toString().replaceFirst('Exception: ', ''),
+        ),
+      );
+    }
+  }
+
+  Future<void> _onExportExcel(
+    ExportExcelRequested event,
+    Emitter<SearchState> emit,
+  ) async {
+    try {
+      final bytes = await _repository.exportExcel();
+      lastExportBytes = bytes;
+      emit(state.copyWith(exportMessage: 'Excel ready (${state.leads.length} leads)'));
     } catch (e) {
       emit(
         state.copyWith(

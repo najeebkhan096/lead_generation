@@ -151,39 +151,52 @@ export async function saveLeadsToFirebase(leadsInput) {
   };
 }
 
-export async function listFirebaseLeads({ limit = 200 } = {}) {
+/** Firestore doc -> the API/export lead shape, shared by every lead-listing query. */
+function docToLead(doc) {
+  const d = doc.data();
+  return {
+    dbId: doc.id,
+    id: d.externalId || doc.id,
+    business: d.business,
+    category: d.category,
+    location: d.location,
+    address: d.address,
+    phone: d.phone,
+    website: d.website,
+    mapsUrl: d.mapsUrl,
+    rating: d.rating,
+    totalReviews: d.totalReviews,
+    hasWhatsApp: d.hasWhatsApp === true,
+    waLink: d.waLink,
+    badReview: d.badReview || { stars: 1, text: '', date: 'Unknown' },
+    searchId: d.searchId,
+    savedAt: d.updatedAt?.toDate?.()?.toISOString?.() || null,
+    whatsAppCheckedAt: d.whatsAppCheckedAt?.toDate?.()?.toISOString?.() || null,
+  };
+}
+
+export async function listFirebaseLeads({ limit = 500 } = {}) {
   const db = getFirestore();
-  const lim = Math.min(Number(limit) || 200, 500);
+  // Was hard-capped at 500 regardless of what callers asked for — since
+  // the Dashboard and Leads page both request as many as they can to
+  // compute accurate totals, that silently truncated real data (e.g.
+  // showing "500 leads" when there were actually 3,000+).
+  const lim = Math.min(Number(limit) || 500, 5000);
   const snap = await db
     .collection('leads')
     .orderBy('updatedAt', 'desc')
     .limit(lim)
     .get();
 
-  const leads = snap.docs.map((doc) => {
-    const d = doc.data();
-    return {
-      dbId: doc.id,
-      id: d.externalId || doc.id,
-      business: d.business,
-      category: d.category,
-      location: d.location,
-      address: d.address,
-      phone: d.phone,
-      website: d.website,
-      mapsUrl: d.mapsUrl,
-      rating: d.rating,
-      totalReviews: d.totalReviews,
-      hasWhatsApp: d.hasWhatsApp === true,
-      waLink: d.waLink,
-      badReview: d.badReview || { stars: 1, text: '', date: 'Unknown' },
-      searchId: d.searchId,
-      savedAt: d.updatedAt?.toDate?.()?.toISOString?.() || null,
-      whatsAppCheckedAt: d.whatsAppCheckedAt?.toDate?.()?.toISOString?.() || null,
-    };
-  });
-
+  const leads = snap.docs.map(docToLead);
   return { total: leads.length, leads, provider: 'firebase' };
+}
+
+/** Every saved lead in an exact category — e.g. for a per-scan Excel export. */
+export async function listLeadsByCategory(category) {
+  const db = getFirestore();
+  const snap = await db.collection('leads').where('category', '==', category).get();
+  return snap.docs.map(docToLead);
 }
 
 /**

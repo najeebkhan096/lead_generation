@@ -39,6 +39,27 @@ export function startValidation(req, res) {
   }
 }
 
+/**
+ * Validates an explicit `{id, phone, business}[]` list that was never
+ * saved to Firestore (e.g. businesses extracted from an Excel archive) —
+ * same guarded job engine and rate limiting as [startValidation], but
+ * `updateLeadFn` is a no-op instead of the default Firestore `.update()`,
+ * since `id` here is a synthetic key, not a real document id.
+ */
+export function startExternalValidation(req, res) {
+  const { leads } = req.body || {};
+  if (!Array.isArray(leads) || !leads.length) {
+    return res.status(400).json({ error: 'leads array is required' });
+  }
+  try {
+    const result = startValidationJob({ leads, updateLeadFn: async () => {} });
+    return res.status(202).json(result);
+  } catch (err) {
+    const status = err.status || 500;
+    return res.status(status).json({ error: err.message || 'Failed to start validation' });
+  }
+}
+
 export async function startAutoValidation(_req, res) {
   try {
     const leads = await listUnvalidatedLeads({ limit: 100 });

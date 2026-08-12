@@ -7,9 +7,15 @@ import '../bloc/search/search_event.dart';
 import '../bloc/search/search_state.dart';
 import '../pages/active_search_page.dart';
 import '../pages/dashboard_page.dart';
+import '../pages/excel_archive_page.dart';
+import '../pages/excel_scan_page.dart';
+import '../pages/sales_dashboard_page.dart';
+import '../pages/sales_page.dart';
 import '../pages/saved_businesses_page.dart';
 import '../pages/search_page.dart';
+import '../pages/watchlist_page.dart';
 import '../pages/whatsapp_checker_page.dart';
+import '../pages/whatsapp_validated_archive_page.dart';
 
 const _wideBreakpoint = 900.0;
 
@@ -36,6 +42,11 @@ class _AdminShellState extends State<AdminShell> {
     SavedBusinessesPage(),
     SavedBusinessesPage(lockToVerified: true),
     WhatsAppCheckerPage(),
+    WatchlistPage(),
+    ExcelArchivePage(),
+    WhatsAppValidatedArchivePage(),
+    SalesDashboardPage(),
+    SalesPage(),
   ];
 
   static const _destinations = [
@@ -43,6 +54,11 @@ class _AdminShellState extends State<AdminShell> {
     (icon: AppIcons.leads, label: 'Leads'),
     (icon: AppIcons.badgeCheck, label: 'WhatsApp Business'),
     (icon: AppIcons.chat, label: 'WhatsApp Tool'),
+    (icon: AppIcons.eye, label: 'Watchlist'),
+    (icon: AppIcons.inbox, label: 'Excel Archive'),
+    (icon: AppIcons.shieldCheck, label: 'WhatsApp Verified'),
+    (icon: AppIcons.trendingUp, label: 'Sales Dashboard'),
+    (icon: AppIcons.tag, label: 'Sales'),
   ];
 
   @override
@@ -56,6 +72,10 @@ class _AdminShellState extends State<AdminShell> {
 
   void _openNewSearch() => Navigator.of(context).push(
         MaterialPageRoute(builder: (_) => const SearchPage()),
+      );
+
+  void _openExcelScan() => Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const ExcelScanPage()),
       );
 
   @override
@@ -86,6 +106,7 @@ class _AdminShellState extends State<AdminShell> {
                       index: _index,
                       onSelect: _select,
                       onNewSearch: _openNewSearch,
+                      onExcelScan: _openExcelScan,
                     ),
                   Expanded(
                     child: IndexedStack(
@@ -104,6 +125,8 @@ class _AdminShellState extends State<AdminShell> {
                     onDestinationSelected: (i) {
                       if (i == _destinations.length) {
                         _openNewSearch();
+                      } else if (i == _destinations.length + 1) {
+                        _openExcelScan();
                       } else {
                         _select(i);
                       }
@@ -119,6 +142,10 @@ class _AdminShellState extends State<AdminShell> {
                       const NavigationDestination(
                         icon: Icon(AppIcons.plus),
                         label: 'New Search',
+                      ),
+                      const NavigationDestination(
+                        icon: Icon(AppIcons.download),
+                        label: 'Excel Scan',
                       ),
                     ],
                   ),
@@ -136,11 +163,13 @@ class _Sidebar extends StatelessWidget {
     required this.index,
     required this.onSelect,
     required this.onNewSearch,
+    required this.onExcelScan,
   });
 
   final int index;
   final ValueChanged<int> onSelect;
   final VoidCallback onNewSearch;
+  final VoidCallback onExcelScan;
 
   @override
   Widget build(BuildContext context) {
@@ -214,6 +243,36 @@ class _Sidebar extends StatelessWidget {
                         'New Search',
                         style: TextStyle(
                           color: AppTheme.surface,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Material(
+              color: AppTheme.sage100,
+              borderRadius: BorderRadius.circular(AppTheme.radiusPill),
+              child: InkWell(
+                onTap: onExcelScan,
+                borderRadius: BorderRadius.circular(AppTheme.radiusPill),
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 13),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(AppIcons.download, size: 18, color: AppTheme.sage700),
+                      SizedBox(width: 8),
+                      Text(
+                        'Excel Scan',
+                        style: TextStyle(
+                          color: AppTheme.sage700,
                           fontWeight: FontWeight.w700,
                           fontSize: 14,
                         ),

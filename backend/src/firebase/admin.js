@@ -18,6 +18,7 @@ import {
   applicationDefault,
 } from 'firebase-admin/app';
 import { getFirestore as getFirestoreAdmin } from 'firebase-admin/firestore';
+import { getStorage } from 'firebase-admin/storage';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_SA_PATH = path.resolve(__dirname, '../../firebase-service-account.json');
@@ -61,14 +62,19 @@ export function initFirebase() {
       return null;
     }
 
+    const storageBucket =
+      process.env.FIREBASE_STORAGE_BUCKET?.trim() || (projectId ? `${projectId}.firebasestorage.app` : undefined);
+
     const app = serviceAccount
       ? initializeApp({
           credential: cert(serviceAccount),
           projectId,
+          storageBucket,
         })
       : initializeApp({
           credential: applicationDefault(),
           projectId,
+          storageBucket,
         });
 
     initError = null;
@@ -92,6 +98,19 @@ export function getFirestore() {
     }
   }
   return getFirestoreAdmin();
+}
+
+export function getStorageBucket() {
+  const apps = getApps();
+  if (!apps.length) {
+    const started = initFirebase();
+    if (!started) {
+      const err = new Error(initError || 'Firebase is not configured');
+      err.status = 503;
+      throw err;
+    }
+  }
+  return getStorage(getApp()).bucket();
 }
 
 export function getFirebaseStatus() {

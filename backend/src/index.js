@@ -10,6 +10,11 @@ import exportRoutes from './routes/exportRoutes.js';
 import dbRoutes from './routes/dbRoutes.js';
 import whatsappRoutes from './routes/whatsappRoutes.js';
 import whatsappWebRoutes from './routes/whatsappWebRoutes.js';
+import watchlistRoutes from './routes/watchlistRoutes.js';
+import excelArchiveRoutes from './routes/excelArchiveRoutes.js';
+import whatsappValidatedRoutes from './routes/whatsappValidatedRoutes.js';
+import userRoutes from './routes/userRoutes.js';
+import saleRoutes from './routes/saleRoutes.js';
 import { initFirebase, getFirebaseStatus } from './firebase/admin.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -45,6 +50,11 @@ app.use('/api/export', exportRoutes);
 app.use('/api/db', dbRoutes);
 app.use('/api/whatsapp', whatsappRoutes);
 app.use('/api/whatsapp-web', whatsappWebRoutes);
+app.use('/api/watchlist', watchlistRoutes);
+app.use('/api/excel-scans', excelArchiveRoutes);
+app.use('/api/whatsapp-validated-scans', whatsappValidatedRoutes);
+app.use('/api/users', userRoutes);
+app.use('/api/sales', saleRoutes);
 
 if (fs.existsSync(path.join(webRoot, 'index.html'))) {
   app.use(express.static(webRoot, { index: false }));

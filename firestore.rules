@@ -5,13 +5,34 @@ service cloud.firestore {
     // Writes (creation/deletion) only via Admin SDK (backend).
     match /leads/{leadId} {
       allow read: if request.auth != null;
-      allow update: if request.auth != null;
+      // Restricted to the exact fields mobile's 4 update methods write
+      // (mobile/lib/services/lead_repository.dart:60-105) — each one also
+      // conditionally stamps `assignedTo` with the acting user's uid, and
+      // updateWhatsAppStatus writes hasWhatsApp + whatsAppCheckedAt, so all
+      // of these must stay listed or those calls get silently rejected.
+      allow update: if request.auth != null
+                    && request.resource.data.diff(resource.data).affectedKeys()
+                       .hasOnly([
+                         'isFavorite', 'status', 'reputationStatus',
+                         'hasWhatsApp', 'whatsAppCheckedAt',
+                         'assignedTo', 'updatedAt'
+                       ]);
       allow create, delete: if false;
     }
 
     match /searches/{searchId} {
       allow read: if request.auth != null;
       allow write: if false;
+    }
+
+    // Mobile app users (salesmen) — each user creates/updates only their
+    // own profile doc on sign-in; the web app's Admin SDK reads the full
+    // list to populate "assign to salesman" pickers (Admin SDK bypasses
+    // these rules entirely).
+    match /users/{userId} {
+      allow read: if request.auth != null;
+      allow create, update: if request.auth != null && request.auth.uid == userId;
+      allow delete: if false;
     }
 
     match /{document=**} {

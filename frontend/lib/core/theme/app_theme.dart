@@ -344,4 +344,5 @@ class AppIcons {
   static const shieldCheck = LucideIcons.shieldCheck600;
   static const badgeCheck = LucideIcons.badgeCheck600;
   static const trash = LucideIcons.trash2600;
+  static const eye = LucideIcons.eye600;
 }

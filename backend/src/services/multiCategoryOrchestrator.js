@@ -29,6 +29,8 @@ import { saveLeadsToFirebase } from './firebaseLeadStore.js';
 import { setLastSearch } from '../utils/memoryStore.js';
 import { countryMeta, regionsForCountry } from '../data/countries.js';
 import { Mutex } from '../utils/asyncMutex.js';
+import { leadsToXlsxBuffer } from './exportService.js';
+import { uploadExcelArchive, buildArchiveFileName } from './excelArchiveStore.js';
 
 const MIN_CONCURRENCY = 2;
 const MAX_CONCURRENCY = 8;
@@ -148,6 +150,17 @@ async function waitWhilePausedFor(thisJob, rec) {
   }
 }
 
+/** Default `saveLeadsFn` for `exportOnly` jobs — keeps leads in memory,
+ * keyed by work item, instead of writing them to Firestore. Picked up by
+ * `finishJob` once every category is done to build the Excel archive. */
+function collectInMemory(thisJob) {
+  return async (leads, ctx) => {
+    const key = workKey(ctx.category, ctx.country);
+    (thisJob.collectedLeads[key] ??= []).push(...leads);
+    return { saved: leads.length };
+  };
+}
+
 async function saveCategoryLeads(thisJob, rec, leads) {
   // Serializes the read-check-write sequence inside saveLeadsToFirebase
   // (and the shared `lastSearch` metadata it reads) so two workers'
@@ -159,7 +172,7 @@ async function saveCategoryLeads(thisJob, rec, leads) {
       country: rec.country,
       nationwide: true,
     });
-    return thisJob.saveLeadsFn(leads);
+    return thisJob.saveLeadsFn(leads, { category: rec.category, country: rec.country, label: rec.label });
   });
 }
 
@@ -229,6 +242,34 @@ async function runWorker(workerId, scrapeLocationFn, thisJob) {
   if (thisJob.activeWorkers === 0) await finishJob(thisJob);
 }
 
+async function buildAndUploadArchive(thisJob, totalLeads, totalBusinessesProcessed) {
+  thisJob.archiveStatus = 'building';
+  try {
+    const sheets = Object.entries(thisJob.collectedLeads)
+      .filter(([, leads]) => leads.length)
+      .map(([key, leads]) => ({ name: thisJob.records[key].label, leads }));
+
+    const buffer = await leadsToXlsxBuffer(sheets);
+    const fileName = buildArchiveFileName({ categories: thisJob.categories, countries: thisJob.countries });
+    const record = await uploadExcelArchive({
+      buffer,
+      fileName,
+      categories: thisJob.categories,
+      countries: thisJob.countries,
+      totalLeads,
+      totalBusinessesProcessed,
+    });
+
+    thisJob.archiveStatus = 'done';
+    thisJob.archiveResult = record;
+    logActivity(thisJob, `Excel archive uploaded: ${record.fileName} (${totalLeads} leads).`);
+  } catch (err) {
+    thisJob.archiveStatus = 'failed';
+    thisJob.archiveError = err.message;
+    logActivity(thisJob, `Excel archive upload failed: ${err.message}`, 'error');
+  }
+}
+
 async function finishJob(thisJob) {
   if (thisJob.status === 'done') return;
   thisJob.status = 'done';
@@ -239,6 +280,7 @@ async function finishJob(thisJob) {
     // ignore
   }
   const totalLeads = Object.values(thisJob.records).reduce((sum, r) => sum + (r.leadsCollected || 0), 0);
+  const totalBusinessesProcessed = Object.values(thisJob.records).reduce((sum, r) => sum + (r.businessesProcessed || 0), 0);
   const scope = thisJob.countries.length > 1
     ? `${thisJob.categories.length} categor${thisJob.categories.length === 1 ? 'y' : 'ies'} × ${thisJob.countries.length} countries`
     : `${thisJob.categories.length} categories`;
@@ -246,6 +288,10 @@ async function finishJob(thisJob) {
     thisJob,
     `Multi-category search finished in ${humanDuration(thisJob.finishedAt - thisJob.startedAt)} — ${totalLeads} total leads across ${scope}.`
   );
+
+  if (thisJob.exportOnly) {
+    await buildAndUploadArchive(thisJob, totalLeads, totalBusinessesProcessed);
+  }
 }
 
 function isRunningStatus(status) {
@@ -268,9 +314,13 @@ function isRunningStatus(status) {
  * @param {number} [opts.maxResultsPerState]
  * @param {number} [opts.targetLeadCount]
  * @param {boolean} [opts.analyze]
+ * @param {boolean} [opts.exportOnly] - skip per-lead Firestore writes
+ *   entirely; leads are kept in memory and, once every category finishes,
+ *   packaged into one .xlsx workbook (one sheet per category) and uploaded
+ *   to Firebase Storage instead — see [buildAndUploadArchive].
  * @param {Function} [opts.scrapeLocationFn] - test-only seam, see leadService.js
- * @param {Function} [opts.saveLeadsFn] - test-only seam; defaults to the
- *   real `saveLeadsToFirebase`
+ * @param {Function} [opts.saveLeadsFn] - test-only seam; defaults to
+ *   `saveLeadsToFirebase`, or the in-memory collector when `exportOnly` is set
  */
 export async function startMultiCategorySearch({
   categories,
@@ -280,9 +330,10 @@ export async function startMultiCategorySearch({
   maxResultsPerState = 150,
   targetLeadCount = 100,
   analyze = false,
+  exportOnly = false,
   country = 'US',
   scrapeLocationFn,
-  saveLeadsFn = saveLeadsToFirebase,
+  saveLeadsFn,
 }) {
   if (!Array.isArray(categories) || !categories.length) {
     throw new Error('categories array is required');
@@ -323,6 +374,7 @@ export async function startMultiCategorySearch({
     maxResultsPerState: Number(maxResultsPerState) || 150,
     targetLeadCount: Number(targetLeadCount) || 100,
     analyze: Boolean(analyze),
+    exportOnly: Boolean(exportOnly),
     queue,
     records,
     activityLog: [],
@@ -334,8 +386,12 @@ export async function startMultiCategorySearch({
     activeWorkers: poolSize,
     browser: null,
     firebaseMutex: new Mutex(),
-    saveLeadsFn,
+    collectedLeads: {},
+    archiveStatus: exportOnly ? 'pending' : null,
+    archiveResult: null,
+    archiveError: null,
   };
+  thisJob.saveLeadsFn = saveLeadsFn || (exportOnly ? collectInMemory(thisJob) : saveLeadsToFirebase);
   currentJob = thisJob;
 
   const scopeDesc = multiCountry
@@ -361,7 +417,17 @@ function categorySnapshot(rec) {
   const avgMsPerState = rec.statesDone > 0 ? elapsedMs / rec.statesDone : null;
   const etaMs =
     avgMsPerState != null && isRunningStatus(rec.status) ? Math.round(avgMsPerState * statesRemaining) : null;
-  const progressPercent = rec.statesTotal > 0 ? Math.min(100, Math.round((rec.statesDone / rec.statesTotal) * 100)) : 0;
+  // A category can finish successfully without visiting every state — it
+  // stops early once it hits its target lead count (see `stopAtTarget` in
+  // scrapeCategoryNationwide). That's still 100% *done*, so "completed"
+  // must show 100% regardless of how many states that took, rather than
+  // the states-fraction, which would otherwise stay stuck below 100% even
+  // though nothing more will ever happen on this item.
+  const progressPercent = rec.status === 'completed'
+    ? 100
+    : rec.statesTotal > 0
+      ? Math.min(100, Math.round((rec.statesDone / rec.statesTotal) * 100))
+      : 0;
 
   return {
     category: rec.category,
@@ -417,6 +483,10 @@ export function getMultiJobSnapshot() {
     active: job.status === 'running',
     status: job.status,
     concurrency: job.concurrency,
+    exportOnly: job.exportOnly,
+    archiveStatus: job.archiveStatus,
+    archiveResult: job.archiveResult,
+    archiveError: job.archiveError,
     overall: {
       percent: overallPercent,
       // Total (category, country) work items — matches completed/failed/

@@ -168,7 +168,8 @@ class _SearchPageState extends State<SearchPage> {
                         const SizedBox(height: 10),
                         _OptionToggle(
                           title: 'Search in all countries',
-                          subtitle: 'Runs every category against USA, UK, Germany & Canada at once, in parallel',
+                          subtitle:
+                              'Runs every category against all ${SearchCountries.list.length} countries at once, in parallel',
                           value: _allCountries,
                           onChanged: loading ? null : (v) => setState(() => _allCountries = v),
                         ),
@@ -180,7 +181,7 @@ class _SearchPageState extends State<SearchPage> {
                           color: AppTheme.sage700,
                           background: AppTheme.sage100,
                           text: _allCountries
-                              ? 'All 4 countries at once — ${SearchCountries.list.map((c) => c.shortName).join(', ')} (parallel)'
+                              ? 'All ${SearchCountries.list.length} countries at once — ${SearchCountries.list.map((c) => c.shortName).join(', ')} (parallel)'
                               : SearchCountries.byCode(_country).coverageLabel,
                         ),
                         const SizedBox(height: 20),

@@ -25,6 +25,7 @@ export async function startMultiSearch(req, res) {
     maxResultsPerState = 150,
     targetLeadCount = 100,
     analyze = false,
+    exportOnly = false,
     country = 'US',
   } = req.body || {};
 
@@ -41,6 +42,7 @@ export async function startMultiSearch(req, res) {
       maxResultsPerState: Number(maxResultsPerState) || 150,
       targetLeadCount: Number(targetLeadCount) || 100,
       analyze: Boolean(analyze),
+      exportOnly: Boolean(exportOnly),
       country: String(country),
     });
 

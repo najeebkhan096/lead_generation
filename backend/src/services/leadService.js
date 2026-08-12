@@ -8,7 +8,7 @@ import * as bing from '../scraper/bingScraper.js';
 import * as yelp from '../scraper/yelpScraper.js';
 import { filterRecentOneStarLeads } from './reviewFilter.js';
 import { enrichLeadWithAnalysis } from './reviewAnalyzer.js';
-import { normalizeUsPhone, waMeLink } from './whatsappChecker.js';
+import { normalizePhone, waMeLink } from './whatsappChecker.js';
 import * as whatsappWebService from './whatsappWebService.js';
 import * as whatsappSafety from './whatsappSafety.js';
 import { locationQuery, shuffleStates } from '../data/usStates.js';
@@ -53,9 +53,9 @@ function dedupeLeads(leads) {
 }
 
 /** Normalize phone + build wa.me link. WhatsApp is NOT verified — user checks manually. */
-function enrichLeadContacts(leads) {
+function enrichLeadContacts(leads, country = 'US') {
   return leads.map((lead) => {
-    const e164 = normalizeUsPhone(lead.phone);
+    const e164 = normalizePhone(lead.phone, country);
     return {
       ...lead,
       phone: e164 ? `+${e164}` : lead.phone || null,
@@ -409,7 +409,7 @@ export async function scrapeCategoryNationwide(category, {
     onProgress?.({ type: 'businesses-scraped', delta: businesses.length, total: businessesScraped });
 
     let stateLeads = filterRecentOneStarLeads(businesses, { dateRange });
-    stateLeads = enrichLeadContacts(stateLeads);
+    stateLeads = enrichLeadContacts(stateLeads, country);
     stateLeads = stateLeads.map((l) => ({
       ...l,
       location: entry.state,

@@ -282,6 +282,34 @@ class MultiSearchFinalStats extends Equatable {
   List<Object?> get props => [totalExecutionMs, totalLeads, statesProcessed, successCount, failureCount, cancelledCount];
 }
 
+/// The Excel archive produced once an `exportOnly` job finishes — see
+/// [ExcelArchive] for the same shape returned by the archive-listing API.
+class ArchiveResult extends Equatable {
+  const ArchiveResult({
+    required this.id,
+    required this.fileName,
+    required this.downloadUrl,
+    required this.totalLeads,
+  });
+
+  final String id;
+  final String fileName;
+  final String downloadUrl;
+  final int totalLeads;
+
+  factory ArchiveResult.fromJson(Map<String, dynamic> json) {
+    return ArchiveResult(
+      id: json['id'] as String,
+      fileName: (json['fileName'] as String?) ?? '',
+      downloadUrl: (json['downloadUrl'] as String?) ?? '',
+      totalLeads: (json['totalLeads'] as num?)?.toInt() ?? 0,
+    );
+  }
+
+  @override
+  List<Object?> get props => [id, fileName, downloadUrl, totalLeads];
+}
+
 /// Full live-dashboard snapshot polled from `/api/search/multi/status`.
 class MultiSearchSnapshot extends Equatable {
   const MultiSearchSnapshot({
@@ -292,6 +320,10 @@ class MultiSearchSnapshot extends Equatable {
     this.categories = const [],
     this.activity = const [],
     this.finalStats,
+    this.exportOnly = false,
+    this.archiveStatus,
+    this.archiveResult,
+    this.archiveError,
   });
 
   final bool active;
@@ -301,6 +333,16 @@ class MultiSearchSnapshot extends Equatable {
   final List<CategoryProgress> categories;
   final List<ActivityLogEntry> activity;
   final MultiSearchFinalStats? finalStats;
+
+  /// True for a scan started from the Excel Scan page — leads were never
+  /// written to the normal Leads/Firestore collection, only archived as an
+  /// .xlsx in Firebase Storage (see [archiveResult]).
+  final bool exportOnly;
+
+  /// null | 'pending' | 'building' | 'done' | 'failed'
+  final String? archiveStatus;
+  final ArchiveResult? archiveResult;
+  final String? archiveError;
 
   bool get hasJob => status != 'idle';
 
@@ -321,9 +363,27 @@ class MultiSearchSnapshot extends Equatable {
       finalStats: json['finalStats'] == null
           ? null
           : MultiSearchFinalStats.fromJson(json['finalStats'] as Map<String, dynamic>),
+      exportOnly: json['exportOnly'] == true,
+      archiveStatus: json['archiveStatus'] as String?,
+      archiveResult: json['archiveResult'] == null
+          ? null
+          : ArchiveResult.fromJson(json['archiveResult'] as Map<String, dynamic>),
+      archiveError: json['archiveError'] as String?,
     );
   }
 
   @override
-  List<Object?> get props => [active, status, concurrency, overall, categories, activity, finalStats];
+  List<Object?> get props => [
+        active,
+        status,
+        concurrency,
+        overall,
+        categories,
+        activity,
+        finalStats,
+        exportOnly,
+        archiveStatus,
+        archiveResult,
+        archiveError,
+      ];
 }

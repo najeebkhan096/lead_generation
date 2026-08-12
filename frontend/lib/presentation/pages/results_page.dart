@@ -27,7 +27,13 @@ class ResultsPage extends StatelessWidget {
           (p.saveMessage != n.saveMessage && n.saveMessage != null),
       listener: (context, state) {
         final bloc = context.read<SearchBloc>();
-        if (bloc.lastExportContent != null &&
+        if (state.exportMessage?.startsWith('Excel ready') == true && bloc.lastExportBytes != null) {
+          downloadBytesFile(
+            'leads.xlsx',
+            bloc.lastExportBytes!,
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          );
+        } else if (bloc.lastExportContent != null &&
             bloc.lastExportFilename != null &&
             state.exportMessage != null &&
             state.exportMessage!.contains('ready')) {
@@ -75,6 +81,11 @@ class ResultsPage extends StatelessWidget {
                   onPressed: () => _handleExport(context, bloc, csv: false),
                   icon: const Icon(AppIcons.download, size: 18),
                   label: const Text('JSON'),
+                ),
+                TextButton.icon(
+                  onPressed: () => bloc.add(const ExportExcelRequested()),
+                  icon: const Icon(AppIcons.download, size: 18),
+                  label: const Text('Excel'),
                 ),
                 const SizedBox(width: 8),
               ],

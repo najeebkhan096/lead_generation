@@ -5,6 +5,7 @@ import {
   connect,
   disconnect,
   startValidation,
+  startExternalValidation,
   startAutoValidation,
   getValidationStatus,
   cancelValidation,
@@ -17,6 +18,7 @@ router.get('/safety', getSafetyStatus);
 router.post('/connect', connect);
 router.post('/disconnect', disconnect);
 router.post('/validate', startValidation);
+router.post('/validate-list', startExternalValidation);
 router.post('/validate-auto', startAutoValidation);
 router.get('/validate/status', getValidationStatus);
 router.post('/validate/cancel', cancelValidation);

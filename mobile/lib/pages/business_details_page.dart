@@ -166,7 +166,7 @@ class _WhatsAppToggle extends StatelessWidget {
             color: value ? t.sage : t.subtle,
           ),
         ),
-        activeColor: t.sage,
+        activeThumbColor: t.sage,
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       ),
     );

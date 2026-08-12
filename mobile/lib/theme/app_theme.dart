@@ -586,4 +586,6 @@ class AppIcons {
   static const monitor = LucideIcons.monitor600;
   static const mail = LucideIcons.mail600;
   static const info = LucideIcons.info600;
+  static const download = LucideIcons.download600;
+  static const trash = LucideIcons.trash2600;
 }
