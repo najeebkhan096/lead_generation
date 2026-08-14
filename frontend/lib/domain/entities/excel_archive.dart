@@ -9,6 +9,7 @@ class ExcelArchive extends Equatable {
     this.countries = const [],
     this.totalLeads = 0,
     this.totalBusinessesProcessed = 0,
+    this.status = 'complete',
     this.createdAt,
   });
 
@@ -19,6 +20,11 @@ class ExcelArchive extends Equatable {
   final List<String> countries;
   final int totalLeads;
   final int totalBusinessesProcessed;
+
+  /// 'partial' — checkpointed while a scan was still running (or was
+  /// interrupted before finishing); 'complete' — the scan that produced it
+  /// finished normally. See multiCategoryOrchestrator.js's checkpointing.
+  final String status;
   final DateTime? createdAt;
 
   factory ExcelArchive.fromJson(Map<String, dynamic> json) {
@@ -30,6 +36,7 @@ class ExcelArchive extends Equatable {
       countries: ((json['countries'] as List<dynamic>?) ?? const []).map((e) => e.toString()).toList(),
       totalLeads: (json['totalLeads'] as num?)?.toInt() ?? 0,
       totalBusinessesProcessed: (json['totalBusinessesProcessed'] as num?)?.toInt() ?? 0,
+      status: (json['status'] as String?) ?? 'complete',
       createdAt: json['createdAt'] is String && (json['createdAt'] as String).isNotEmpty
           ? DateTime.tryParse(json['createdAt'] as String)
           : null,
@@ -38,7 +45,7 @@ class ExcelArchive extends Equatable {
 
   @override
   List<Object?> get props =>
-      [id, fileName, downloadUrl, categories, countries, totalLeads, totalBusinessesProcessed, createdAt];
+      [id, fileName, downloadUrl, categories, countries, totalLeads, totalBusinessesProcessed, status, createdAt];
 }
 
 class ExcelArchiveSheet extends Equatable {

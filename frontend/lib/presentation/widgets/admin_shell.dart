@@ -1,32 +1,26 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../core/theme/app_theme.dart';
-import '../bloc/search/search_bloc.dart';
-import '../bloc/search/search_event.dart';
-import '../bloc/search/search_state.dart';
-import '../pages/active_search_page.dart';
 import '../pages/dashboard_page.dart';
-import '../pages/excel_archive_page.dart';
 import '../pages/excel_scan_page.dart';
-import '../pages/sales_dashboard_page.dart';
 import '../pages/sales_page.dart';
 import '../pages/saved_businesses_page.dart';
-import '../pages/search_page.dart';
-import '../pages/watchlist_page.dart';
+import '../pages/settings_page.dart';
 import '../pages/whatsapp_checker_page.dart';
-import '../pages/whatsapp_validated_archive_page.dart';
 
 const _wideBreakpoint = 900.0;
 
 /// The admin console's persistent frame: a sidebar (or bottom bar on
-/// narrow windows) around three always-live sections, a permanent "New
-/// Search" entry point (previously just a button tucked in the Dashboard
-/// header — easy to miss, since starting a scan used to be the entire
-/// home page), plus the one piece of navigation that must work no matter
-/// which section is showing: jumping to the live-progress screen the
-/// instant a search starts, even one resumed from a backend that was
-/// already running before this page loaded.
+/// narrow windows) around the frequent-use sections, with Excel Scan as
+/// the one permanent entry point for starting a scan (the classic
+/// single-search flow was retired — Excel Scan covers every case now).
+///
+/// Kept deliberately short — everything reached less than daily (Watchlist,
+/// Excel Archive, WhatsApp Verified) lives one level down in Settings
+/// instead of competing for a slot here. "WhatsApp Business" was folded
+/// into Leads' existing verified-only filter switch rather than kept as a
+/// separate destination, and Sales Dashboard/Sales merged into one page
+/// with an Overview/Manage tab switch — same data, fewer places to look.
 class AdminShell extends StatefulWidget {
   const AdminShell({super.key});
 
@@ -40,39 +34,18 @@ class _AdminShellState extends State<AdminShell> {
   static const _pages = [
     DashboardPage(),
     SavedBusinessesPage(),
-    SavedBusinessesPage(lockToVerified: true),
     WhatsAppCheckerPage(),
-    WatchlistPage(),
-    ExcelArchivePage(),
-    WhatsAppValidatedArchivePage(),
-    SalesDashboardPage(),
     SalesPage(),
+    SettingsPage(),
   ];
 
   static const _destinations = [
     (icon: AppIcons.dashboard, label: 'Dashboard'),
     (icon: AppIcons.leads, label: 'Leads'),
-    (icon: AppIcons.badgeCheck, label: 'WhatsApp Business'),
     (icon: AppIcons.chat, label: 'WhatsApp Tool'),
-    (icon: AppIcons.eye, label: 'Watchlist'),
-    (icon: AppIcons.inbox, label: 'Excel Archive'),
-    (icon: AppIcons.shieldCheck, label: 'WhatsApp Verified'),
-    (icon: AppIcons.trendingUp, label: 'Sales Dashboard'),
     (icon: AppIcons.tag, label: 'Sales'),
+    (icon: AppIcons.settings, label: 'Settings'),
   ];
-
-  @override
-  void initState() {
-    super.initState();
-    // The backend keeps search progress in memory only, so a fresh page
-    // load has no idea whether a search is already running or just
-    // finished until we ask.
-    context.read<SearchBloc>().add(const SearchResumeChecked());
-  }
-
-  void _openNewSearch() => Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => const SearchPage()),
-      );
 
   void _openExcelScan() => Navigator.of(context).push(
         MaterialPageRoute(builder: (_) => const ExcelScanPage()),
@@ -80,78 +53,61 @@ class _AdminShellState extends State<AdminShell> {
 
   @override
   Widget build(BuildContext context) {
-    return BlocListener<SearchBloc, SearchState>(
-      listenWhen: (prev, next) => prev.status != next.status,
-      listener: (context, state) {
-        if (state.status == SearchStatus.loading) {
-          Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const ActiveSearchPage()),
-          );
-        }
-      },
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final wide = constraints.maxWidth >= _wideBreakpoint;
-          // The IndexedStack carries each tab's live state (fetched leads,
-          // search text, scroll position). It keeps one stable key here so
-          // Flutter's keyed-list reconciliation preserves that state across
-          // the wide/narrow toggle instead of tearing the whole subtree
-          // down just because the sidebar appears or disappears next to it.
-          return Scaffold(
-            body: SafeArea(
-              child: Row(
-                children: [
-                  if (wide)
-                    _Sidebar(
-                      index: _index,
-                      onSelect: _select,
-                      onNewSearch: _openNewSearch,
-                      onExcelScan: _openExcelScan,
-                    ),
-                  Expanded(
-                    child: IndexedStack(
-                      key: const ValueKey('shell-content'),
-                      index: _index,
-                      children: _pages,
-                    ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final wide = constraints.maxWidth >= _wideBreakpoint;
+        // The IndexedStack carries each tab's live state (fetched leads,
+        // search text, scroll position). It keeps one stable key here so
+        // Flutter's keyed-list reconciliation preserves that state across
+        // the wide/narrow toggle instead of tearing the whole subtree
+        // down just because the sidebar appears or disappears next to it.
+        return Scaffold(
+          body: SafeArea(
+            child: Row(
+              children: [
+                if (wide)
+                  _Sidebar(
+                    index: _index,
+                    onSelect: _select,
+                    onExcelScan: _openExcelScan,
                   ),
-                ],
-              ),
+                Expanded(
+                  child: IndexedStack(
+                    key: const ValueKey('shell-content'),
+                    index: _index,
+                    children: _pages,
+                  ),
+                ),
+              ],
             ),
-            bottomNavigationBar: wide
-                ? null
-                : NavigationBar(
-                    selectedIndex: _index,
-                    onDestinationSelected: (i) {
-                      if (i == _destinations.length) {
-                        _openNewSearch();
-                      } else if (i == _destinations.length + 1) {
-                        _openExcelScan();
-                      } else {
-                        _select(i);
-                      }
-                    },
-                    backgroundColor: AppTheme.surface,
-                    indicatorColor: AppTheme.accent100,
-                    destinations: [
-                      for (final d in _destinations)
-                        NavigationDestination(
-                          icon: Icon(d.icon),
-                          label: d.label,
-                        ),
-                      const NavigationDestination(
-                        icon: Icon(AppIcons.plus),
-                        label: 'New Search',
+          ),
+          bottomNavigationBar: wide
+              ? null
+              : NavigationBar(
+                  selectedIndex: _index,
+                  onDestinationSelected: (i) {
+                    if (i == _destinations.length) {
+                      _openExcelScan();
+                    } else {
+                      _select(i);
+                    }
+                  },
+                  backgroundColor: AppTheme.surface,
+                  indicatorColor: AppTheme.accent100,
+                  destinations: [
+                    for (final d in _destinations)
+                      NavigationDestination(
+                        icon: Icon(d.icon),
+                        label: d.label,
                       ),
-                      const NavigationDestination(
-                        icon: Icon(AppIcons.download),
-                        label: 'Excel Scan',
-                      ),
-                    ],
-                  ),
-          );
-        },
-      ),
+                    const NavigationDestination(
+                      icon: Icon(AppIcons.download),
+                      label: 'Excel Scan',
+                    ),
+                  ],
+                ),
+        );
+      },
     );
   }
 
@@ -162,13 +118,11 @@ class _Sidebar extends StatelessWidget {
   const _Sidebar({
     required this.index,
     required this.onSelect,
-    required this.onNewSearch,
     required this.onExcelScan,
   });
 
   final int index;
   final ValueChanged<int> onSelect;
-  final VoidCallback onNewSearch;
   final VoidCallback onExcelScan;
 
   @override
@@ -180,118 +134,90 @@ class _Sidebar extends StatelessWidget {
         color: AppTheme.surface,
         border: Border(right: BorderSide(color: AppTheme.neutral200)),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24),
-            child: Row(
-              children: [
-                Container(
-                  width: 38,
-                  height: 38,
-                  decoration: const BoxDecoration(
-                    color: AppTheme.accent100,
-                    shape: BoxShape.circle,
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: Row(
+                children: [
+                  Container(
+                    width: 38,
+                    height: 38,
+                    decoration: const BoxDecoration(
+                      color: AppTheme.accent100,
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(AppIcons.target,
+                        size: 18, color: AppTheme.accent700),
                   ),
-                  child: const Icon(AppIcons.target,
-                      size: 18, color: AppTheme.accent700),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'LeadFinder',
-                        style: Theme.of(context)
-                            .textTheme
-                            .titleMedium
-                            ?.copyWith(fontSize: 16),
-                      ),
-                      const Text(
-                        'Admin console',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: AppTheme.faint,
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'LeadFinder',
+                          style: Theme.of(context)
+                              .textTheme
+                              .titleMedium
+                              ?.copyWith(fontSize: 16),
                         ),
-                      ),
-                    ],
+                        const Text(
+                          'Admin console',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.faint,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-          const SizedBox(height: 20),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: Material(
-              color: AppTheme.accent500,
-              borderRadius: BorderRadius.circular(AppTheme.radiusPill),
-              child: InkWell(
-                onTap: onNewSearch,
+            const SizedBox(height: 20),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Material(
+                color: AppTheme.accent500,
                 borderRadius: BorderRadius.circular(AppTheme.radiusPill),
-                child: const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 13),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(AppIcons.plus, size: 18, color: AppTheme.surface),
-                      SizedBox(width: 8),
-                      Text(
-                        'New Search',
-                        style: TextStyle(
-                          color: AppTheme.surface,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 14,
+                child: InkWell(
+                  onTap: onExcelScan,
+                  borderRadius: BorderRadius.circular(AppTheme.radiusPill),
+                  child: const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 13),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(AppIcons.download, size: 18, color: AppTheme.surface),
+                        SizedBox(width: 8),
+                        Text(
+                          'Excel Scan',
+                          style: TextStyle(
+                            color: AppTheme.surface,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 14,
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
-          const SizedBox(height: 10),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: Material(
-              color: AppTheme.sage100,
-              borderRadius: BorderRadius.circular(AppTheme.radiusPill),
-              child: InkWell(
-                onTap: onExcelScan,
-                borderRadius: BorderRadius.circular(AppTheme.radiusPill),
-                child: const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 13),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(AppIcons.download, size: 18, color: AppTheme.sage700),
-                      SizedBox(width: 8),
-                      Text(
-                        'Excel Scan',
-                        style: TextStyle(
-                          color: AppTheme.sage700,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 14,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+            const SizedBox(height: 24),
+            for (var i = 0; i < _AdminShellState._destinations.length; i++)
+              _SidebarItem(
+                icon: _AdminShellState._destinations[i].icon,
+                label: _AdminShellState._destinations[i].label,
+                selected: i == index,
+                onTap: () => onSelect(i),
               ),
-            ),
-          ),
-          const SizedBox(height: 24),
-          for (var i = 0; i < _AdminShellState._destinations.length; i++)
-            _SidebarItem(
-              icon: _AdminShellState._destinations[i].icon,
-              label: _AdminShellState._destinations[i].label,
-              selected: i == index,
-              onTap: () => onSelect(i),
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }

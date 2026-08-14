@@ -1,0 +1,15 @@
+export const SAUDI_PROVINCES = [
+  { state: 'Riyadh', city: 'Riyadh' },
+  { state: 'Makkah', city: 'Jeddah' },
+  { state: 'Eastern Province', city: 'Dammam' },
+  { state: 'Madinah', city: 'Madinah' },
+  { state: 'Al-Qassim', city: 'Buraydah' },
+  { state: 'Asir', city: 'Abha' },
+  { state: 'Tabuk', city: 'Tabuk' },
+  { state: 'Hail', city: 'Hail' },
+  { state: 'Northern Borders', city: 'Arar' },
+  { state: 'Jazan', city: 'Jazan' },
+  { state: 'Najran', city: 'Najran' },
+  { state: 'Al-Bahah', city: 'Al-Bahah' },
+  { state: 'Al-Jawf', city: 'Sakaka' },
+];

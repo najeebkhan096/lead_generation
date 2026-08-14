@@ -1,0 +1,16 @@
+export const CZECH_REGIONS = [
+  { state: 'Prague', city: 'Prague' },
+  { state: 'Central Bohemian', city: 'Prague' },
+  { state: 'South Moravian', city: 'Brno' },
+  { state: 'Moravian-Silesian', city: 'Ostrava' },
+  { state: 'Plzeň', city: 'Plzeň' },
+  { state: 'Ústí nad Labem', city: 'Ústí nad Labem' },
+  { state: 'Olomouc', city: 'Olomouc' },
+  { state: 'South Bohemian', city: 'České Budějovice' },
+  { state: 'Hradec Králové', city: 'Hradec Králové' },
+  { state: 'Pardubice', city: 'Pardubice' },
+  { state: 'Zlín', city: 'Zlín' },
+  { state: 'Vysočina', city: 'Jihlava' },
+  { state: 'Liberec', city: 'Liberec' },
+  { state: 'Karlovy Vary', city: 'Karlovy Vary' },
+];

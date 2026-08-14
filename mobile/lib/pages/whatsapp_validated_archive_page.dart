@@ -3,7 +3,9 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../models/excel_archive.dart';
 import '../services/api_service.dart';
+import '../services/archive_repository.dart';
 import '../theme/app_theme.dart';
+import '../widgets/business_row_card.dart';
 import '../widgets/page_header.dart';
 import 'saved_businesses_page.dart' show StateBadge;
 import 'whatsapp_verified_leads_page.dart';
@@ -31,6 +33,7 @@ class WhatsAppValidatedArchivePage extends StatefulWidget {
 
 class _WhatsAppValidatedArchivePageState extends State<WhatsAppValidatedArchivePage> {
   final _api = ApiService();
+  final _archiveRepo = ArchiveRepository();
   List<ExcelArchive> _archives = [];
   bool _loading = true;
   String? _error;
@@ -44,7 +47,7 @@ class _WhatsAppValidatedArchivePageState extends State<WhatsAppValidatedArchiveP
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
-      final archives = await _api.listValidatedArchives();
+      final archives = await _archiveRepo.listValidatedScans();
       if (!mounted) return;
       setState(() {
         _archives = archives;
@@ -268,7 +271,7 @@ class _VerifiedArchiveViewerPage extends StatefulWidget {
 }
 
 class _VerifiedArchiveViewerPageState extends State<_VerifiedArchiveViewerPage> {
-  final _api = ApiService();
+  final _archiveRepo = ArchiveRepository();
   List<ExcelArchiveSheet> _sheets = [];
   bool _loading = true;
   String? _error;
@@ -281,7 +284,7 @@ class _VerifiedArchiveViewerPageState extends State<_VerifiedArchiveViewerPage> 
 
   Future<void> _load() async {
     try {
-      final sheets = await _api.getValidatedArchiveData(widget.archive.id);
+      final sheets = await _archiveRepo.fetchSheets(widget.archive);
       if (!mounted) return;
       setState(() {
         _sheets = sheets;
@@ -340,68 +343,7 @@ class _VerifiedSheetList extends StatelessWidget {
     return ListView.builder(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
       itemCount: sheet.rows.length,
-      itemBuilder: (context, i) {
-        final row = sheet.rows[i];
-        final name = (row['Business Name'] ?? '').toString();
-        final phone = (row['Phone'] ?? '').toString();
-        final rating = (row['Rating'] ?? '').toString();
-        final address = (row['Address'] ?? '').toString();
-
-        return Container(
-          margin: const EdgeInsets.only(bottom: 10),
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: t.surface,
-            borderRadius: BorderRadius.circular(AppTheme.radius),
-            border: Border.all(color: t.sage.withValues(alpha: 0.35)),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(AppIcons.circleCheck, size: 13, color: t.sageDeep),
-                  const SizedBox(width: 5),
-                  Text(
-                    'WhatsApp Verified',
-                    style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: t.sageDeep),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 6),
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      name.isEmpty ? 'Unnamed business' : name,
-                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
-                    ),
-                  ),
-                  if (rating.isNotEmpty) ...[
-                    Icon(AppIcons.star, size: 13, color: t.accentText),
-                    const SizedBox(width: 3),
-                    Text(rating, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: t.accentText)),
-                  ],
-                ],
-              ),
-              if (address.isNotEmpty) ...[
-                const SizedBox(height: 4),
-                Text(address, style: TextStyle(fontSize: 12, color: t.faint), maxLines: 1, overflow: TextOverflow.ellipsis),
-              ],
-              if (phone.isNotEmpty) ...[
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    Icon(AppIcons.phone, size: 12, color: t.subtle),
-                    const SizedBox(width: 5),
-                    Text(phone, style: TextStyle(fontSize: 12.5, color: t.subtle, fontWeight: FontWeight.w600)),
-                  ],
-                ),
-              ],
-            ],
-          ),
-        );
-      },
+      itemBuilder: (context, i) => BusinessRowCard(row: sheet.rows[i], badgeLabel: 'WhatsApp Verified'),
     );
   }
 }

@@ -5,12 +5,9 @@ import '../../core/theme/app_theme.dart';
 import '../../domain/entities/lead.dart';
 import '../../domain/entities/multi_search_snapshot.dart';
 import '../../domain/repositories/lead_repository.dart';
-import '../bloc/search/search_bloc.dart';
-import '../bloc/search/search_state.dart';
 import '../utils/date_format.dart';
+import 'excel_scan_page.dart';
 import 'multi_scan_page.dart';
-import 'results_page.dart';
-import 'search_page.dart';
 
 enum _LoadStatus { loading, success, failure }
 
@@ -73,7 +70,6 @@ class _DashboardPageState extends State<DashboardPage> {
                           children: [
                             _Header(onRefresh: _load),
                             const SizedBox(height: 8),
-                            const _LastSearchBanner(),
                             const _MultiScanBanner(),
                             const SizedBox(height: 24),
                             if (_status == _LoadStatus.loading)
@@ -137,63 +133,6 @@ class _Header extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-/// Surfaces a search that finished (possibly server-side, before this page
-/// even loaded) but was never opened — otherwise those results are stranded.
-class _LastSearchBanner extends StatelessWidget {
-  const _LastSearchBanner();
-
-  @override
-  Widget build(BuildContext context) {
-    return BlocBuilder<SearchBloc, SearchState>(
-      builder: (context, state) {
-        if (state.status != SearchStatus.success || state.leads.isEmpty) {
-          return const SizedBox.shrink();
-        }
-        return Padding(
-          padding: const EdgeInsets.only(top: 16),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-            decoration: BoxDecoration(
-              color: AppTheme.sage100,
-              borderRadius: BorderRadius.circular(AppTheme.radius),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: const BoxDecoration(
-                    color: AppTheme.sage200,
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(AppIcons.sparkles,
-                      size: 18, color: AppTheme.sage700),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Text(
-                    '${state.leads.length} leads from your last search are ready to review.',
-                    style: const TextStyle(
-                      color: AppTheme.sage800,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-                TextButton(
-                  onPressed: () => Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const ResultsPage()),
-                  ),
-                  child: const Text('View results'),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
     );
   }
 }
@@ -912,17 +851,17 @@ class _EmptyDashboard extends StatelessWidget {
           Text('No leads saved yet', style: Theme.of(context).textTheme.headlineSmall),
           const SizedBox(height: 8),
           Text(
-            'Run your first search and save results to Firebase to see your dashboard fill in.',
+            'Run your first Excel scan to see your dashboard fill in.',
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.bodyLarge,
           ),
           const SizedBox(height: 24),
           ElevatedButton.icon(
             onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const SearchPage()),
+              MaterialPageRoute(builder: (_) => const ExcelScanPage()),
             ),
-            icon: const Icon(AppIcons.plus, size: 19),
-            label: const Text('Start a search'),
+            icon: const Icon(AppIcons.download, size: 19),
+            label: const Text('Start Excel scan'),
           ),
         ],
       ),

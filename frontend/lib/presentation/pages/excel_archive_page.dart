@@ -6,6 +6,7 @@ import '../../core/theme/app_theme.dart';
 import '../../domain/entities/excel_archive.dart';
 import '../../domain/repositories/lead_repository.dart';
 import 'excel_archive_leads_page.dart';
+import 'multi_scan_page.dart';
 
 String _timeAgo(DateTime? when) {
   if (when == null) return '';
@@ -32,6 +33,7 @@ class _ExcelArchivePageState extends State<ExcelArchivePage> {
   List<ExcelArchive> _archives = [];
   bool _loading = true;
   String? _error;
+  String? _resumingId;
 
   LeadRepository get _repo => context.read<LeadRepository>();
 
@@ -69,6 +71,29 @@ class _ExcelArchivePageState extends State<ExcelArchivePage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
       );
+    }
+  }
+
+  /// Picks a stranded `status: 'partial'` archive back up — only the
+  /// countries that never finished get re-scraped, the rest is recovered
+  /// from the archive's existing workbook (see `resumeCategoryArchive` in
+  /// multiCategoryOrchestrator.js). Routes to the live scan dashboard
+  /// afterward, same as starting a fresh scan.
+  Future<void> _resume(ExcelArchive archive) async {
+    setState(() => _resumingId = archive.id);
+    try {
+      await _repo.resumeExcelArchive(archive.id);
+      if (!mounted) return;
+      Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const MultiScanPage()),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+      );
+    } finally {
+      if (mounted) setState(() => _resumingId = null);
     }
   }
 
@@ -111,6 +136,8 @@ class _ExcelArchivePageState extends State<ExcelArchivePage> {
                                   archive: archive,
                                   onTap: () => _open(archive),
                                   onDelete: () => _delete(archive),
+                                  onResume: () => _resume(archive),
+                                  resuming: _resumingId == archive.id,
                                 ),
                             ],
                           ),
@@ -154,11 +181,19 @@ class _EmptyArchiveState extends StatelessWidget {
 }
 
 class _ArchiveCard extends StatelessWidget {
-  const _ArchiveCard({required this.archive, required this.onTap, required this.onDelete});
+  const _ArchiveCard({
+    required this.archive,
+    required this.onTap,
+    required this.onDelete,
+    required this.onResume,
+    required this.resuming,
+  });
 
   final ExcelArchive archive;
   final VoidCallback onTap;
   final VoidCallback onDelete;
+  final VoidCallback onResume;
+  final bool resuming;
 
   @override
   Widget build(BuildContext context) {
@@ -187,11 +222,29 @@ class _ArchiveCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      archive.categories.isNotEmpty ? archive.categories.join(', ') : archive.fileName,
-                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            archive.categories.isNotEmpty ? archive.categories.join(', ') : archive.fileName,
+                            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        if (archive.status == 'partial') ...[
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration:
+                                BoxDecoration(color: AppTheme.accent100, borderRadius: BorderRadius.circular(AppTheme.radiusPill)),
+                            child: const Text(
+                              'In progress',
+                              style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: AppTheme.accent700),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                     const SizedBox(height: 3),
                     Text(
@@ -203,6 +256,26 @@ class _ArchiveCard extends StatelessWidget {
                   ],
                 ),
               ),
+              if (archive.status == 'partial') ...[
+                resuming
+                    ? const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 12),
+                        child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+                      )
+                    : OutlinedButton.icon(
+                        onPressed: onResume,
+                        icon: const Icon(AppIcons.refresh, size: 15),
+                        label: const Text('Resume'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppTheme.accent700,
+                          side: const BorderSide(color: AppTheme.accent300),
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          minimumSize: Size.zero,
+                          textStyle: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                const SizedBox(width: 4),
+              ],
               IconButton(
                 tooltip: 'View as leads',
                 icon: const Icon(AppIcons.leads, size: 18, color: AppTheme.faint),

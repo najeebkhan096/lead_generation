@@ -2,7 +2,6 @@ import 'dart:typed_data';
 
 import '../../domain/entities/lead.dart';
 import '../../domain/entities/multi_search_snapshot.dart';
-import '../../domain/entities/search_progress.dart';
 import '../../domain/entities/excel_archive.dart';
 import '../../domain/entities/sale.dart';
 import '../../domain/entities/sales_user.dart';
@@ -18,59 +17,7 @@ class LeadRepositoryImpl implements LeadRepository {
   final LeadRemoteDataSource _remote;
 
   @override
-  Future<List<Lead>> searchLeads({
-    String? category,
-    List<String>? categories,
-    required String dateRange,
-    String location = 'All US states',
-    bool nationwide = true,
-    int targetLeadCount = 100,
-    bool analyze = false,
-    bool autoSave = true,
-    String country = 'US',
-    void Function(SearchProgress progress, List<Lead> liveLeads)? onProgress,
-  }) {
-    return _remote.searchLeads(
-      location: location,
-      category: category,
-      categories: categories,
-      dateRange: dateRange,
-      nationwide: nationwide,
-      targetLeadCount: targetLeadCount,
-      analyze: analyze,
-      autoSave: autoSave,
-      country: country,
-      onProgress: onProgress,
-    );
-  }
-
-  @override
-  Future<List<Lead>> getCachedResults() => _remote.getResults();
-
-  @override
-  Future<Map<String, dynamic>?> getSearchSnapshot() => _remote.getSearchSnapshot();
-
-  @override
-  Future<List<Lead>> resumeSearch(
-    Map<String, dynamic> snapshot, {
-    void Function(SearchProgress progress, List<Lead> liveLeads)? onProgress,
-  }) =>
-      _remote.resumeSearch(snapshot, onProgress: onProgress);
-
-  @override
-  Future<String> exportCsv() => _remote.exportCsv();
-
-  @override
-  Future<String> exportJson() => _remote.exportJson();
-
-  @override
-  Future<Uint8List> exportExcel() => _remote.exportExcel();
-
-  @override
   Future<Uint8List> exportMultiExcel() => _remote.exportMultiExcel();
-
-  @override
-  Future<String> saveToDatabase() => _remote.saveToDatabase();
 
   @override
   Future<List<Lead>> getSavedBusinesses() => _remote.getSavedLeads();
@@ -214,6 +161,9 @@ class LeadRepositoryImpl implements LeadRepository {
   Future<void> deleteExcelArchive(String id) => _remote.deleteExcelArchive(id);
 
   @override
+  Future<void> resumeExcelArchive(String id) => _remote.resumeExcelArchive(id);
+
+  @override
   Future<List<Lead>> getExcelArchiveLeads(String id) => _remote.getExcelArchiveLeads(id);
 
   @override
@@ -248,18 +198,28 @@ class LeadRepositoryImpl implements LeadRepository {
     String? reviewLink,
     String? salesmanId,
     String? salesmanName,
-    double price = 0,
-    double salesmanPrice = 0,
-    SaleStatus status = SaleStatus.orderPlaced,
+    LeadStatus leadStatus = LeadStatus.newLead,
+    double priceChargedToClient = 0,
+    ClientPaymentStatus clientPaymentStatus = ClientPaymentStatus.pending,
+    String? clientPaymentMethod,
+    double employeePaymentAmount = 0,
+    EmployeePaymentStatus employeePaymentStatus = EmployeePaymentStatus.pending,
+    double clientAmountReceived = 0,
+    double removalCost = 0,
   }) =>
       _remote.createSale(
         businessName: businessName,
         reviewLink: reviewLink,
         salesmanId: salesmanId,
         salesmanName: salesmanName,
-        price: price,
-        salesmanPrice: salesmanPrice,
-        status: status,
+        leadStatus: leadStatus,
+        priceChargedToClient: priceChargedToClient,
+        clientPaymentStatus: clientPaymentStatus,
+        clientPaymentMethod: clientPaymentMethod,
+        employeePaymentAmount: employeePaymentAmount,
+        employeePaymentStatus: employeePaymentStatus,
+        clientAmountReceived: clientAmountReceived,
+        removalCost: removalCost,
       );
 
   @override
@@ -272,9 +232,14 @@ class LeadRepositoryImpl implements LeadRepository {
     String? reviewLink,
     String? salesmanId,
     String? salesmanName,
-    double? price,
-    double? salesmanPrice,
-    SaleStatus? status,
+    LeadStatus? leadStatus,
+    double? priceChargedToClient,
+    ClientPaymentStatus? clientPaymentStatus,
+    String? clientPaymentMethod,
+    double? employeePaymentAmount,
+    EmployeePaymentStatus? employeePaymentStatus,
+    double? clientAmountReceived,
+    double? removalCost,
   }) =>
       _remote.updateSale(
         id,
@@ -282,9 +247,14 @@ class LeadRepositoryImpl implements LeadRepository {
         reviewLink: reviewLink,
         salesmanId: salesmanId,
         salesmanName: salesmanName,
-        price: price,
-        salesmanPrice: salesmanPrice,
-        status: status,
+        leadStatus: leadStatus,
+        priceChargedToClient: priceChargedToClient,
+        clientPaymentStatus: clientPaymentStatus,
+        clientPaymentMethod: clientPaymentMethod,
+        employeePaymentAmount: employeePaymentAmount,
+        employeePaymentStatus: employeePaymentStatus,
+        clientAmountReceived: clientAmountReceived,
+        removalCost: removalCost,
       );
 
   @override

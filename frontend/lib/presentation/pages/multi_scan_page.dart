@@ -55,11 +55,11 @@ class _MultiScanPageState extends State<MultiScanPage> {
         _error = null;
         _loading = false;
       });
-      // exportOnly jobs keep building/uploading the Excel archive for a
-      // little while after status flips to 'done' — keep polling until
-      // that finishes too, or the archive card would be stuck spinning.
-      final archiveSettled = !snap.exportOnly || snap.archiveStatus == 'done' || snap.archiveStatus == 'failed';
-      if (snap.status == 'done' && archiveSettled) {
+      // The backend only reports the job itself as 'done' once every
+      // category's own archive upload has settled too (see finishJob() in
+      // multiCategoryOrchestrator.js) — no separate "is the archive done
+      // yet" check needed here.
+      if (snap.status == 'done') {
         _timer?.cancel();
       }
     } catch (e) {
@@ -168,27 +168,42 @@ class _MultiScanPageState extends State<MultiScanPage> {
         ],
       ),
       body: SafeArea(
+        // A single failed poll (a network hiccup, the backend briefly
+        // restarting) must never wipe out visibility into a scan that's
+        // been running for hours — polling itself already retries every
+        // 1.5s regardless, so once we've ever had a real snapshot, keep
+        // showing it (with a small non-blocking banner) instead of
+        // replacing the whole dashboard with a dead-end error screen. The
+        // full-page error only makes sense when we've *never* successfully
+        // loaded anything.
         child: _loading
             ? const Center(child: CircularProgressIndicator())
-            : _error != null
+            : (snap == null && _error != null)
                 ? _ErrorState(message: _error!, onRetry: _poll)
                 : snap == null || !snap.hasJob
                     ? const _NoJobState()
-                    : _DashboardBody(
-                        snapshot: snap,
-                        expanded: _expanded,
-                        onToggleExpand: (key) => setState(() {
-                          _expanded.contains(key) ? _expanded.remove(key) : _expanded.add(key);
-                        }),
-                        onCancelCategory: (p) => _runControl(
-                          () => _repo.cancelMultiSearchCategory(p.category, country: p.country),
-                        ),
-                        onPauseCategory: (p) => _runControl(
-                          () => _repo.pauseMultiSearchCategory(p.category, country: p.country),
-                        ),
-                        onResumeCategory: (p) => _runControl(
-                          () => _repo.resumeMultiSearchCategory(p.category, country: p.country),
-                        ),
+                    : Column(
+                        children: [
+                          if (_error != null) _ReconnectBanner(message: _error!),
+                          Expanded(
+                            child: _DashboardBody(
+                              snapshot: snap,
+                              expanded: _expanded,
+                              onToggleExpand: (key) => setState(() {
+                                _expanded.contains(key) ? _expanded.remove(key) : _expanded.add(key);
+                              }),
+                              onCancelCategory: (p) => _runControl(
+                                () => _repo.cancelMultiSearchCategory(p.category, country: p.country),
+                              ),
+                              onPauseCategory: (p) => _runControl(
+                                () => _repo.pauseMultiSearchCategory(p.category, country: p.country),
+                              ),
+                              onResumeCategory: (p) => _runControl(
+                                () => _repo.resumeMultiSearchCategory(p.category, country: p.country),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
       ),
     );
@@ -222,6 +237,43 @@ class _NoJobState extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Thin, non-blocking strip shown above the dashboard when the most recent
+/// poll failed but an earlier one already succeeded — the scan is still
+/// running server-side regardless (polling keeps retrying underneath), this
+/// is purely "the numbers below might be a beat stale."
+class _ReconnectBanner extends StatelessWidget {
+  const _ReconnectBanner({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+      color: AppTheme.accent100,
+      child: Row(
+        children: [
+          const SizedBox(
+            width: 14,
+            height: 14,
+            child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.accent700),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Reconnecting — showing last known progress. ($message)',
+              style: const TextStyle(fontSize: 12, color: AppTheme.accent700, fontWeight: FontWeight.w600),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -293,7 +345,7 @@ class _DashboardBody extends StatelessWidget {
                     children: [
                       if (snapshot.finalStats != null) _FinalStatsCard(stats: snapshot.finalStats!),
                       if (snapshot.exportOnly) ...[
-                        _ArchiveStatusCard(snapshot: snapshot),
+                        _ArchiveStatusSection(archives: snapshot.categoryArchives),
                         const SizedBox(height: 24),
                       ],
                       if (snapshot.overall != null) ...[
@@ -451,96 +503,100 @@ class _OverallCard extends StatelessWidget {
 }
 
 /// Shown in place of the normal "Export to Excel" flow for `exportOnly`
-/// jobs — these never touch Firestore, so their only output is the
-/// archive built automatically once every category finishes.
-class _ArchiveStatusCard extends StatelessWidget {
-  const _ArchiveStatusCard({required this.snapshot});
+/// jobs — each category gets its own workbook (one sheet per country),
+/// uploaded to Firebase Storage the instant that category finishes across
+/// every selected country. Categories finish (and upload) independently —
+/// this never waits for every category to be done before anything becomes
+/// downloadable.
+class _ArchiveStatusSection extends StatelessWidget {
+  const _ArchiveStatusSection({required this.archives});
 
-  final MultiSearchSnapshot snapshot;
+  final List<CategoryArchive> archives;
 
   @override
   Widget build(BuildContext context) {
-    final status = snapshot.archiveStatus;
-    final result = snapshot.archiveResult;
-
-    if (status == 'done' && result != null) {
-      return Container(
-        padding: const EdgeInsets.all(22),
-        decoration: BoxDecoration(color: AppTheme.sage100, borderRadius: BorderRadius.circular(AppTheme.radiusCard)),
-        child: Row(
-          children: [
-            Container(
-              width: 44,
-              height: 44,
-              decoration: const BoxDecoration(color: AppTheme.sage500, shape: BoxShape.circle),
-              child: const Icon(AppIcons.checkCircle, color: AppTheme.surface, size: 22),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Excel archive ready', style: Theme.of(context).textTheme.titleMedium?.copyWith(color: AppTheme.sage800)),
-                  const SizedBox(height: 2),
-                  Text(
-                    '${result.fileName} · ${result.totalLeads} leads',
-                    style: const TextStyle(fontSize: 12.5, color: AppTheme.sage700),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 12),
-            OutlinedButton.icon(
-              onPressed: () => launchUrl(Uri.parse(result.downloadUrl)),
-              icon: const Icon(AppIcons.download, size: 16),
-              label: const Text('Download'),
-            ),
-            const SizedBox(width: 8),
-            FilledButton.icon(
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const ExcelArchivePage()),
-              ),
-              icon: const Icon(AppIcons.inbox, size: 16),
-              label: const Text('View Archive'),
-            ),
-          ],
-        ),
-      );
-    }
-
-    if (status == 'failed') {
-      return Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(color: AppTheme.accent100, borderRadius: BorderRadius.circular(AppTheme.radiusCard)),
-        child: Row(
-          children: [
-            const Icon(AppIcons.alert, color: AppTheme.accent700, size: 22),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                'Excel archive upload failed: ${snapshot.archiveError ?? 'unknown error'}',
-                style: const TextStyle(color: AppTheme.accent700, fontWeight: FontWeight.w600, fontSize: 13),
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    // pending | building | null (job still running)
     return Container(
       padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(color: AppTheme.neutral100, borderRadius: BorderRadius.circular(AppTheme.radiusCard)),
+      decoration: BoxDecoration(color: AppTheme.surface, borderRadius: BorderRadius.circular(AppTheme.radiusCard)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(AppIcons.download, size: 16, color: AppTheme.accent700),
+              const SizedBox(width: 8),
+              Text('Excel archives', style: Theme.of(context).textTheme.titleMedium),
+              const Spacer(),
+              FilledButton.icon(
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const ExcelArchivePage()),
+                ),
+                icon: const Icon(AppIcons.inbox, size: 16),
+                label: const Text('View Archive'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'One workbook per category (a sheet per country), uploaded the moment that category finishes — independently of every other category.',
+            style: TextStyle(fontSize: 11.5, color: AppTheme.faint),
+          ),
+          const SizedBox(height: 14),
+          for (final archive in archives) _CategoryArchiveRow(archive: archive),
+        ],
+      ),
+    );
+  }
+}
+
+class _CategoryArchiveRow extends StatelessWidget {
+  const _CategoryArchiveRow({required this.archive});
+
+  final CategoryArchive archive;
+
+  @override
+  Widget build(BuildContext context) {
+    final result = archive.result;
+    final (icon, color, background, label) = switch (archive.status) {
+      'done' => (AppIcons.checkCircle, AppTheme.sage700, AppTheme.sage100, 'Done'),
+      'partial' => (AppIcons.clock, AppTheme.accent700, AppTheme.accent100, 'In progress · saved so far'),
+      'failed' => (AppIcons.alert, AppTheme.danger, AppTheme.accent100, 'Upload failed'),
+      'building' => (AppIcons.refresh, AppTheme.subtle, AppTheme.neutral100, 'Saving…'),
+      _ => (AppIcons.clock, AppTheme.subtle, AppTheme.neutral100, 'Waiting for countries to finish'),
+    };
+    final subtitle = result != null
+        ? '$label · ${result.totalLeads} leads'
+        : (archive.status == 'failed' && archive.error != null ? '$label: ${archive.error}' : label);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(color: background, borderRadius: BorderRadius.circular(AppTheme.radius)),
       child: Row(
         children: [
-          const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2.2)),
-          const SizedBox(width: 14),
-          Text(
-            snapshot.status == 'done' ? 'Building Excel archive…' : 'Excel archive will be built once the scan finishes.',
-            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: AppTheme.subtle),
+          Icon(icon, size: 15, color: color),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(archive.category, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  style: TextStyle(fontSize: 11.5, color: color),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
           ),
+          if (result != null)
+            IconButton(
+              tooltip: 'Download ${result.fileName}',
+              icon: const Icon(AppIcons.download, size: 18, color: AppTheme.faint),
+              onPressed: () => launchUrl(Uri.parse(result.downloadUrl)),
+            ),
         ],
       ),
     );

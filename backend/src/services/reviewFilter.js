@@ -63,6 +63,7 @@ export function filterRecentOneStarLeads(businesses, { dateRange = '30' } = {}) 
         text: badReview.text || '',
         date: badReview.date || 'Unknown',
         reviewer: badReview.reviewer || null,
+        link: badReview.link || null,
       },
       allBadReviews: recent,
     });

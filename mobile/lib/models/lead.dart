@@ -7,12 +7,14 @@ class BadReview extends Equatable {
     required this.text,
     required this.date,
     this.reviewer,
+    this.link,
   });
 
   final int stars;
   final String text;
   final String date;
   final String? reviewer;
+  final String? link;
 
   factory BadReview.fromMap(Map<String, dynamic>? map) {
     final m = map ?? const <String, dynamic>{};
@@ -21,11 +23,12 @@ class BadReview extends Equatable {
       text: (m['text'] as String?) ?? '',
       date: (m['date'] as String?) ?? 'Unknown',
       reviewer: m['reviewer'] as String?,
+      link: m['link'] as String?,
     );
   }
 
   @override
-  List<Object?> get props => [stars, text, date, reviewer];
+  List<Object?> get props => [stars, text, date, reviewer, link];
 }
 
 enum LeadStatus { lead, contacted, booked, dealDone }

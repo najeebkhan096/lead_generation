@@ -1,0 +1,18 @@
+export const POLAND_VOIVODESHIPS = [
+  { state: 'Masovian', city: 'Warsaw' },
+  { state: 'Silesian', city: 'Katowice' },
+  { state: 'Greater Poland', city: 'Poznań' },
+  { state: 'Lesser Poland', city: 'Kraków' },
+  { state: 'Lower Silesian', city: 'Wrocław' },
+  { state: 'Łódź', city: 'Łódź' },
+  { state: 'Pomeranian', city: 'Gdańsk' },
+  { state: 'Lublin', city: 'Lublin' },
+  { state: 'West Pomeranian', city: 'Szczecin' },
+  { state: 'Podkarpackie', city: 'Rzeszów' },
+  { state: 'Kuyavian-Pomeranian', city: 'Bydgoszcz' },
+  { state: 'Holy Cross', city: 'Kielce' },
+  { state: 'Podlaskie', city: 'Białystok' },
+  { state: 'Warmian-Masurian', city: 'Olsztyn' },
+  { state: 'Opole', city: 'Opole' },
+  { state: 'Lubusz', city: 'Gorzów Wielkopolski' },
+];

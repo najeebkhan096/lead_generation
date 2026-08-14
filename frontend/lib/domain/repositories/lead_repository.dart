@@ -2,7 +2,6 @@ import 'dart:typed_data';
 
 import '../entities/lead.dart';
 import '../entities/multi_search_snapshot.dart';
-import '../entities/search_progress.dart';
 import '../entities/excel_archive.dart';
 import '../entities/sale.dart';
 import '../entities/sales_user.dart';
@@ -11,41 +10,9 @@ import '../entities/whatsapp_check_result.dart';
 import '../entities/whatsapp_web_status.dart';
 
 abstract class LeadRepository {
-  Future<List<Lead>> searchLeads({
-    String? category,
-    List<String>? categories,
-    required String dateRange,
-    String location = 'All US states',
-    bool nationwide = true,
-    int targetLeadCount = 100,
-    bool analyze = false,
-    bool autoSave = true,
-    String country = 'US',
-    void Function(SearchProgress progress, List<Lead> liveLeads)? onProgress,
-  });
-
-  Future<List<Lead>> getCachedResults();
-
-  /// Server-side search snapshot, or `null` if nothing is running/finished.
-  Future<Map<String, dynamic>?> getSearchSnapshot();
-
-  Future<List<Lead>> resumeSearch(
-    Map<String, dynamic> snapshot, {
-    void Function(SearchProgress progress, List<Lead> liveLeads)? onProgress,
-  });
-
-  Future<String> exportCsv();
-
-  Future<String> exportJson();
-
-  /// The current single search's leads as an .xlsx workbook (one sheet).
-  Future<Uint8List> exportExcel();
-
   /// The most recent multi-category (and/or multi-country) scan as one
   /// .xlsx workbook with one sheet per category.
   Future<Uint8List> exportMultiExcel();
-
-  Future<String> saveToDatabase();
 
   Future<List<Lead>> getSavedBusinesses();
 
@@ -76,9 +43,10 @@ abstract class LeadRepository {
   /// every country concurrently — "search this category in all countries."
   /// Omit it for the ordinary single-country multi-category search.
   /// [exportOnly] skips per-lead Firestore writes entirely — leads are
-  /// packaged into one .xlsx workbook (one sheet per category) and
-  /// uploaded to Firebase Storage once the job finishes instead. See
-  /// [MultiSearchSnapshot.archiveResult].
+  /// packaged into one .xlsx workbook *per category* (one sheet per
+  /// country), each uploaded to Firebase Storage the instant that category
+  /// finishes across every selected country, independently of every other
+  /// category. See [MultiSearchSnapshot.categoryArchives].
   Future<void> startMultiSearch({
     required List<String> categories,
     List<String>? countries,
@@ -177,6 +145,11 @@ abstract class LeadRepository {
   /// Deletes an archive from Storage and its Firestore metadata. Irreversible.
   Future<void> deleteExcelArchive(String id);
 
+  /// Picks a stranded `status: 'partial'` archive back up — see
+  /// [LeadRemoteDataSource.resumeExcelArchive]. Starts a real scan job;
+  /// poll [getMultiSearchStatus] afterward same as [startMultiSearch].
+  Future<void> resumeExcelArchive(String id);
+
   /// Extracts every business in an archive as [Lead]s for display — these
   /// were never saved to Firestore, so [Lead.dbId] is always null.
   Future<List<Lead>> getExcelArchiveLeads(String id);
@@ -203,9 +176,14 @@ abstract class LeadRepository {
     String? reviewLink,
     String? salesmanId,
     String? salesmanName,
-    double price = 0,
-    double salesmanPrice = 0,
-    SaleStatus status = SaleStatus.orderPlaced,
+    LeadStatus leadStatus = LeadStatus.newLead,
+    double priceChargedToClient = 0,
+    ClientPaymentStatus clientPaymentStatus = ClientPaymentStatus.pending,
+    String? clientPaymentMethod,
+    double employeePaymentAmount = 0,
+    EmployeePaymentStatus employeePaymentStatus = EmployeePaymentStatus.pending,
+    double clientAmountReceived = 0,
+    double removalCost = 0,
   });
 
   /// [salesmanId] filters to one salesman's sales; omit for everyone's.
@@ -217,9 +195,14 @@ abstract class LeadRepository {
     String? reviewLink,
     String? salesmanId,
     String? salesmanName,
-    double? price,
-    double? salesmanPrice,
-    SaleStatus? status,
+    LeadStatus? leadStatus,
+    double? priceChargedToClient,
+    ClientPaymentStatus? clientPaymentStatus,
+    String? clientPaymentMethod,
+    double? employeePaymentAmount,
+    EmployeePaymentStatus? employeePaymentStatus,
+    double? clientAmountReceived,
+    double? removalCost,
   });
 
   Future<void> deleteSale(String id);

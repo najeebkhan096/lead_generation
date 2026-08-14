@@ -113,17 +113,35 @@ class LeadCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Icon(AppIcons.thumbsDown, size: 13, color: AppTheme.accent700),
-                    const SizedBox(width: 6),
-                    Text(
-                      'Latest 1-star · ${lead.badReview.date}',
-                      style: const TextStyle(
-                        color: AppTheme.accent700,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 12,
-                      ),
+                    Row(
+                      children: [
+                        const Icon(AppIcons.thumbsDown, size: 13, color: AppTheme.accent700),
+                        const SizedBox(width: 6),
+                        Text(
+                          'Latest 1-star · ${lead.badReview.date}',
+                          style: const TextStyle(
+                            color: AppTheme.accent700,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
                     ),
+                    if (lead.badReview.link != null)
+                      InkWell(
+                        onTap: () => _open(lead.badReview.link),
+                        child: const Text(
+                          'Open Review',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                            color: AppTheme.accent800,
+                            decoration: TextDecoration.underline,
+                          ),
+                        ),
+                      ),
                   ],
                 ),
                 const SizedBox(height: 8),

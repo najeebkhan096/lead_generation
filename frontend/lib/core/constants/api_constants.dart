@@ -8,9 +8,6 @@ class ApiConstants {
     defaultValue: 'http://localhost:3001',
   );
 
-  static const String search = '/api/search';
-  static const String results = '/api/search/results';
-  static const String status = '/api/search/status';
   static const String multiSearch = '/api/search/multi';
   static const String multiSearchStatus = '/api/search/multi/status';
   static const String multiSearchCancel = '/api/search/multi/cancel';
@@ -19,12 +16,7 @@ class ApiConstants {
   static const String multiSearchResume = '/api/search/multi/resume';
   static const String multiSearchPauseCategory = '/api/search/multi/pause-category';
   static const String multiSearchResumeCategory = '/api/search/multi/resume-category';
-  static const String exportCsv = '/api/export/csv';
-  static const String exportJson = '/api/export/json';
-  static const String exportXlsx = '/api/export/xlsx';
   static const String exportXlsxMulti = '/api/export/xlsx/multi';
-  static const String analyze = '/api/search/analyze';
-  static const String saveToDb = '/api/db/save';
   static const String savedLeads = '/api/db/leads';
   static String leadWhatsAppStatus(String leadId) => '/api/db/leads/$leadId/whatsapp';
   static String leadDelete(String leadId) => '/api/db/leads/$leadId';
@@ -51,6 +43,7 @@ class ApiConstants {
   static String excelArchiveData(String id) => '/api/excel-scans/$id/data';
   static String excelArchiveLeads(String id) => '/api/excel-scans/$id/leads';
   static String excelArchiveDelete(String id) => '/api/excel-scans/$id';
+  static String excelArchiveResume(String id) => '/api/excel-scans/$id/resume';
 
   static const String whatsappValidatedScans = '/api/whatsapp-validated-scans';
   static String whatsappValidatedData(String id) => '/api/whatsapp-validated-scans/$id/data';

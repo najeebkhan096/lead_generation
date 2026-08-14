@@ -5,7 +5,6 @@ import 'core/theme/app_theme.dart';
 import 'data/datasources/lead_remote_datasource.dart';
 import 'data/repositories/lead_repository_impl.dart';
 import 'domain/repositories/lead_repository.dart';
-import 'presentation/bloc/search/search_bloc.dart';
 import 'presentation/widgets/admin_shell.dart';
 
 void main() {
@@ -23,14 +22,11 @@ class LeadGenerationApp extends StatelessWidget {
 
     return RepositoryProvider<LeadRepository>.value(
       value: repository,
-      child: BlocProvider(
-        create: (_) => SearchBloc(repository),
-        child: MaterialApp(
-          title: 'LeadFinder',
-          debugShowCheckedModeBanner: false,
-          theme: AppTheme.light(),
-          home: const AdminShell(),
-        ),
+      child: MaterialApp(
+        title: 'LeadFinder',
+        debugShowCheckedModeBanner: false,
+        theme: AppTheme.light(),
+        home: const AdminShell(),
       ),
     );
   }

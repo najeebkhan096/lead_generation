@@ -6,12 +6,14 @@ class BadReview extends Equatable {
     required this.text,
     required this.date,
     this.reviewer,
+    this.link,
   });
 
   final int stars;
   final String text;
   final String date;
   final String? reviewer;
+  final String? link;
 
   factory BadReview.fromJson(Map<String, dynamic> json) {
     return BadReview(
@@ -19,11 +21,12 @@ class BadReview extends Equatable {
       text: (json['text'] as String?) ?? '',
       date: (json['date'] as String?) ?? 'Unknown',
       reviewer: json['reviewer'] as String?,
+      link: json['link'] as String?,
     );
   }
 
   @override
-  List<Object?> get props => [stars, text, date, reviewer];
+  List<Object?> get props => [stars, text, date, reviewer, link];
 }
 
 class Lead extends Equatable {

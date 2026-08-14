@@ -328,6 +328,7 @@ class AppIcons {
   static const users = LucideIcons.users600;
   static const percent = LucideIcons.percent600;
   static const copy = LucideIcons.copy600;
+  static const edit = LucideIcons.squarePen600;
   static const download = LucideIcons.download600;
   static const cloudUpload = LucideIcons.cloudUpload600;
   static const arrowLeft = LucideIcons.arrowLeft600;
@@ -345,4 +346,5 @@ class AppIcons {
   static const badgeCheck = LucideIcons.badgeCheck600;
   static const trash = LucideIcons.trash2600;
   static const eye = LucideIcons.eye600;
+  static const settings = LucideIcons.settings600;
 }

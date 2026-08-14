@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../models/excel_archive.dart';
-import '../services/api_service.dart';
+import '../services/archive_repository.dart';
 import '../theme/app_theme.dart';
+import '../widgets/business_row_card.dart';
 import '../widgets/page_header.dart';
 import 'excel_leads_page.dart';
 import 'saved_businesses_page.dart' show StateBadge;
@@ -30,7 +31,7 @@ class ExcelArchivePage extends StatefulWidget {
 }
 
 class _ExcelArchivePageState extends State<ExcelArchivePage> {
-  final _api = ApiService();
+  final _archiveRepo = ArchiveRepository();
   List<ExcelArchive> _archives = [];
   bool _loading = true;
   String? _error;
@@ -44,7 +45,7 @@ class _ExcelArchivePageState extends State<ExcelArchivePage> {
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
-      final archives = await _api.listExcelArchives();
+      final archives = await _archiveRepo.listExcelScans();
       if (!mounted) return;
       setState(() {
         _archives = archives;
@@ -57,18 +58,6 @@ class _ExcelArchivePageState extends State<ExcelArchivePage> {
         _loading = false;
         _error = e.toString().replaceFirst('Exception: ', '');
       });
-    }
-  }
-
-  Future<void> _delete(ExcelArchive archive) async {
-    try {
-      await _api.deleteExcelArchive(archive.id);
-      await _load();
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
-      );
     }
   }
 
@@ -187,10 +176,7 @@ class _ExcelArchivePageState extends State<ExcelArchivePage> {
                           : ListView.builder(
                               padding: const EdgeInsets.fromLTRB(20, 0, 20, 28),
                               itemCount: _archives.length,
-                              itemBuilder: (context, i) => _ArchiveCard(
-                                archive: _archives[i],
-                                onDelete: () => _delete(_archives[i]),
-                              ),
+                              itemBuilder: (context, i) => _ArchiveCard(archive: _archives[i]),
                             ),
             ),
           ],
@@ -222,10 +208,9 @@ class _ScrollableCenter extends StatelessWidget {
 }
 
 class _ArchiveCard extends StatelessWidget {
-  const _ArchiveCard({required this.archive, required this.onDelete});
+  const _ArchiveCard({required this.archive});
 
   final ExcelArchive archive;
-  final VoidCallback onDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -273,10 +258,7 @@ class _ArchiveCard extends StatelessWidget {
                   ],
                 ),
               ),
-              IconButton(
-                icon: Icon(AppIcons.trash, size: 18, color: t.faint),
-                onPressed: onDelete,
-              ),
+              Icon(Icons.chevron_right_rounded, size: 18, color: t.faint),
             ],
           ),
         ),
@@ -295,7 +277,7 @@ class _ArchiveViewerPage extends StatefulWidget {
 }
 
 class _ArchiveViewerPageState extends State<_ArchiveViewerPage> {
-  final _api = ApiService();
+  final _archiveRepo = ArchiveRepository();
   List<ExcelArchiveSheet> _sheets = [];
   bool _loading = true;
   String? _error;
@@ -308,7 +290,7 @@ class _ArchiveViewerPageState extends State<_ArchiveViewerPage> {
 
   Future<void> _load() async {
     try {
-      final sheets = await _api.getExcelArchiveData(widget.archive.id);
+      final sheets = await _archiveRepo.fetchSheets(widget.archive);
       if (!mounted) return;
       setState(() {
         _sheets = sheets;
@@ -354,8 +336,7 @@ class _ArchiveViewerPageState extends State<_ArchiveViewerPage> {
 }
 
 /// Each row rendered as a card rather than a wide table — a spreadsheet
-/// grid doesn't fit a phone screen, so this shows the same fields
-/// [SavedBusinessCard] does, read straight from the archived row map.
+/// grid doesn't fit a phone screen. See [BusinessRowCard].
 class _SheetList extends StatelessWidget {
   const _SheetList({required this.sheet});
 
@@ -370,62 +351,7 @@ class _SheetList extends StatelessWidget {
     return ListView.builder(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
       itemCount: sheet.rows.length,
-      itemBuilder: (context, i) {
-        final row = sheet.rows[i];
-        final name = (row['Business Name'] ?? '').toString();
-        final phone = (row['Phone'] ?? '').toString();
-        final rating = (row['Rating'] ?? '').toString();
-        final review = (row['Review'] ?? '').toString();
-        final address = (row['Address'] ?? '').toString();
-
-        return Container(
-          margin: const EdgeInsets.only(bottom: 10),
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: t.surface,
-            borderRadius: BorderRadius.circular(AppTheme.radius),
-            border: Border.all(color: t.border),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      name.isEmpty ? 'Unnamed business' : name,
-                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
-                    ),
-                  ),
-                  if (rating.isNotEmpty) ...[
-                    Icon(AppIcons.star, size: 13, color: t.accentText),
-                    const SizedBox(width: 3),
-                    Text(rating, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: t.accentText)),
-                  ],
-                ],
-              ),
-              if (address.isNotEmpty) ...[
-                const SizedBox(height: 4),
-                Text(address, style: TextStyle(fontSize: 12, color: t.faint), maxLines: 1, overflow: TextOverflow.ellipsis),
-              ],
-              if (phone.isNotEmpty) ...[
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    Icon(AppIcons.phone, size: 12, color: t.subtle),
-                    const SizedBox(width: 5),
-                    Text(phone, style: TextStyle(fontSize: 12.5, color: t.subtle, fontWeight: FontWeight.w600)),
-                  ],
-                ),
-              ],
-              if (review.isNotEmpty) ...[
-                const SizedBox(height: 6),
-                Text(review, style: Theme.of(context).textTheme.bodySmall, maxLines: 3, overflow: TextOverflow.ellipsis),
-              ],
-            ],
-          ),
-        );
-      },
+      itemBuilder: (context, i) => BusinessRowCard(row: sheet.rows[i]),
     );
   }
 }

@@ -55,6 +55,7 @@ function toFirestoreLead(lead, searchId, countrySuffix) {
       text: bad.text || '',
       date: bad.date || 'Unknown',
       reviewer: bad.reviewer || null,
+      link: bad.link || null,
     },
     searchId,
     source: lead.source || null,

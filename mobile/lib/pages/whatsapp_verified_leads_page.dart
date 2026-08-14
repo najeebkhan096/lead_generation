@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 
-import '../services/api_service.dart';
+import '../services/archive_repository.dart';
 import '../theme/app_theme.dart';
+import '../widgets/business_row_card.dart';
 import '../widgets/page_header.dart';
 import 'saved_businesses_page.dart' show StateBadge;
 
@@ -28,7 +29,7 @@ class WhatsAppVerifiedLeadsPage extends StatefulWidget {
 }
 
 class _WhatsAppVerifiedLeadsPageState extends State<WhatsAppVerifiedLeadsPage> {
-  final _api = ApiService();
+  final _archiveRepo = ArchiveRepository();
   List<_BusinessRow> _rows = [];
   bool _loading = true;
   String? _error;
@@ -43,8 +44,8 @@ class _WhatsAppVerifiedLeadsPageState extends State<WhatsAppVerifiedLeadsPage> {
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
-      final archives = await _api.listValidatedArchives();
-      final sheetsPerArchive = await Future.wait(archives.map((a) => _api.getValidatedArchiveData(a.id)));
+      final archives = await _archiveRepo.listValidatedScans();
+      final sheetsPerArchive = await Future.wait(archives.map((a) => _archiveRepo.fetchSheets(a)));
 
       final rows = <_BusinessRow>[];
       for (var i = 0; i < archives.length; i++) {
@@ -201,85 +202,11 @@ class _BusinessCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = context.tokens;
-    final row = business.row;
-    final name = (row['Business Name'] ?? '').toString();
-    final phone = (row['Phone'] ?? '').toString();
-    final rating = (row['Rating'] ?? '').toString();
-    final address = (row['Address'] ?? '').toString();
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: t.surface,
-        borderRadius: BorderRadius.circular(AppTheme.radius),
-        border: Border.all(color: t.sage.withValues(alpha: 0.35)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(AppIcons.circleCheck, size: 13, color: t.sageDeep),
-              const SizedBox(width: 5),
-              Text(
-                'WhatsApp Verified',
-                style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: t.sageDeep),
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  name.isEmpty ? 'Unnamed business' : name,
-                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
-                ),
-              ),
-              if (rating.isNotEmpty) ...[
-                Icon(AppIcons.star, size: 13, color: t.accentText),
-                const SizedBox(width: 3),
-                Text(rating, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: t.accentText)),
-              ],
-            ],
-          ),
-          const SizedBox(height: 4),
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  business.category,
-                  style: TextStyle(fontSize: 11.5, color: t.faint, fontWeight: FontWeight.w600),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              Text(
-                business.archiveFileName,
-                style: TextStyle(fontSize: 10.5, color: t.faint),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
-          ),
-          if (address.isNotEmpty) ...[
-            const SizedBox(height: 6),
-            Text(address, style: TextStyle(fontSize: 12, color: t.faint), maxLines: 1, overflow: TextOverflow.ellipsis),
-          ],
-          if (phone.isNotEmpty) ...[
-            const SizedBox(height: 4),
-            Row(
-              children: [
-                Icon(AppIcons.phone, size: 12, color: t.subtle),
-                const SizedBox(width: 5),
-                Text(phone, style: TextStyle(fontSize: 12.5, color: t.subtle, fontWeight: FontWeight.w600)),
-              ],
-            ),
-          ],
-        ],
-      ),
+    return BusinessRowCard(
+      row: business.row,
+      badgeLabel: 'WhatsApp Verified',
+      categoryLabel: business.category,
+      footerLabel: business.archiveFileName,
     );
   }
 }

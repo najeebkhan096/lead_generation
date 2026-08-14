@@ -29,6 +29,20 @@ class SearchCountries {
     SearchCountry('BE', 'Belgium', 'Belgium', 'All Belgian provinces + Brussels (automatic)'),
     SearchCountry('CH', 'Switzerland', 'Switzerland', 'All 26 Swiss cantons (automatic)'),
     SearchCountry('SE', 'Sweden', 'Sweden', 'All 21 Swedish counties (automatic)'),
+    SearchCountry('IE', 'Ireland', 'Ireland', 'All 4 Irish provinces (automatic)'),
+    SearchCountry('NO', 'Norway', 'Norway', 'All 11 Norwegian counties (automatic)'),
+    SearchCountry('FI', 'Finland', 'Finland', 'Major Finnish regions (automatic)'),
+    SearchCountry('PT', 'Portugal', 'Portugal', 'All Portuguese districts & autonomous regions (automatic)'),
+    SearchCountry('PL', 'Poland', 'Poland', 'All 16 Polish voivodeships (automatic)'),
+    SearchCountry('CZ', 'Czech Republic', 'Czech Republic', 'All 14 Czech regions (automatic)'),
+    SearchCountry('HU', 'Hungary', 'Hungary', 'All 19 counties + Budapest (automatic)'),
+    SearchCountry('MX', 'Mexico', 'Mexico', 'All 31 states + Mexico City (automatic)'),
+    SearchCountry('SA', 'Saudi Arabia', 'Saudi Arabia', 'All 13 Saudi provinces (automatic)'),
+    SearchCountry('AE', 'United Arab Emirates', 'UAE', 'All 7 Emirates (automatic)'),
+    SearchCountry('QA', 'Qatar', 'Qatar', 'All 8 municipalities (automatic)'),
+    SearchCountry('KW', 'Kuwait', 'Kuwait', 'All 6 governorates (automatic)'),
+    SearchCountry('BH', 'Bahrain', 'Bahrain', 'All 4 governorates (automatic)'),
+    SearchCountry('OM', 'Oman', 'Oman', 'All 11 governorates (automatic)'),
   ];
 
   static SearchCountry byCode(String code) {

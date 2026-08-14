@@ -35,6 +35,22 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // Excel-scan and WhatsApp-verified archive metadata (the actual .xlsx
+    // lives in Storage, referenced by `downloadUrl` — a pre-signed URL,
+    // fetchable without any Storage rule). Mobile reads these directly so
+    // browsing/extracting businesses works without the backend server
+    // (which only runs on the desktop Launcher's machine, unreachable from
+    // a phone off that network). Writes stay Admin-SDK-only (the backend).
+    match /excelScans/{id} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+
+    match /whatsappValidatedScans/{id} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

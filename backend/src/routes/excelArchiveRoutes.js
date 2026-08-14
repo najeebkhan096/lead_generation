@@ -5,6 +5,7 @@ import {
   getArchiveData,
   getArchiveLeads,
   downloadArchive,
+  resumeArchive,
   removeArchive,
 } from '../controllers/excelArchiveController.js';
 
@@ -15,6 +16,7 @@ router.get('/:id', getArchive);
 router.get('/:id/data', getArchiveData);
 router.get('/:id/leads', getArchiveLeads);
 router.get('/:id/download', downloadArchive);
+router.post('/:id/resume', resumeArchive);
 router.delete('/:id', removeArchive);
 
 export default router;

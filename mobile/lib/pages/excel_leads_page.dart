@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 
-import '../services/api_service.dart';
+import '../services/archive_repository.dart';
 import '../theme/app_theme.dart';
+import '../widgets/business_row_card.dart';
 import '../widgets/page_header.dart';
 import 'saved_businesses_page.dart' show StateBadge;
 
@@ -28,7 +29,7 @@ class ExcelLeadsPage extends StatefulWidget {
 }
 
 class _ExcelLeadsPageState extends State<ExcelLeadsPage> {
-  final _api = ApiService();
+  final _archiveRepo = ArchiveRepository();
   List<_BusinessRow> _rows = [];
   bool _loading = true;
   String? _error;
@@ -43,8 +44,8 @@ class _ExcelLeadsPageState extends State<ExcelLeadsPage> {
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
-      final archives = await _api.listExcelArchives();
-      final sheetsPerArchive = await Future.wait(archives.map((a) => _api.getExcelArchiveData(a.id)));
+      final archives = await _archiveRepo.listExcelScans();
+      final sheetsPerArchive = await Future.wait(archives.map((a) => _archiveRepo.fetchSheets(a)));
 
       final rows = <_BusinessRow>[];
       for (var i = 0; i < archives.length; i++) {
@@ -201,79 +202,10 @@ class _BusinessCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = context.tokens;
-    final row = business.row;
-    final name = (row['Business Name'] ?? '').toString();
-    final phone = (row['Phone'] ?? '').toString();
-    final rating = (row['Rating'] ?? '').toString();
-    final address = (row['Address'] ?? '').toString();
-    final hasWhatsApp = (row['Has WhatsApp'] ?? '').toString() == 'Yes';
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: t.surface,
-        borderRadius: BorderRadius.circular(AppTheme.radius),
-        border: Border.all(color: t.border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  name.isEmpty ? 'Unnamed business' : name,
-                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
-                ),
-              ),
-              if (rating.isNotEmpty) ...[
-                Icon(AppIcons.star, size: 13, color: t.accentText),
-                const SizedBox(width: 3),
-                Text(rating, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: t.accentText)),
-              ],
-            ],
-          ),
-          const SizedBox(height: 4),
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  business.category,
-                  style: TextStyle(fontSize: 11.5, color: t.faint, fontWeight: FontWeight.w600),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              Text(
-                business.archiveFileName,
-                style: TextStyle(fontSize: 10.5, color: t.faint),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
-          ),
-          if (address.isNotEmpty) ...[
-            const SizedBox(height: 6),
-            Text(address, style: TextStyle(fontSize: 12, color: t.faint), maxLines: 1, overflow: TextOverflow.ellipsis),
-          ],
-          if (phone.isNotEmpty) ...[
-            const SizedBox(height: 4),
-            Row(
-              children: [
-                Icon(AppIcons.phone, size: 12, color: t.subtle),
-                const SizedBox(width: 5),
-                Text(phone, style: TextStyle(fontSize: 12.5, color: t.subtle, fontWeight: FontWeight.w600)),
-                if (hasWhatsApp) ...[
-                  const SizedBox(width: 8),
-                  Icon(AppIcons.chat, size: 12, color: t.sageDeep),
-                ],
-              ],
-            ),
-          ],
-        ],
-      ),
+    return BusinessRowCard(
+      row: business.row,
+      categoryLabel: business.category,
+      footerLabel: business.archiveFileName,
     );
   }
 }

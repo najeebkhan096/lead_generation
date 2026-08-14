@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../core/constants/business_categories.dart';
-import '../../core/constants/search_countries.dart';
 import '../../core/theme/app_theme.dart';
 import '../../domain/repositories/lead_repository.dart';
 import 'multi_scan_page.dart';
@@ -26,8 +25,6 @@ class _ExcelScanPageState extends State<ExcelScanPage> {
   final List<String> _targetServices = [];
 
   String _dateRange = '365';
-  String _country = 'US';
-  bool _allCountries = false;
   int _concurrency = 4;
   bool _starting = false;
 
@@ -71,11 +68,10 @@ class _ExcelScanPageState extends State<ExcelScanPage> {
     try {
       await context.read<LeadRepository>().startMultiSearch(
             categories: List.from(_targetServices),
-            countries: _allCountries ? SearchCountries.list.map((c) => c.code).toList() : null,
             concurrency: _concurrency,
             dateRange: _dateRange,
             exportOnly: true,
-            country: _country,
+            country: 'US',
           );
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
@@ -132,28 +128,6 @@ class _ExcelScanPageState extends State<ExcelScanPage> {
                     ),
                   ),
                   const SizedBox(height: 24),
-                  Text('Country', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontSize: 14.5)),
-                  const SizedBox(height: 8),
-                  DropdownButtonFormField<String>(
-                    initialValue: _country,
-                    icon: const Icon(AppIcons.chevronDown, size: 18, color: AppTheme.accent),
-                    items: SearchCountries.list
-                        .map((c) => DropdownMenuItem(value: c.code, child: Text(c.name)))
-                        .toList(),
-                    onChanged: (_starting || _allCountries)
-                        ? null
-                        : (v) {
-                            if (v != null) setState(() => _country = v);
-                          },
-                  ),
-                  const SizedBox(height: 10),
-                  _ExcelOptionToggle(
-                    title: 'Search in all countries',
-                    subtitle: 'Runs every category against all ${SearchCountries.list.length} countries at once',
-                    value: _allCountries,
-                    onChanged: _starting ? null : (v) => setState(() => _allCountries = v),
-                  ),
-                  const SizedBox(height: 20),
                   Text('Business categories', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontSize: 14.5)),
                   const SizedBox(height: 8),
                   Autocomplete<String>(
@@ -313,59 +287,3 @@ class _ExcelScanPageState extends State<ExcelScanPage> {
   }
 }
 
-class _ExcelOptionToggle extends StatelessWidget {
-  const _ExcelOptionToggle({
-    required this.title,
-    required this.subtitle,
-    required this.value,
-    required this.onChanged,
-  });
-
-  final String title;
-  final String subtitle;
-  final bool value;
-  final ValueChanged<bool>? onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: value ? AppTheme.accent100 : AppTheme.surface,
-      borderRadius: BorderRadius.circular(AppTheme.radius),
-      child: InkWell(
-        onTap: onChanged == null ? null : () => onChanged!(!value),
-        borderRadius: BorderRadius.circular(AppTheme.radius),
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(
-                value ? AppIcons.checkCircle : Icons.circle_outlined,
-                size: 20,
-                color: value ? AppTheme.accent700 : AppTheme.neutral400,
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: value ? AppTheme.accent800 : AppTheme.ink,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(subtitle, style: const TextStyle(fontSize: 11, color: AppTheme.faint)),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}

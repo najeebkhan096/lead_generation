@@ -19,7 +19,21 @@ function docToRecord(doc) {
     countries: data.countries || [],
     totalLeads: data.totalLeads ?? 0,
     totalBusinessesProcessed: data.totalBusinessesProcessed ?? 0,
+    // 'partial' — checkpointed mid-scan, more may still be appended.
+    // 'complete' — the scan finished and this is the final workbook.
+    status: data.status || 'complete',
+    // Resume metadata — absent (null, not []) on archives created before
+    // this field existed, so `resumeCategoryArchive` can tell "genuinely
+    // zero countries done yet" apart from "unknown, derive from the
+    // workbook's actual sheets instead."
+    category: data.category || data.categories?.[0] || null,
+    completedCountries: data.completedCountries ?? null,
+    dateRange: data.dateRange ?? null,
+    maxResultsPerState: data.maxResultsPerState ?? null,
+    targetLeadCount: data.targetLeadCount ?? null,
+    analyze: data.analyze ?? null,
     createdAt: data.createdAt?.toDate?.()?.toISOString() || null,
+    updatedAt: data.updatedAt?.toDate?.()?.toISOString() || null,
   };
 }
 
@@ -38,8 +52,29 @@ export function buildArchiveFileName({ categories, countries }) {
   return `${catPart}${countryPart}-${stamp}.xlsx`;
 }
 
-/** Uploads an xlsx buffer to Firebase Storage and records its metadata in Firestore. */
-export async function uploadExcelArchive({ buffer, fileName, categories, countries, totalLeads, totalBusinessesProcessed }) {
+/**
+ * Uploads an xlsx buffer to Firebase Storage and records/updates its
+ * metadata in Firestore. Pass `id` to upsert the same doc + Storage object
+ * in place instead of creating a new archive each time — used to checkpoint
+ * an in-progress `exportOnly` scan (see multiCategoryOrchestrator.js)
+ * without spamming the archive list with one entry per checkpoint.
+ */
+export async function uploadExcelArchive({
+  id,
+  buffer,
+  fileName,
+  categories,
+  countries,
+  totalLeads,
+  totalBusinessesProcessed,
+  status = 'complete',
+  category,
+  completedCountries,
+  dateRange,
+  maxResultsPerState,
+  targetLeadCount,
+  analyze,
+}) {
   const bucket = getStorageBucket();
   const storagePath = `${STORAGE_PREFIX}/${fileName}`;
   const file = bucket.file(storagePath);
@@ -52,17 +87,32 @@ export async function uploadExcelArchive({ buffer, fileName, categories, countri
   const [downloadUrl] = await file.getSignedUrl({ action: 'read', expires: SIGNED_URL_EXPIRES });
 
   const db = getFirestore();
-  const ref = db.collection(COLLECTION).doc(crypto.randomUUID());
-  await ref.set({
-    fileName,
-    storagePath,
-    downloadUrl,
-    categories,
-    countries,
-    totalLeads,
-    totalBusinessesProcessed,
-    createdAt: FieldValue.serverTimestamp(),
-  });
+  const ref = db.collection(COLLECTION).doc(id || crypto.randomUUID());
+  const existing = await ref.get();
+  await ref.set(
+    {
+      fileName,
+      storagePath,
+      downloadUrl,
+      categories,
+      countries,
+      totalLeads,
+      totalBusinessesProcessed,
+      status,
+      // Firestore rejects `undefined` field values outright — normalize so
+      // a caller that omits any of these (e.g. an older call site) can't
+      // crash the whole upload over an optional resume-metadata field.
+      category: category ?? null,
+      completedCountries: completedCountries ?? null,
+      dateRange: dateRange ?? null,
+      maxResultsPerState: maxResultsPerState ?? null,
+      targetLeadCount: targetLeadCount ?? null,
+      analyze: analyze ?? null,
+      createdAt: existing.exists ? existing.data().createdAt : FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    },
+    { merge: true }
+  );
 
   return docToRecord(await ref.get());
 }

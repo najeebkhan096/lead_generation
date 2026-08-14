@@ -26,17 +26,22 @@ export async function scanWatchlist({ dateRange = '30' } = {}) {
 
     try {
       const snapshot = await scrapeBusinessSnapshot(entry.url, entry.country);
-      const recentReviews = snapshot.reviews.filter((r) => isWithinRange(r.date, dateRange));
-      const reviewKeys = recentReviews.map(reviewKey);
-      const newReviews = isFirstScan
-        ? []
-        : recentReviews.filter((r) => !previousKeys.has(reviewKey(r)));
+
+      // The user wants to see ALL 1-star reviews for the selected range,
+      // not just the "new" ones since the last scan.
+      const matches = snapshot.reviews.filter((r) => {
+        const inRange = isWithinRange(r.date, dateRange);
+        const isOneStar = r.stars === 1;
+        return inRange && isOneStar;
+      });
+
+      const reviewKeys = snapshot.reviews.map(reviewKey);
 
       await recordScanResult(entry.id, {
         reviewKeys,
         rating: snapshot.rating,
         totalReviews: snapshot.totalReviews,
-        newReviewCount: newReviews.length,
+        newReviewCount: matches.length,
         error: null,
       });
 
@@ -47,7 +52,7 @@ export async function scanWatchlist({ dateRange = '30' } = {}) {
         rating: snapshot.rating,
         totalReviews: snapshot.totalReviews,
         isFirstScan,
-        newReviews,
+        newReviews: matches,
         error: null,
       });
     } catch (err) {

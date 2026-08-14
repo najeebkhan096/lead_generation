@@ -519,9 +519,31 @@ class _ReviewTile extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  '${review.reviewer} · ${review.stars ?? '?'}★ · ${review.date}',
-                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.subtle),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '${review.reviewer} · ${review.stars ?? '?'}★ · ${review.date}',
+                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.subtle),
+                      ),
+                    ),
+                    if (review.link != null)
+                      InkWell(
+                        onTap: () => launchUrl(Uri.parse(review.link!)),
+                        child: const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 4),
+                          child: Text(
+                            'Open Review',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: AppTheme.accent700,
+                              decoration: TextDecoration.underline,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
                 if (review.text.isNotEmpty) ...[
                   const SizedBox(height: 2),

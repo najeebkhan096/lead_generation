@@ -77,12 +77,14 @@ class WatchlistReview extends Equatable {
     required this.text,
     required this.date,
     this.stars,
+    this.link,
   });
 
   final String reviewer;
   final String text;
   final String date;
   final int? stars;
+  final String? link;
 
   factory WatchlistReview.fromJson(Map<String, dynamic> json) {
     return WatchlistReview(
@@ -90,11 +92,12 @@ class WatchlistReview extends Equatable {
       text: (json['text'] as String?) ?? '',
       date: (json['date'] as String?) ?? 'Unknown',
       stars: (json['stars'] as num?)?.toInt(),
+      link: json['link'] as String?,
     );
   }
 
   @override
-  List<Object?> get props => [reviewer, text, date, stars];
+  List<Object?> get props => [reviewer, text, date, stars, link];
 }
 
 class WatchlistScanResult extends Equatable {

@@ -15,16 +15,19 @@ void main() {
     await Firebase.initializeApp();
   });
 
-  testWidgets('MainNavigationPage has 4 tabs and switches content', (WidgetTester tester) async {
+  testWidgets('MainNavigationPage has 6 tabs and switches content', (WidgetTester tester) async {
     await tester.pumpWidget(MaterialApp(
       theme: AppTheme.light(),
       home: const MainNavigationPage(),
     ));
 
-    // Verify all four destinations are present.
+    // Verify all six destinations are present (Leads, WhatsApp, Favorites,
+    // Deals, Excel, Profile — in that order, see main_navigation_page.dart).
     expect(find.text('Leads'), findsOneWidget);
+    expect(find.text('WhatsApp'), findsOneWidget);
     expect(find.text('Favorites'), findsOneWidget);
     expect(find.text('Deals'), findsOneWidget);
+    expect(find.text('Excel'), findsOneWidget);
     expect(find.text('Profile'), findsOneWidget);
 
     NavigationBar navBar() => tester.widget<NavigationBar>(find.byType(NavigationBar));
@@ -34,14 +37,14 @@ void main() {
     // pumpAndSettle never settles while stream spinners are animating.
     await tester.tap(find.byIcon(AppIcons.heart));
     await tester.pump(const Duration(milliseconds: 400));
-    expect(navBar().selectedIndex, 1);
+    expect(navBar().selectedIndex, 2);
 
     await tester.tap(find.byIcon(AppIcons.handshake));
     await tester.pump(const Duration(milliseconds: 400));
-    expect(navBar().selectedIndex, 2);
+    expect(navBar().selectedIndex, 3);
 
     await tester.tap(find.byIcon(AppIcons.user));
     await tester.pump(const Duration(milliseconds: 400));
-    expect(navBar().selectedIndex, 3);
+    expect(navBar().selectedIndex, 5);
   });
 }

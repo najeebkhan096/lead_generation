@@ -23,14 +23,15 @@
  * "current" by the time it wakes up.
  */
 
+import crypto from 'crypto';
 import { launchBrowser } from '../scraper/googleMapsScraper.js';
 import { scrapeCategoryNationwide } from './leadService.js';
 import { saveLeadsToFirebase } from './firebaseLeadStore.js';
 import { setLastSearch } from '../utils/memoryStore.js';
-import { countryMeta, regionsForCountry } from '../data/countries.js';
+import { countryMeta, countryCodeForName, regionsForCountry } from '../data/countries.js';
 import { Mutex } from '../utils/asyncMutex.js';
-import { leadsToXlsxBuffer } from './exportService.js';
-import { uploadExcelArchive, buildArchiveFileName } from './excelArchiveStore.js';
+import { leadsToXlsxBuffer, xlsxBufferToJson, sheetsToLeadsJson } from './exportService.js';
+import { uploadExcelArchive, buildArchiveFileName, getExcelArchive, downloadExcelArchiveBuffer } from './excelArchiveStore.js';
 
 const MIN_CONCURRENCY = 2;
 const MAX_CONCURRENCY = 8;
@@ -161,6 +162,20 @@ function collectInMemory(thisJob) {
   };
 }
 
+function isTerminalStatus(status) {
+  return status === 'completed' || status === 'failed' || status === 'cancelled';
+}
+
+/** True once every country queued for `category` has reached a terminal
+ * (completed/failed/cancelled) state — the trigger for finalizing that
+ * category's own archive, independently of every other category. */
+function categoryFullyDone(thisJob, category) {
+  return thisJob.countries.every((countryCode) => {
+    const rec = thisJob.records[workKey(category, countryCode)];
+    return rec && isTerminalStatus(rec.status);
+  });
+}
+
 async function saveCategoryLeads(thisJob, rec, leads) {
   // Serializes the read-check-write sequence inside saveLeadsToFirebase
   // (and the shared `lastSearch` metadata it reads) so two workers'
@@ -236,43 +251,134 @@ async function runWorker(workerId, scrapeLocationFn, thisJob) {
       logActivity(thisJob, `"${rec.label}" failed: ${err.message}`, 'error');
       // Swallow and continue — one work item's failure must not stop the rest.
     }
+
+    if (thisJob.exportOnly) {
+      const archive = thisJob.categoryArchives[rec.category];
+      // Recorded regardless of outcome (completed/failed/cancelled all
+      // count as "handled") and persisted to Firestore on every upload —
+      // this is what makes a country-not-yet-attempted-at-crash-time
+      // distinguishable from one already scraped, so a later resume only
+      // re-does the work that never actually finished.
+      archive?.completedCountries.add(rec.country);
+      // The synchronous status update above (no `await` in between) means
+      // whichever worker finishes the last country for this category is
+      // the only one that can observe `categoryFullyDone` flip true here —
+      // safe to gate finalization on it without the mutex.
+      if (archive && !archive.finalized && categoryFullyDone(thisJob, rec.category)) {
+        archive.finalized = true;
+        // Tracked on the archive (not just fired-and-forgotten) so
+        // `finishJob`'s safety net can await this exact in-flight upload
+        // instead of seeing `finalized: true` and wrongly assuming there's
+        // nothing left to wait for — otherwise the job could report
+        // 'done' with the very last category's archive still 'building'.
+        archive.finalizePromise = archive.mutex
+          .runExclusive(() => uploadCategoryArchiveNow(thisJob, rec.category, { isFinal: true }))
+          .catch(() => {});
+      } else {
+        checkpointCategoryArchive(thisJob, rec.category);
+      }
+    }
   }
 
   thisJob.activeWorkers -= 1;
   if (thisJob.activeWorkers === 0) await finishJob(thisJob);
 }
 
-async function buildAndUploadArchive(thisJob, totalLeads, totalBusinessesProcessed) {
-  thisJob.archiveStatus = 'building';
-  try {
-    const sheets = Object.entries(thisJob.collectedLeads)
-      .filter(([, leads]) => leads.length)
-      .map(([key, leads]) => ({ name: thisJob.records[key].label, leads }));
+/**
+ * Uploads (or re-uploads, in place — same Storage path/Firestore doc via
+ * the category's own fixed `id`/`fileName`) one category's own workbook:
+ * one sheet per country, covering only that category. Each category gets
+ * its own archive, finalized (`isFinal: true`) the moment every country
+ * queued for it reaches a terminal state — independently of whatever
+ * every other category is still doing (see the call site in `runWorker`).
+ * Also called as a mid-category checkpoint (`isFinal: false`, after each
+ * of that category's countries finishes but before the category as a
+ * whole is done) so a crash loses at most the one country in flight.
+ * Always run through the category's own mutex (see call sites) so
+ * concurrent updates to the same category never race each other's upload.
+ */
+async function uploadCategoryArchiveNow(thisJob, category, { isFinal }) {
+  const archive = thisJob.categoryArchives[category];
+  if (!archive) return;
 
+  // `archive.allCountries` — the FULL originally-requested set for this
+  // category — not `thisJob.countries`, which for a resumed run only
+  // covers the countries still missing. A fresh (non-resumed) job has the
+  // two equal, so this is a no-op change in that case.
+  const sheets = [];
+  for (const countryCode of archive.allCountries) {
+    const leads = thisJob.collectedLeads[workKey(category, countryCode)];
+    if (leads && leads.length) sheets.push({ name: countryMeta(countryCode).name, leads });
+  }
+  if (!sheets.length) {
+    // Finished (or checkpointing) with zero leads collected — nothing to
+    // upload, but a final call must still leave the status settled instead
+    // of stuck at 'pending'/'building' forever.
+    if (isFinal) archive.status = 'done';
+    return;
+  }
+
+  const totalLeads = sheets.reduce((sum, s) => sum + s.leads.length, 0);
+  // This run's own contribution, plus whatever a resumed run's earlier
+  // (now-crashed) attempt already reported — that history only exists on
+  // the archive doc itself, not in this fresh in-memory job.
+  const totalBusinessesProcessed =
+    (archive.priorBusinessesProcessed || 0) +
+    thisJob.countries.reduce((sum, countryCode) => {
+      const rec = thisJob.records[workKey(category, countryCode)];
+      return sum + (rec?.businessesProcessed || 0);
+    }, 0);
+
+  archive.status = 'building';
+  try {
     const buffer = await leadsToXlsxBuffer(sheets);
-    const fileName = buildArchiveFileName({ categories: thisJob.categories, countries: thisJob.countries });
     const record = await uploadExcelArchive({
+      id: archive.id,
       buffer,
-      fileName,
-      categories: thisJob.categories,
-      countries: thisJob.countries,
+      fileName: archive.fileName,
+      categories: [category],
+      countries: archive.allCountries,
       totalLeads,
       totalBusinessesProcessed,
+      status: isFinal ? 'complete' : 'partial',
+      category,
+      completedCountries: [...archive.completedCountries],
+      dateRange: thisJob.dateRange,
+      maxResultsPerState: thisJob.maxResultsPerState,
+      targetLeadCount: thisJob.targetLeadCount,
+      analyze: thisJob.analyze,
     });
 
-    thisJob.archiveStatus = 'done';
-    thisJob.archiveResult = record;
-    logActivity(thisJob, `Excel archive uploaded: ${record.fileName} (${totalLeads} leads).`);
+    archive.status = isFinal ? 'done' : 'partial';
+    archive.result = record;
+    archive.error = null;
+    if (isFinal) {
+      logActivity(
+        thisJob,
+        `"${category}" finished across all ${archive.allCountries.length} countr${archive.allCountries.length === 1 ? 'y' : 'ies'} — archive uploaded: ${record.fileName} (${totalLeads} leads).`
+      );
+    }
   } catch (err) {
-    thisJob.archiveStatus = 'failed';
-    thisJob.archiveError = err.message;
-    logActivity(thisJob, `Excel archive upload failed: ${err.message}`, 'error');
+    // Don't regress the UI to a dead end over one failed upload attempt —
+    // if an earlier checkpoint already succeeded, keep it visible/
+    // downloadable; the next checkpoint (or the final one) retries anyway.
+    archive.status = archive.result ? 'partial' : 'failed';
+    archive.error = err.message;
+    logActivity(thisJob, `"${category}" archive ${isFinal ? 'final ' : 'checkpoint '}upload failed: ${err.message}`, 'error');
   }
 }
 
+function checkpointCategoryArchive(thisJob, category) {
+  const archive = thisJob.categoryArchives[category];
+  if (!archive) return;
+  archive.mutex.runExclusive(() => uploadCategoryArchiveNow(thisJob, category, { isFinal: false })).catch(() => {
+    // uploadCategoryArchiveNow already catches and records failures on the
+    // archive — this only guards the (unexpected) case runExclusive throws.
+  });
+}
+
 async function finishJob(thisJob) {
-  if (thisJob.status === 'done') return;
-  thisJob.status = 'done';
+  if (thisJob.finishedAt !== null) return;
   thisJob.finishedAt = Date.now();
   try {
     await thisJob.browser?.close();
@@ -290,8 +396,30 @@ async function finishJob(thisJob) {
   );
 
   if (thisJob.exportOnly) {
-    await buildAndUploadArchive(thisJob, totalLeads, totalBusinessesProcessed);
+    // Safety net — every category should already have finalized its own
+    // archive the instant its last country reached a terminal state (see
+    // `runWorker`), but a category cancelled entirely while still queued
+    // (never picked up by any worker) never passes through that path.
+    // Idempotent via `archive.finalized`, so this is a no-op for every
+    // category that already finished normally.
+    await Promise.all(
+      thisJob.categories.map((category) => {
+        const archive = thisJob.categoryArchives[category];
+        // Already finalized (normal path, from runWorker) — wait for that
+        // exact in-flight upload rather than assuming it's already done.
+        if (archive.finalized) return archive.finalizePromise ?? null;
+        archive.finalized = true;
+        archive.finalizePromise = archive.mutex.runExclusive(() => uploadCategoryArchiveNow(thisJob, category, { isFinal: true }));
+        return archive.finalizePromise;
+      })
+    );
   }
+
+  // Only flip to 'done' once every category archive has actually settled
+  // (all the awaits above are done) — so a status poll never has to reason
+  // about "job done but an archive still building", it can just trust that
+  // status === 'done' means everything, archives included, is final.
+  thisJob.status = 'done';
 }
 
 function isRunningStatus(status) {
@@ -315,12 +443,21 @@ function isRunningStatus(status) {
  * @param {number} [opts.targetLeadCount]
  * @param {boolean} [opts.analyze]
  * @param {boolean} [opts.exportOnly] - skip per-lead Firestore writes
- *   entirely; leads are kept in memory and, once every category finishes,
- *   packaged into one .xlsx workbook (one sheet per category) and uploaded
- *   to Firebase Storage instead — see [buildAndUploadArchive].
+ *   entirely; leads are kept in memory and packaged into one .xlsx workbook
+ *   *per category* (one sheet per country within it), uploaded to Firebase
+ *   Storage the moment that category finishes across every country —
+ *   independently of every other category, which may still be running —
+ *   see [uploadCategoryArchiveNow].
  * @param {Function} [opts.scrapeLocationFn] - test-only seam, see leadService.js
  * @param {Function} [opts.saveLeadsFn] - test-only seam; defaults to
  *   `saveLeadsToFirebase`, or the in-memory collector when `exportOnly` is set
+ * @param {Object.<string, object>} [opts.resumeArchives] - internal, set by
+ *   `resumeCategoryArchive` — keyed by category, each entry points a fresh
+ *   job's `categoryArchives[category]` at an *existing* archive's id/
+ *   fileName (so its checkpoints/finalize upsert that same doc instead of
+ *   creating a new one) and pre-seeds already-scraped countries' leads back
+ *   into `collectedLeads`, so this job only needs to actually scrape
+ *   whatever's left in `countries`/`categories`.
  */
 export async function startMultiCategorySearch({
   categories,
@@ -334,6 +471,7 @@ export async function startMultiCategorySearch({
   country = 'US',
   scrapeLocationFn,
   saveLeadsFn,
+  resumeArchives,
 }) {
   if (!Array.isArray(categories) || !categories.length) {
     throw new Error('categories array is required');
@@ -387,11 +525,53 @@ export async function startMultiCategorySearch({
     browser: null,
     firebaseMutex: new Mutex(),
     collectedLeads: {},
-    archiveStatus: exportOnly ? 'pending' : null,
-    archiveResult: null,
-    archiveError: null,
+    // One archive per category (not one per job) — each covers every
+    // selected country as its own sheet, and finalizes (uploads) the
+    // instant that category finishes across all of them, independently of
+    // whatever every other category is still doing. `id`/`fileName` are
+    // fixed once up front so every checkpoint for a category upserts the
+    // same Storage object + Firestore doc instead of creating a new entry.
+    categoryArchives: exportOnly
+      ? Object.fromEntries(
+          uniqueCategories.map((category) => {
+            const resume = resumeArchives?.[category];
+            return [
+              category,
+              {
+                id: resume?.id || crypto.randomUUID(),
+                fileName: resume?.fileName || buildArchiveFileName({ categories: [category], countries: uniqueCountries }),
+                // The FULL country set this category's file should cover —
+                // for a resume this is the original request, not just the
+                // (smaller) set this particular job run is re-scraping.
+                allCountries: resume?.allCountries || uniqueCountries,
+                completedCountries: new Set(resume?.completedCountries || []),
+                priorBusinessesProcessed: resume?.priorBusinessesProcessed || 0,
+                mutex: new Mutex(),
+                status: 'pending', // pending | building | partial | done | failed
+                result: null,
+                error: null,
+                finalized: false,
+                finalizePromise: null,
+              },
+            ];
+          })
+        )
+      : {},
   };
   thisJob.saveLeadsFn = saveLeadsFn || (exportOnly ? collectInMemory(thisJob) : saveLeadsToFirebase);
+
+  // Seed already-scraped countries' leads back into this fresh job's memory
+  // — pulled from the archive's existing workbook by `resumeCategoryArchive`
+  // — so the merged file this run finalizes still includes them, even
+  // though this run never re-scrapes them.
+  if (resumeArchives) {
+    for (const [category, resume] of Object.entries(resumeArchives)) {
+      for (const [countryCode, leads] of Object.entries(resume.seedLeadsByCountry || {})) {
+        thisJob.collectedLeads[workKey(category, countryCode)] = leads;
+      }
+    }
+  }
+
   currentJob = thisJob;
 
   const scopeDesc = multiCountry
@@ -408,6 +588,93 @@ export async function startMultiCategorySearch({
   });
 
   return { started: true, categories: uniqueCategories, countries: uniqueCountries, concurrency: poolSize };
+}
+
+/**
+ * Picks a `status: 'partial'` category archive back up — e.g. after the
+ * backend crashed/restarted mid-scan and stranded it (jobs are in-memory
+ * only, so a restart alone can never resume anything on its own). Scrapes
+ * *only* the countries that never finished, re-downloads the archive's
+ * current workbook to recover already-scraped countries' leads (since
+ * those only ever lived in the crashed job's memory), and finalizes back
+ * into the *same* archive doc/Storage file once the remaining countries
+ * are done — so the end result is identical to the original scan having
+ * simply completed, not a second file to reconcile.
+ *
+ * Archives created before this feature existed won't have
+ * `completedCountries`/scan-params stored — falls back to deriving
+ * "already done" from the workbook's actual sheets, and to this app's
+ * normal scan defaults, so even those older stuck archives are resumable.
+ */
+export async function resumeCategoryArchive({ archiveId, concurrency, scrapeLocationFn } = {}) {
+  if (!archiveId) throw new Error('archiveId is required');
+
+  const archive = await getExcelArchive(archiveId);
+  if (!archive) {
+    const err = new Error('Archive not found');
+    err.status = 404;
+    throw err;
+  }
+  if (archive.status !== 'partial') {
+    const err = new Error(`This archive is "${archive.status}" — only "partial" (in-progress) archives can be resumed.`);
+    err.status = 400;
+    throw err;
+  }
+  const category = archive.category;
+  if (!category) {
+    const err = new Error('This archive has no category recorded — cannot resume.');
+    err.status = 400;
+    throw err;
+  }
+
+  // Recover whatever's already in the workbook — the source of truth for
+  // "which countries actually have data", regardless of what
+  // `completedCountries` says (older archives never wrote that field, and
+  // even on new ones this is a cheap, load-bearing cross-check rather than
+  // blindly trusting stored state).
+  const downloaded = await downloadExcelArchiveBuffer(archiveId);
+  const sheets = downloaded ? await xlsxBufferToJson(downloaded.buffer) : [];
+  const seedLeadsByCountry = {};
+  const countriesWithData = [];
+  for (const sheet of sheets) {
+    const code = countryCodeForName(sheet.name);
+    if (!code || !sheet.rows.length) continue;
+    seedLeadsByCountry[code] = sheetsToLeadsJson([sheet], `resume-${archiveId}-${code}`);
+    countriesWithData.push(code);
+  }
+
+  const completedCountries = archive.completedCountries?.length ? archive.completedCountries : countriesWithData;
+  const missingCountries = archive.countries.filter((c) => !completedCountries.includes(c));
+  if (!missingCountries.length) {
+    const err = new Error('Nothing left to resume — every country already has data. Try re-checking the archive list.');
+    err.status = 400;
+    throw err;
+  }
+
+  const result = await startMultiCategorySearch({
+    categories: [category],
+    countries: missingCountries,
+    concurrency,
+    exportOnly: true,
+    dateRange: archive.dateRange || '30',
+    maxResultsPerState: archive.maxResultsPerState || 150,
+    targetLeadCount: archive.targetLeadCount || 100,
+    analyze: archive.analyze || false,
+    scrapeLocationFn,
+    resumeArchives: {
+      [category]: {
+        id: archive.id,
+        fileName: archive.fileName,
+        allCountries: archive.countries,
+        completedCountries,
+        priorBusinessesProcessed: archive.totalBusinessesProcessed || 0,
+        seedLeadsByCountry,
+      },
+    },
+  });
+
+  logActivity(currentJob, `Resuming "${category}" — ${missingCountries.length} of ${archive.countries.length} countries remaining.`);
+  return result;
 }
 
 function categorySnapshot(rec) {
@@ -484,9 +751,20 @@ export function getMultiJobSnapshot() {
     status: job.status,
     concurrency: job.concurrency,
     exportOnly: job.exportOnly,
-    archiveStatus: job.archiveStatus,
-    archiveResult: job.archiveResult,
-    archiveError: job.archiveError,
+    // One entry per category, each with its own independent archive
+    // lifecycle — see `uploadCategoryArchiveNow`. Empty for non-exportOnly
+    // jobs (leads went straight to Firestore, nothing to archive).
+    categoryArchives: job.exportOnly
+      ? job.categories.map((category) => {
+          const archive = job.categoryArchives[category];
+          return {
+            category,
+            status: archive.status,
+            result: archive.result,
+            error: archive.error,
+          };
+        })
+      : [],
     overall: {
       percent: overallPercent,
       // Total (category, country) work items — matches completed/failed/

@@ -213,11 +213,15 @@ export async function searchBusinesses(category, location, { maxResults = 10, on
         onProgress?.(
           `Opening listing ${i + 1}/${limit}${listingName ? `: ${listingName}` : ''}...`
         );
-        const business = await withTimeout(
-          scrapeOnePlace(placePage, listings[i].href, category, location, country),
-          45000,
-          `place ${i + 1}`
-        );
+        // Held separately from the `withTimeout` race so a timed-out scrape
+        // (which keeps running against `placePage` after it's closed below)
+        // always has its eventual rejection handled — otherwise it lingers
+        // as an unhandled promise holding Playwright Page/Frame/CDP-session
+        // references, which adds up across a multi-hour, thousands-of
+        // -listings scan.
+        const scrapePromise = scrapeOnePlace(placePage, listings[i].href, category, location, country);
+        scrapePromise.catch(() => {});
+        const business = await withTimeout(scrapePromise, 45000, `place ${i + 1}`);
         if (business?.name) {
           businesses.push(business);
           onProgress?.(
@@ -388,11 +392,22 @@ async function extractOneStarReviews(page) {
         const date = root.querySelector('.rsqaWe, .DU9u7b')?.textContent?.trim() || 'Unknown';
         const text = root.querySelector('.wiI7hc, .MyEned')?.textContent?.trim() || '';
 
+        // Try to find a direct link to the review
+        let link = null;
+        const reviewId = root.getAttribute('data-review-id');
+        if (reviewId) {
+          link = `https://www.google.com/maps/reviews/data=!4m3!8m2!3m1!1s${reviewId}?hl=en`;
+        } else {
+          const menuBtn = root.querySelector('button[aria-label*="menu" i]');
+          const id = menuBtn?.getAttribute('data-review-id');
+          if (id) link = `https://www.google.com/maps/reviews/data=!4m3!8m2!3m1!1s${id}?hl=en`;
+        }
+
         const key = `${reviewer}|${date}|${text.slice(0, 50)}`;
         if (seen.has(key)) continue;
         seen.add(key);
 
-        out.push({ stars: 1, reviewer, text, date });
+        out.push({ stars: 1, reviewer, text, date, link });
         if (out.length >= 15) break;
       }
       return out;
@@ -423,7 +438,7 @@ export async function scrapePlaceReviews(mapsUrl) {
 // Same card/selector logic as extractOneStarReviews, but sorted "Newest"
 // and without the 1-star filter — used by the watchlist feature, which
 // needs to notice ANY new review (not just qualifying 1-star ones).
-async function extractRecentReviews(page, { limit = 10 } = {}) {
+async function extractRecentReviews(page, { limit = 40 } = {}) {
   const reviews = [];
 
   try {
@@ -450,16 +465,21 @@ async function extractRecentReviews(page, { limit = 10 } = {}) {
     if (sortClicked) {
       await page.waitForTimeout(1000);
       await page.evaluate(() => {
-        const options = Array.from(document.querySelectorAll('[role="menuitem"], [role="menuitemradio"], .fx07Cc'));
-        const newest = options.find(o => o.textContent?.toLowerCase().includes('newest'));
-        if (newest) newest.click();
+        const options = Array.from(document.querySelectorAll('[role="menuitem"], [role="menuitemradio"], .fx07Cc, .m67qEc div'));
+        // For Watchlist, we want "Lowest rating" to find 1-stars even if they are old or buried.
+        const lowest = options.find(o => {
+          const txt = o.textContent?.toLowerCase() || '';
+          return txt.includes('lowest') || txt.includes('lowest rating');
+        });
+        if (lowest) lowest.click();
       });
-      await page.waitForTimeout(2000);
+      await page.waitForTimeout(2500);
     }
 
-    for (let i = 0; i < 3; i++) {
-      await page.mouse.wheel(0, 2000);
-      await page.waitForTimeout(500);
+    // Scroll more to load up to 40 reviews
+    for (let i = 0; i < 6; i++) {
+      await page.mouse.wheel(0, 2500);
+      await page.waitForTimeout(600);
     }
 
     const raw = await page.evaluate((maxCount) => {
@@ -468,18 +488,42 @@ async function extractRecentReviews(page, { limit = 10 } = {}) {
       const out = [];
 
       for (const root of cards) {
+        // More robust star detection
+        let stars = null;
+
+        // 1. Aria-label on stars container
         const starEl = root.querySelector('[aria-label*="star" i], .kvS76c, span[role="img"]');
         const aria = starEl?.getAttribute('aria-label') || '';
         const starMatch = aria.match(/(\d+)\s*stars?/i);
-        let stars = starMatch ? Number(starMatch[1]) : null;
-        if (stars === null) {
-          const filledStars = root.querySelectorAll('.vzX5Ic').length;
-          if (filledStars > 0) stars = filledStars;
+        if (starMatch) {
+          stars = Number(starMatch[1]);
+        } else {
+          // 2. Count visual "filled" stars
+          const filled = root.querySelectorAll('.vzX5Ic, .GDS5cc img[src*="star_filled"]').length;
+          if (filled > 0) {
+            stars = filled;
+          } else {
+            // 3. Check for specific 1-star classes/icons
+            if (root.querySelector('.L80Sge, .xS9p9e')) { // Example 1-star indicator classes
+               stars = 1;
+            }
+          }
         }
 
         const reviewer = root.querySelector('.d4r55, .TSZ61d')?.textContent?.trim() || 'Anonymous';
         const date = root.querySelector('.rsqaWe, .DU9u7b')?.textContent?.trim() || 'Unknown';
         const text = root.querySelector('.wiI7hc, .MyEned')?.textContent?.trim() || '';
+
+        // Try to find a direct link to the review
+        let link = null;
+        const reviewId = root.getAttribute('data-review-id');
+        if (reviewId) {
+          link = `https://www.google.com/maps/reviews/data=!4m3!8m2!3m1!1s${reviewId}?hl=en`;
+        } else {
+          const menuBtn = root.querySelector('button[aria-label*="menu" i]');
+          const id = menuBtn?.getAttribute('data-review-id');
+          if (id) link = `https://www.google.com/maps/reviews/data=!4m3!8m2!3m1!1s${id}?hl=en`;
+        }
 
         // Relative date strings ("2 months ago") drift as time passes, so the
         // dedup/diff key deliberately excludes date — reviewer+text is what
@@ -488,7 +532,7 @@ async function extractRecentReviews(page, { limit = 10 } = {}) {
         if (seen.has(key)) continue;
         seen.add(key);
 
-        out.push({ stars, reviewer, text, date });
+        out.push({ stars, reviewer, text, date, link });
         if (out.length >= maxCount) break;
       }
       return out;

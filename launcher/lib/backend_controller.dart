@@ -139,9 +139,15 @@ class BackendController extends ChangeNotifier {
       // lookup fails, and running the long-lived server directly (rather
       // than as a child of a wrapper shell) means Stop's kill() reliably
       // targets the actual node process instead of possibly just the shell.
+      //
+      // --max-old-space-size: a multi-hour multi-category scan holds a
+      // shared Playwright browser open the whole time, and V8's default old
+      // -space ceiling (~4GB on this machine) was observed being hit mid
+      // -scan, crashing the entire job. Raised well above that so a long
+      // scan has real headroom instead of dying hours in.
       final process = await Process.start(
         nodeCommand,
-        ['src/index.js'],
+        ['--max-old-space-size=8192', 'src/index.js'],
         workingDirectory: backendPath,
       );
       _process = process;

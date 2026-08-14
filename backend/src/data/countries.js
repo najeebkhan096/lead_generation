@@ -19,6 +19,20 @@ import { NETHERLANDS_PROVINCES } from './netherlandsProvinces.js';
 import { BELGIUM_PROVINCES } from './belgiumProvinces.js';
 import { SWITZERLAND_CANTONS } from './switzerlandCantons.js';
 import { SWEDEN_COUNTIES } from './swedenCounties.js';
+import { IRELAND_REGIONS } from './irelandRegions.js';
+import { NORWAY_COUNTIES } from './norwayCounties.js';
+import { FINLAND_REGIONS } from './finlandRegions.js';
+import { PORTUGAL_DISTRICTS } from './portugalDistricts.js';
+import { POLAND_VOIVODESHIPS } from './polandVoivodeships.js';
+import { CZECH_REGIONS } from './czechRegions.js';
+import { HUNGARY_COUNTIES } from './hungaryCounties.js';
+import { MEXICO_STATES } from './mexicoStates.js';
+import { SAUDI_PROVINCES } from './saudiProvinces.js';
+import { UAE_EMIRATES } from './uaeEmirates.js';
+import { QATAR_MUNICIPALITIES } from './qatarMunicipalities.js';
+import { KUWAIT_GOVERNORATES } from './kuwaitGovernorates.js';
+import { BAHRAIN_GOVERNORATES } from './bahrainGovernorates.js';
+import { OMAN_GOVERNORATES } from './omanGovernorates.js';
 
 export const COUNTRIES = {
   US: {
@@ -119,6 +133,104 @@ export const COUNTRIES = {
     label: 'All 21 Swedish counties',
     regions: SWEDEN_COUNTIES,
   },
+  IE: {
+    code: 'IE',
+    name: 'Ireland',
+    shortName: 'Ireland',
+    label: 'All 4 Irish provinces',
+    regions: IRELAND_REGIONS,
+  },
+  NO: {
+    code: 'NO',
+    name: 'Norway',
+    shortName: 'Norway',
+    label: 'All 11 Norwegian counties',
+    regions: NORWAY_COUNTIES,
+  },
+  FI: {
+    code: 'FI',
+    name: 'Finland',
+    shortName: 'Finland',
+    label: 'Major Finnish regions',
+    regions: FINLAND_REGIONS,
+  },
+  PT: {
+    code: 'PT',
+    name: 'Portugal',
+    shortName: 'Portugal',
+    label: 'All Portuguese districts & autonomous regions',
+    regions: PORTUGAL_DISTRICTS,
+  },
+  PL: {
+    code: 'PL',
+    name: 'Poland',
+    shortName: 'Poland',
+    label: 'All 16 Polish voivodeships',
+    regions: POLAND_VOIVODESHIPS,
+  },
+  CZ: {
+    code: 'CZ',
+    name: 'Czech Republic',
+    shortName: 'Czech Republic',
+    label: 'All 14 Czech regions',
+    regions: CZECH_REGIONS,
+  },
+  HU: {
+    code: 'HU',
+    name: 'Hungary',
+    shortName: 'Hungary',
+    label: 'All 19 counties + Budapest',
+    regions: HUNGARY_COUNTIES,
+  },
+  MX: {
+    code: 'MX',
+    name: 'Mexico',
+    shortName: 'Mexico',
+    label: 'All 31 states + Mexico City',
+    regions: MEXICO_STATES,
+  },
+  SA: {
+    code: 'SA',
+    name: 'Saudi Arabia',
+    shortName: 'Saudi Arabia',
+    label: 'All 13 Saudi provinces',
+    regions: SAUDI_PROVINCES,
+  },
+  AE: {
+    code: 'AE',
+    name: 'United Arab Emirates',
+    shortName: 'UAE',
+    label: 'All 7 Emirates',
+    regions: UAE_EMIRATES,
+  },
+  QA: {
+    code: 'QA',
+    name: 'Qatar',
+    shortName: 'Qatar',
+    label: 'All 8 municipalities',
+    regions: QATAR_MUNICIPALITIES,
+  },
+  KW: {
+    code: 'KW',
+    name: 'Kuwait',
+    shortName: 'Kuwait',
+    label: 'All 6 governorates',
+    regions: KUWAIT_GOVERNORATES,
+  },
+  BH: {
+    code: 'BH',
+    name: 'Bahrain',
+    shortName: 'Bahrain',
+    label: 'All 4 governorates',
+    regions: BAHRAIN_GOVERNORATES,
+  },
+  OM: {
+    code: 'OM',
+    name: 'Oman',
+    shortName: 'Oman',
+    label: 'All 11 governorates',
+    regions: OMAN_GOVERNORATES,
+  },
 };
 
 const DEFAULT_COUNTRY = 'US';
@@ -130,4 +242,16 @@ export function countryMeta(country) {
 
 export function regionsForCountry(country) {
   return countryMeta(country).regions;
+}
+
+/**
+ * Reverse lookup: full country name (as used for .xlsx sheet tab names,
+ * see multiCategoryOrchestrator.js's `uploadCategoryArchiveNow`) back to
+ * its code — used when resuming an interrupted scan, to figure out which
+ * countries an already-uploaded archive's sheets belong to. `null` if
+ * nothing matches (e.g. the workbook's lone empty-placeholder "Leads" sheet).
+ */
+export function countryCodeForName(name) {
+  const match = Object.values(COUNTRIES).find((c) => c.name === name);
+  return match ? match.code : null;
 }

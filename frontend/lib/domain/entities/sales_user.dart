@@ -10,6 +10,8 @@ class SalesUser extends Equatable {
     this.email,
     this.photoURL,
     this.role = 'salesman',
+    this.createdAt,
+    this.lastLoginAt,
   });
 
   final String id;
@@ -17,6 +19,8 @@ class SalesUser extends Equatable {
   final String? email;
   final String? photoURL;
   final String role;
+  final DateTime? createdAt;
+  final DateTime? lastLoginAt;
 
   factory SalesUser.fromJson(Map<String, dynamic> json) {
     return SalesUser(
@@ -25,9 +29,16 @@ class SalesUser extends Equatable {
       email: json['email'] as String?,
       photoURL: json['photoURL'] as String?,
       role: (json['role'] as String?) ?? 'salesman',
+      createdAt: _parseDate(json['createdAt']),
+      lastLoginAt: _parseDate(json['lastLoginAt']),
     );
   }
 
+  static DateTime? _parseDate(dynamic value) {
+    if (value is! String || value.isEmpty) return null;
+    return DateTime.tryParse(value);
+  }
+
   @override
-  List<Object?> get props => [id, name, email, photoURL, role];
+  List<Object?> get props => [id, name, email, photoURL, role, createdAt, lastLoginAt];
 }

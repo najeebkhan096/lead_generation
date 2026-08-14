@@ -282,8 +282,9 @@ class MultiSearchFinalStats extends Equatable {
   List<Object?> get props => [totalExecutionMs, totalLeads, statesProcessed, successCount, failureCount, cancelledCount];
 }
 
-/// The Excel archive produced once an `exportOnly` job finishes — see
-/// [ExcelArchive] for the same shape returned by the archive-listing API.
+/// The Excel archive produced for one category (once every selected
+/// country finishes for it — see [ExcelArchive] for the same shape
+/// returned by the archive-listing API).
 class ArchiveResult extends Equatable {
   const ArchiveResult({
     required this.id,
@@ -310,6 +311,38 @@ class ArchiveResult extends Equatable {
   List<Object?> get props => [id, fileName, downloadUrl, totalLeads];
 }
 
+/// One category's own archive lifecycle — `exportOnly` jobs produce one
+/// workbook per category (one sheet per country within it), uploaded the
+/// moment that category finishes across every selected country, entirely
+/// independently of whatever every other category is still doing.
+class CategoryArchive extends Equatable {
+  const CategoryArchive({
+    required this.category,
+    required this.status,
+    this.result,
+    this.error,
+  });
+
+  final String category;
+
+  /// pending | building | partial | done | failed
+  final String status;
+  final ArchiveResult? result;
+  final String? error;
+
+  factory CategoryArchive.fromJson(Map<String, dynamic> json) {
+    return CategoryArchive(
+      category: (json['category'] as String?) ?? '',
+      status: (json['status'] as String?) ?? 'pending',
+      result: json['result'] == null ? null : ArchiveResult.fromJson(json['result'] as Map<String, dynamic>),
+      error: json['error'] as String?,
+    );
+  }
+
+  @override
+  List<Object?> get props => [category, status, result, error];
+}
+
 /// Full live-dashboard snapshot polled from `/api/search/multi/status`.
 class MultiSearchSnapshot extends Equatable {
   const MultiSearchSnapshot({
@@ -321,9 +354,7 @@ class MultiSearchSnapshot extends Equatable {
     this.activity = const [],
     this.finalStats,
     this.exportOnly = false,
-    this.archiveStatus,
-    this.archiveResult,
-    this.archiveError,
+    this.categoryArchives = const [],
   });
 
   final bool active;
@@ -336,13 +367,14 @@ class MultiSearchSnapshot extends Equatable {
 
   /// True for a scan started from the Excel Scan page — leads were never
   /// written to the normal Leads/Firestore collection, only archived as an
-  /// .xlsx in Firebase Storage (see [archiveResult]).
+  /// .xlsx in Firebase Storage, one workbook per category (see
+  /// [categoryArchives]).
   final bool exportOnly;
 
-  /// null | 'pending' | 'building' | 'done' | 'failed'
-  final String? archiveStatus;
-  final ArchiveResult? archiveResult;
-  final String? archiveError;
+  /// One entry per category — each finishes (and uploads) independently
+  /// the moment that category is done across every selected country.
+  /// Empty for non-`exportOnly` jobs.
+  final List<CategoryArchive> categoryArchives;
 
   bool get hasJob => status != 'idle';
 
@@ -364,11 +396,9 @@ class MultiSearchSnapshot extends Equatable {
           ? null
           : MultiSearchFinalStats.fromJson(json['finalStats'] as Map<String, dynamic>),
       exportOnly: json['exportOnly'] == true,
-      archiveStatus: json['archiveStatus'] as String?,
-      archiveResult: json['archiveResult'] == null
-          ? null
-          : ArchiveResult.fromJson(json['archiveResult'] as Map<String, dynamic>),
-      archiveError: json['archiveError'] as String?,
+      categoryArchives: ((json['categoryArchives'] as List<dynamic>?) ?? const [])
+          .map((a) => CategoryArchive.fromJson(a as Map<String, dynamic>))
+          .toList(),
     );
   }
 
@@ -382,8 +412,6 @@ class MultiSearchSnapshot extends Equatable {
         activity,
         finalStats,
         exportOnly,
-        archiveStatus,
-        archiveResult,
-        archiveError,
+        categoryArchives,
       ];
 }

@@ -17,10 +17,10 @@ export async function addSale(req, res) {
 
 export async function getSales(req, res) {
   try {
-    const { salesmanId, status } = req.query || {};
+    const { salesmanId, leadStatus } = req.query || {};
     const sales = await listSales({
       salesmanId: salesmanId ? String(salesmanId) : undefined,
-      status: status ? String(status) : undefined,
+      leadStatus: leadStatus ? String(leadStatus) : undefined,
     });
     return res.json({ sales });
   } catch (err) {

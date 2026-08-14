@@ -1,3 +1,5 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 class ExcelArchive {
   const ExcelArchive({
     required this.id,
@@ -32,6 +34,23 @@ class ExcelArchive {
       createdAt: json['createdAt'] is String && (json['createdAt'] as String).isNotEmpty
           ? DateTime.tryParse(json['createdAt'] as String)
           : null,
+    );
+  }
+
+  /// Reads the same `excelScans` / `whatsappValidatedScans` doc shape
+  /// directly from Firestore (backend writes it via `firebase-admin/firestore`,
+  /// see backend/src/services/excelArchiveStore.js) — used when fetching
+  /// straight from Firebase instead of through the backend REST API.
+  factory ExcelArchive.fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
+    final d = doc.data() ?? const <String, dynamic>{};
+    return ExcelArchive(
+      id: doc.id,
+      fileName: (d['fileName'] as String?) ?? '',
+      downloadUrl: (d['downloadUrl'] as String?) ?? '',
+      categories: ((d['categories'] as List<dynamic>?) ?? const []).map((e) => e.toString()).toList(),
+      countries: ((d['countries'] as List<dynamic>?) ?? const []).map((e) => e.toString()).toList(),
+      totalLeads: (d['totalLeads'] as num?)?.toInt() ?? 0,
+      createdAt: (d['createdAt'] as Timestamp?)?.toDate(),
     );
   }
 }
