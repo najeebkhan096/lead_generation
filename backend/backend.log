@@ -1,0 +1,177 @@
+
+> lead-generation-backend@1.0.0 dev
+> node --watch src/index.js
+
+Firebase Admin ready (project: whatsapplead-a8d9a)
+Lead generation API running on http://0.0.0.0:3001
+Storage: Firebase Firestore (Save to Firebase after search)
+Serving Flutter web from /Users/najeebkhan/StudioProjects/lead_generation/backend/public
+Failed running 'src/index.js'. Waiting for file changes before restarting...
+Restarting 'src/index.js'
+Firebase Admin ready (project: whatsapplead-a8d9a)
+node:events:487
+      throw er; // Unhandled 'error' event
+      ^
+
+Error: listen EADDRINUSE: address already in use 0.0.0.0:3001
+    at Server.setupListenHandle [as _listen2] (node:net:2008:16)
+    at listenInCluster (node:net:2065:12)
+    at node:net:2274:7
+    at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+Emitted 'error' event on Server instance at:
+    at emitErrorNT (node:net:2044:8)
+    at process.processTicksAndRejections (node:internal/process/task_queues:90:21) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3001
+}
+
+Node.js v26.0.0
+Failed running 'src/index.js'. Waiting for file changes before restarting...
+Restarting 'src/index.js'
+Firebase Admin ready (project: whatsapplead-a8d9a)
+node:events:487
+      throw er; // Unhandled 'error' event
+      ^
+
+Error: listen EADDRINUSE: address already in use 0.0.0.0:3001
+    at Server.setupListenHandle [as _listen2] (node:net:2008:16)
+    at listenInCluster (node:net:2065:12)
+    at node:net:2274:7
+    at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+Emitted 'error' event on Server instance at:
+    at emitErrorNT (node:net:2044:8)
+    at process.processTicksAndRejections (node:internal/process/task_queues:90:21) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3001
+}
+
+Node.js v26.0.0
+Failed running 'src/index.js'. Waiting for file changes before restarting...
+Restarting 'src/index.js'
+Firebase Admin ready (project: whatsapplead-a8d9a)
+node:events:487
+      throw er; // Unhandled 'error' event
+      ^
+
+Error: listen EADDRINUSE: address already in use 0.0.0.0:3001
+    at Server.setupListenHandle [as _listen2] (node:net:2008:16)
+    at listenInCluster (node:net:2065:12)
+    at node:net:2274:7
+    at process.prnode:events:487
+      throw er; // Unhandled 'error' event
+      ^
+
+Error: listen EADDRINUSE: address already in use 0.0.0.0:3001
+    at Server.setupListenHandle [as _listen2] (node:net:2008:16)
+    at listenInCluster (node:net:2065:12)
+    at node:net:2274:7
+    at process.processTicksAndRejections (node:internal/process/tas
+Node.js v26.0.0
+Failed running 'src/index.js'. Waiting for file changes before restarting...
+Restarting 'src/index.js'
+Firebase Admin ready (project: whatsapplead-a8d9a)
+node:events:487
+      throw er; // Unhandled 'error' event
+      ^
+
+Error: listen EADDRINUSE: address already in use 0.0.0.0:3001
+    at Server.setupListenHandle [as _listen2] (node:net:2008:16)
+    at listenInCluster (node:net:2065:12)
+    at node:net:2274:7
+    at process.prnode:events:487
+      throw er; // Unhandled 'error' event
+      ^
+
+Error: listen EADDRINUSE: address already in use 0.0.0.0:3001
+    at Server.setupListenHandle [as _listen2] (node:net:2008:16)
+    at listenInCluster (node:net:2065:12)
+    at node:net:2274:7
+    at process.processTicksAndRejections (node:internal/process/tas
+Node.js v26.0.0
+Failed running 'src/index.js'. Waiting for file changes before restarting...
+Restarting 'src/index.js'
+Firebase Admin ready (project: whatsapplead-a8d9a)
+node:events:487
+      throw er; // Unhandled 'error' event
+      ^
+
+Error: listen EADDRINUSE: address already in use 0.0.0.0:3001
+    at Server.setupListenHandle [as _listen2] (node:net:2008:16)
+    at listenInCluster (node:net:2065:12)
+    at node:net:2274:7
+    at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+Emitted 'error' event on Server instance at:
+    at emitErrorNT (node:net:2044:8)
+    at process.processTicksAndRejections (node:internal/process/task_queues:90:21) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3001
+}
+
+Node.js v26.0.0
+Failed running 'src/index.js'. Waiting for file changes before restarting...
+Restarting 'src/index.js'
+Firebase Admin ready (project: whatsapplead-a8d9a)
+node:events:487
+      throw er; // Unhandled 'error' event
+      ^
+
+Error: listen EADDRINUSE: address already in use 0.0.0.0:3001
+    at Server.setupListenHandle [as _listen2] (node:net:2008:16)
+    at listenInCluster (node:net:2065:12)
+    at node:net:2274:7
+    at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+Emitted 'error' event on Server instance at:
+    at emitErrorNT (node:net:2044:8)
+    at process.processTicksAndRejections (node:internal/process/task_queues:90:21) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3001
+}
+
+Node.js v26.0.0
+Failed running 'src/index.js'. Waiting for file changes before restarting...
+Restarting 'src/index.js'
+Firebase Admin ready (project: whatsapplead-a8d9a)
+node:events:487
+      throw er; // Unhandled 'error' event
+      ^
+
+Error: listen EADDRINUSE: address already in use 0.0.0.0:3001
+    at Server.setupListenHandle [as _listen2] (node:net:2008:16)
+    at listenInCluster (node:net:2065:12)
+    at node:net:2274:7
+    at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+Emitted 'error' event on Server instance at:
+    at emitErrorNT (node:net:2044:8)
+    at process.processTicksAndRejections (node:internal/process/task_queues:90:21) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3001
+}
+
+Node.js v26.0.0
+Failed running 'src/index.js'. Waiting for file changes before restarting...
+:8)
+    at process.processTicksAndRejections (node:internal/process/task_queues:90:21) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '0.0.0.0',
+  port: 3001
+}
+
+Node.js v26.0.0
+Failed running 'src/index.js'. Waiting for file changes before restarting...
