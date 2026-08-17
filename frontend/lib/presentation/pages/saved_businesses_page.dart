@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../domain/entities/lead.dart';
@@ -11,8 +12,6 @@ import '../bloc/saved_businesses/saved_businesses_bloc.dart';
 import '../bloc/saved_businesses/saved_businesses_event.dart';
 import '../bloc/saved_businesses/saved_businesses_state.dart';
 import '../widgets/saved_business_card.dart';
-import 'business_details_page.dart';
-import 'whatsapp_checker_page.dart';
 
 const _allCategories = 'All categories';
 const _validationBatchSize = 50;
@@ -107,9 +106,7 @@ class _SavedBusinessesViewState extends State<_SavedBusinessesView> {
         ),
       );
       if (goConnect == true && mounted) {
-        Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const WhatsAppCheckerPage()),
-        );
+        context.go('/whatsapp');
       }
       return;
     }
@@ -441,9 +438,7 @@ class _SavedBusinessesViewState extends State<_SavedBusinessesView> {
                   return SavedBusinessCard(
                     lead: lead,
                     onTap: () async {
-                      final changed = await Navigator.of(context).push<bool>(
-                        MaterialPageRoute(builder: (_) => BusinessDetailsPage(lead: lead)),
-                      );
+                      final changed = await context.push<bool>('/leads/details', extra: lead);
                       if (changed == true && context.mounted) {
                         context.read<SavedBusinessesBloc>().add(const SavedBusinessesRequested());
                       }

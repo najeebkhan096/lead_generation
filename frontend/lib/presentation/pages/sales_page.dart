@@ -978,19 +978,36 @@ class _SalesmanCard extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(salesman.name, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+                      Text(
+                        salesman.name,
+                        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                       if (salesman.email != null && salesman.email!.isNotEmpty) ...[
                         const SizedBox(height: 2),
-                        Text(salesman.email!, style: const TextStyle(fontSize: 12, color: AppTheme.faint)),
+                        Text(
+                          salesman.email!,
+                          style: const TextStyle(fontSize: 12, color: AppTheme.faint),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ],
                     ],
                   ),
                 ),
-                if (salesman.lastLoginAt != null)
-                  Text(
-                    'Active ${_timeAgo(salesman.lastLoginAt!)}',
-                    style: const TextStyle(fontSize: 11, color: AppTheme.faint),
+                if (salesman.lastLoginAt != null) ...[
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Text(
+                      'Active ${_timeAgo(salesman.lastLoginAt!)}',
+                      style: const TextStyle(fontSize: 11, color: AppTheme.faint),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.right,
+                    ),
                   ),
+                ],
                 const SizedBox(width: 8),
                 const Icon(AppIcons.chevronRight, size: 16, color: AppTheme.faint),
               ],
@@ -1059,15 +1076,32 @@ class _SalesmanDetailPage extends StatefulWidget {
   State<_SalesmanDetailPage> createState() => _SalesmanDetailPageState();
 }
 
-class _SalesmanDetailPageState extends State<_SalesmanDetailPage> {
+class _SalesmanDetailPageState extends State<_SalesmanDetailPage> with SingleTickerProviderStateMixin {
   List<Sale> _sales = [];
   bool _loading = true;
   String? _error;
+  late final TabController _tabController = TabController(length: 3, vsync: this)..addListener(_onTabChanged);
 
   @override
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void dispose() {
+    _tabController.removeListener(_onTabChanged);
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  // Drives a plain filtered list below the TabBar (not a TabBarView) — this
+  // whole page is one CustomScrollView, and a TabBarView needs its own
+  // bounded height that doesn't play well nested inside another scroll
+  // view. `indexIsChanging` skips the extra rebuild mid-swipe-free tap
+  // animation; only the settled index matters here.
+  void _onTabChanged() {
+    if (!_tabController.indexIsChanging) setState(() {});
   }
 
   Future<void> _load() async {
@@ -1176,17 +1210,34 @@ class _SalesmanDetailPageState extends State<_SalesmanDetailPage> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(widget.salesman.name, style: Theme.of(context).textTheme.titleLarge),
+                                Text(
+                                  widget.salesman.name,
+                                  style: Theme.of(context).textTheme.titleLarge,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                                 if (widget.salesman.email != null && widget.salesman.email!.isNotEmpty)
-                                  Text(widget.salesman.email!, style: const TextStyle(fontSize: 13, color: AppTheme.faint)),
+                                  Text(
+                                    widget.salesman.email!,
+                                    style: const TextStyle(fontSize: 13, color: AppTheme.faint),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
                               ],
                             ),
                           ),
-                          if (widget.salesman.lastLoginAt != null)
-                            Text(
-                              'Active ${_timeAgo(widget.salesman.lastLoginAt!)}',
-                              style: const TextStyle(fontSize: 12, color: AppTheme.faint),
+                          if (widget.salesman.lastLoginAt != null) ...[
+                            const SizedBox(width: 10),
+                            Flexible(
+                              child: Text(
+                                'Active ${_timeAgo(widget.salesman.lastLoginAt!)}',
+                                style: const TextStyle(fontSize: 12, color: AppTheme.faint),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                textAlign: TextAlign.right,
+                              ),
                             ),
+                          ],
                         ],
                       ),
                       const SizedBox(height: 24),
@@ -1196,9 +1247,7 @@ class _SalesmanDetailPageState extends State<_SalesmanDetailPage> {
                       const SizedBox(height: 24),
                       _SalesmanFunnelCard(tally: tally),
                       const SizedBox(height: 24),
-                      Text('All sales (${tally.totalSales})', style: Theme.of(context).textTheme.titleMedium),
-                      const SizedBox(height: 12),
-                      for (final sale in _sales) _SaleCard(sale: sale),
+                      _SalesTabSection(controller: _tabController, sales: _sales),
                     ],
                   ),
                 ),
@@ -1207,6 +1256,75 @@ class _SalesmanDetailPageState extends State<_SalesmanDetailPage> {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Ongoing (new + in progress) / Completed / Cancelled, each with its own
+/// count in the tab label — a plain `TabBar` driving a filtered list
+/// underneath rather than a `TabBarView`, since this whole page is one
+/// `CustomScrollView` and a `TabBarView` needs its own bounded height that
+/// doesn't nest cleanly inside another scroll view.
+class _SalesTabSection extends StatelessWidget {
+  const _SalesTabSection({required this.controller, required this.sales});
+
+  final TabController controller;
+  final List<Sale> sales;
+
+  @override
+  Widget build(BuildContext context) {
+    final ongoing = sales.where((s) => s.leadStatus == LeadStatus.newLead || s.leadStatus == LeadStatus.inProgress).toList();
+    final completed = sales.where((s) => s.leadStatus == LeadStatus.completed).toList();
+    final cancelled = sales.where((s) => s.leadStatus == LeadStatus.cancelled).toList();
+    final buckets = [ongoing, completed, cancelled];
+    final selected = buckets[controller.index];
+
+    return Container(
+      decoration: BoxDecoration(
+        color: AppTheme.surface,
+        borderRadius: BorderRadius.circular(AppTheme.radiusCard),
+        border: Border.all(color: AppTheme.neutral200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          TabBar(
+            controller: controller,
+            labelColor: AppTheme.accent700,
+            unselectedLabelColor: AppTheme.faint,
+            indicatorColor: AppTheme.accent500,
+            labelStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+            unselectedLabelStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+            tabs: [
+              Tab(text: 'Ongoing (${ongoing.length})'),
+              Tab(text: 'Completed (${completed.length})'),
+              Tab(text: 'Cancelled (${cancelled.length})'),
+            ],
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+            child: selected.isEmpty
+                ? _EmptyTabState(label: const ['ongoing', 'completed', 'cancelled'][controller.index])
+                : Column(children: [for (final sale in selected) _SaleCard(sale: sale)]),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EmptyTabState extends StatelessWidget {
+  const _EmptyTabState({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 28),
+      child: Center(
+        child: Text('No $label sales.', style: const TextStyle(fontSize: 13, color: AppTheme.faint)),
+      ),
     );
   }
 }
@@ -1472,30 +1590,43 @@ class _SaleCard extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(sale.businessName, style: Theme.of(context).textTheme.titleMedium),
+                      Text(
+                        sale.businessName,
+                        style: Theme.of(context).textTheme.titleMedium,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                       const SizedBox(height: 4),
                       Row(
                         children: [
                           const Icon(AppIcons.users, size: 12, color: AppTheme.faint),
                           const SizedBox(width: 4),
-                          Text(
-                            sale.salesmanName ?? 'Unassigned',
-                            style: const TextStyle(fontSize: 12.5, color: AppTheme.faint, fontWeight: FontWeight.w600),
+                          Flexible(
+                            child: Text(
+                              sale.salesmanName ?? 'Unassigned',
+                              style: const TextStyle(fontSize: 12.5, color: AppTheme.faint, fontWeight: FontWeight.w600),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
                           if (sale.reviewLink != null && sale.reviewLink!.isNotEmpty) ...[
                             const SizedBox(width: 10),
-                            InkWell(
-                              onTap: () => launchUrl(Uri.parse(sale.reviewLink!)),
-                              child: const Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(AppIcons.externalLink, size: 12, color: AppTheme.faint),
-                                  SizedBox(width: 4),
-                                  Text(
-                                    'Review link',
-                                    style: TextStyle(fontSize: 12.5, color: AppTheme.faint, decoration: TextDecoration.underline),
-                                  ),
-                                ],
+                            Flexible(
+                              child: InkWell(
+                                onTap: () => launchUrl(Uri.parse(sale.reviewLink!)),
+                                child: const Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(AppIcons.externalLink, size: 12, color: AppTheme.faint),
+                                    SizedBox(width: 4),
+                                    Text(
+                                      'Review link',
+                                      style: TextStyle(fontSize: 12.5, color: AppTheme.faint, decoration: TextDecoration.underline),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
                           ],

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/theme/app_theme.dart';
@@ -9,7 +10,6 @@ import '../../domain/entities/multi_search_snapshot.dart';
 import '../../domain/repositories/lead_repository.dart';
 import '../utils/duration_format.dart';
 import '../utils/web_download.dart';
-import 'excel_archive_page.dart';
 
 const _pollInterval = Duration(milliseconds: 1500);
 
@@ -528,9 +528,7 @@ class _ArchiveStatusSection extends StatelessWidget {
               Text('Excel archives', style: Theme.of(context).textTheme.titleMedium),
               const Spacer(),
               FilledButton.icon(
-                onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const ExcelArchivePage()),
-                ),
+                onPressed: () => context.push('/excel-archive'),
                 icon: const Icon(AppIcons.inbox, size: 16),
                 label: const Text('View Archive'),
               ),

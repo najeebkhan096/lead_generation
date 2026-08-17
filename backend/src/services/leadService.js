@@ -6,13 +6,14 @@
 import * as googleMaps from '../scraper/googleMapsScraper.js';
 import * as bing from '../scraper/bingScraper.js';
 import * as yelp from '../scraper/yelpScraper.js';
-import { filterRecentOneStarLeads } from './reviewFilter.js';
+import { filterRecentOneStarLeads, filterNoWebsiteLeads } from './reviewFilter.js';
 import { enrichLeadWithAnalysis } from './reviewAnalyzer.js';
 import { normalizePhone, waMeLink } from './whatsappChecker.js';
 import * as whatsappWebService from './whatsappWebService.js';
 import * as whatsappSafety from './whatsappSafety.js';
 import { locationQuery, shuffleStates } from '../data/usStates.js';
 import { countryMeta, regionsForCountry } from '../data/countries.js';
+import { saveWebsiteLeadsToFirebase } from './websiteLeadStore.js';
 import {
   setLeads,
   appendLeads,
@@ -66,6 +67,31 @@ function enrichLeadContacts(leads, country = 'US') {
 }
 
 /**
+ * Pulls the no-website businesses out of a just-scraped batch and saves
+ * them straight to Firestore's `websiteLeads` collection — a second,
+ * independent lead signal alongside the 1-star-review `leads` flow, run
+ * against every business scraped for ANY category/location (not just the
+ * ones that also pass the review filter). Best-effort: a save failure is
+ * logged and swallowed so it never interrupts the review-lead scan it
+ * rides alongside.
+ */
+async function captureWebsiteLeads(businesses, { location, searchLocation, country = 'US' } = {}) {
+  if (!businesses?.length) return [];
+  try {
+    let websiteLeads = filterNoWebsiteLeads(businesses);
+    if (!websiteLeads.length) return [];
+    websiteLeads = enrichLeadContacts(websiteLeads, country);
+    websiteLeads = websiteLeads.map((l) => ({ ...l, location: location ?? l.location, searchLocation }));
+    websiteLeads = dedupeLeads(websiteLeads);
+    await saveWebsiteLeadsToFirebase(websiteLeads, { country });
+    return websiteLeads;
+  } catch (err) {
+    console.error('Failed to save website leads:', err.message);
+    return [];
+  }
+}
+
+/**
  * Checks each lead's phone against the live WhatsApp Web session the moment
  * it's found, mutating `hasWhatsApp`/`whatsAppCheckedAt` in place — a no-op
  * if WhatsApp Web isn't connected, so scanning behaves exactly as before
@@ -95,12 +121,13 @@ async function inlineValidateWhatsApp(leads, { shouldStop, checkFn = whatsappSaf
   }
 }
 
-async function scrapeLocation(category, location, { maxResults, onProgress, browser, country } = {}) {
+async function scrapeLocation(category, location, { maxResults, onProgress, browser, country, shouldStop } = {}) {
   let businesses = await googleMaps.searchBusinesses(category, location, {
     maxResults,
     onProgress,
     browser,
     country,
+    shouldStop,
   });
 
   if (!businesses.length) {
@@ -158,6 +185,8 @@ export async function findLeads({
       message: `Filtering for recent 1-star reviews (${businesses.length} businesses)...`,
       processed: businesses.length,
     });
+
+    await captureWebsiteLeads(businesses, { location });
 
     let leads = filterRecentOneStarLeads(businesses, { dateRange });
     leads = enrichLeadContacts(leads);
@@ -388,6 +417,7 @@ export async function scrapeCategoryNationwide(category, {
         onProgress: onScraperMessage,
         browser,
         country,
+        shouldStop,
       });
     } catch (err) {
       onProgress?.({
@@ -407,6 +437,8 @@ export async function scrapeCategoryNationwide(category, {
 
     businessesScraped += businesses.length;
     onProgress?.({ type: 'businesses-scraped', delta: businesses.length, total: businessesScraped });
+
+    await captureWebsiteLeads(businesses, { location: entry.state, searchLocation: location, country });
 
     let stateLeads = filterRecentOneStarLeads(businesses, { dateRange });
     stateLeads = enrichLeadContacts(stateLeads, country);
@@ -466,6 +498,54 @@ export async function scrapeCategoryNationwide(category, {
       stoppedReason,
     },
   };
+}
+
+let _citySeq = 0;
+
+/**
+ * Scrapes ONE city and returns its filtered/enriched leads — the same
+ * per-location pipeline `scrapeCategoryNationwide` runs once per state,
+ * extracted to run against a single (city, state) pair instead of looping
+ * through every location itself. Used by `stateCityOrchestrator.js`'s
+ * per-city worker pool, where the caller owns sequencing (which state,
+ * which cities, in what order, how many at once) and just wants one
+ * location scraped end-to-end.
+ */
+export async function scrapeOneCity(category, { city, state }, {
+  dateRange = '30',
+  maxResults = DEFAULT_PER_STATE,
+  analyze = false,
+  country = 'US',
+  browser,
+  onProgress,
+  shouldStop,
+  scrapeLocationFn = scrapeLocation,
+  checkWhatsAppFn = whatsappSafety.guardedCheck,
+} = {}) {
+  const location = locationQuery({ city, state });
+
+  const businesses = await scrapeLocationFn(category, location, {
+    maxResults,
+    onProgress,
+    browser,
+    country,
+    shouldStop,
+  });
+
+  await captureWebsiteLeads(businesses, { location: state, searchLocation: location, country });
+
+  let leads = filterRecentOneStarLeads(businesses, { dateRange });
+  leads = enrichLeadContacts(leads, country);
+  leads = leads.map((l) => ({ ...l, location: state, searchLocation: location }));
+  if (analyze) leads = leads.map(enrichLeadWithAnalysis);
+
+  leads = dedupeLeads(leads).map((l) => ({ ...l, id: `${l.id || 'lead'}-c${(_citySeq += 1)}` }));
+
+  if (leads.length) {
+    await inlineValidateWhatsApp(leads, { shouldStop, checkFn: checkWhatsAppFn });
+  }
+
+  return { leads, businessesScraped: businesses.length };
 }
 
 /**

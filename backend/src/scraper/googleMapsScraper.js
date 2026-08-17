@@ -154,7 +154,7 @@ async function scrollResultsFeed(page, { maxScrolls = 15, stallLimit = 2 } = {})
  * @param {string} [opts.country] - country code (US/UK/DE/CA) so results
  *   are biased toward that country instead of always the US.
  */
-export async function searchBusinesses(category, location, { maxResults = 10, onProgress, browser: sharedBrowser, country = 'US' } = {}) {
+export async function searchBusinesses(category, location, { maxResults = 10, onProgress, browser: sharedBrowser, country = 'US', shouldStop } = {}) {
   const ownsBrowser = !sharedBrowser;
   const browser = sharedBrowser || (await launchBrowser());
   const context = await createContext(browser);
@@ -207,6 +207,15 @@ export async function searchBusinesses(category, location, { maxResults = 10, on
     const limit = Math.min(listings.length, maxResults);
 
     for (let i = 0; i < limit; i++) {
+      // Checked between listings, not mid-listing — a cancel takes effect
+      // as soon as whatever's currently open finishes, same granularity as
+      // every other stop point in this app, instead of running the full
+      // `maxResults` listings regardless (which, at higher maxResults
+      // settings, could make Cancel appear to do nothing for a long time).
+      if (shouldStop?.()) {
+        onProgress?.('Stopped — cancelled.');
+        break;
+      }
       const placePage = await context.newPage();
       const listingName = listings[i].name;
       try {

@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
-import 'saved_businesses_page.dart';
-import 'whatsapp_leads_page.dart';
-import 'favorites_page.dart';
-import 'deals_page.dart';
-import 'excel_archive_page.dart';
+import 'leads_page.dart';
+import 'whatsapp_verified_leads_page.dart';
+import 'sales_page.dart';
 import 'profile_page.dart';
 
 class MainNavigationPage extends StatefulWidget {
@@ -18,11 +16,9 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
   int _selectedIndex = 0;
 
   static const List<Widget> _pages = [
-    SavedBusinessesPage(),
-    WhatsAppLeadsPage(),
-    FavoritesPage(),
-    DealsPage(),
-    ExcelArchivePage(),
+    WhatsAppVerifiedLeadsPage(),
+    LeadsPage(),
+    SalesPage(),
     ProfilePage(),
   ];
 
@@ -39,24 +35,16 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
             setState(() => _selectedIndex = index),
         destinations: const [
           NavigationDestination(
+            icon: Icon(AppIcons.chat),
+            label: 'WA',
+          ),
+          NavigationDestination(
             icon: Icon(AppIcons.compass),
             label: 'Leads',
           ),
           NavigationDestination(
-            icon: Icon(AppIcons.chat),
-            label: 'WhatsApp',
-          ),
-          NavigationDestination(
-            icon: Icon(AppIcons.heart),
-            label: 'Favorites',
-          ),
-          NavigationDestination(
-            icon: Icon(AppIcons.handshake),
-            label: 'Deals',
-          ),
-          NavigationDestination(
-            icon: Icon(AppIcons.inbox),
-            label: 'Excel',
+            icon: Icon(AppIcons.wallet),
+            label: 'Sales',
           ),
           NavigationDestination(
             icon: Icon(AppIcons.user),

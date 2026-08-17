@@ -8,6 +8,13 @@ import {
   deleteLead,
   deleteLeadsByCategory,
 } from '../services/firebaseLeadStore.js';
+import {
+  listWebsiteLeads,
+  deleteWebsiteLead,
+  deleteWebsiteLeadsByCategory,
+  getWebsiteLeadCount,
+  clearAllWebsiteLeads,
+} from '../services/websiteLeadStore.js';
 import { getFirebaseStatus } from '../firebase/admin.js';
 
 const CLEAR_CONFIRM_PHRASE = 'DELETE ALL DATA';
@@ -95,6 +102,56 @@ export async function deleteSavedLeadsByCategory(req, res) {
 }
 
 /**
+ * GET /api/db/website-leads — list businesses discovered during scans that
+ * have no website, from Firestore's `websiteLeads` collection.
+ */
+export async function getSavedWebsiteLeads(req, res) {
+  try {
+    const result = await listWebsiteLeads({ limit: req.query.limit });
+    return res.json(result);
+  } catch (err) {
+    const status = err.status || 500;
+    return res.status(status).json({ error: err.message || 'Failed to load website leads' });
+  }
+}
+
+/**
+ * DELETE /api/db/website-leads/:id — deletes a single saved website lead.
+ * `:id` is the Firestore document id (`dbId` in the API response shape).
+ */
+export async function deleteSavedWebsiteLead(req, res) {
+  try {
+    await deleteWebsiteLead(req.params.id);
+    return res.json({ success: true });
+  } catch (err) {
+    const status = err.status || 500;
+    return res.status(status).json({ error: err.message || 'Failed to delete website lead' });
+  }
+}
+
+/**
+ * DELETE /api/db/website-leads?category=... — deletes every saved website
+ * lead in an exact category.
+ */
+export async function deleteSavedWebsiteLeadsByCategory(req, res) {
+  try {
+    const category = String(req.query.category || '').trim();
+    if (!category) {
+      return res.status(400).json({ error: 'category query param is required' });
+    }
+    const result = await deleteWebsiteLeadsByCategory(category);
+    return res.json({
+      success: true,
+      ...result,
+      message: `Deleted ${result.deleted} website lead(s) in category "${category}".`,
+    });
+  } catch (err) {
+    const status = err.status || 500;
+    return res.status(status).json({ error: err.message || 'Failed to delete website leads' });
+  }
+}
+
+/**
  * GET /api/db/searches — list save batches from Firestore.
  */
 export async function getSavedSearches(_req, res) {
@@ -120,8 +177,11 @@ export async function getDbStats(_req, res) {
         leadCount: 0,
       });
     }
-    const leadCount = await getFirebaseLeadCount();
-    return res.json({ provider: 'firebase', configured: true, leadCount });
+    const [leadCount, websiteLeadCount] = await Promise.all([
+      getFirebaseLeadCount(),
+      getWebsiteLeadCount(),
+    ]);
+    return res.json({ provider: 'firebase', configured: true, leadCount, websiteLeadCount });
   } catch (err) {
     const status = err.status || 500;
     return res.status(status).json({ error: err.message || 'Failed to load stats' });
@@ -140,8 +200,16 @@ export async function clearDatabase(req, res) {
         error: `Confirmation required. Send { "confirm": "${CLEAR_CONFIRM_PHRASE}" } to proceed.`,
       });
     }
-    const result = await clearAllData();
-    return res.json({ success: true, ...result });
+    const [result, websiteLeadsResult] = await Promise.all([
+      clearAllData(),
+      clearAllWebsiteLeads(),
+    ]);
+    return res.json({
+      success: true,
+      ...result,
+      deleted: { ...result.deleted, websiteLeads: websiteLeadsResult.deleted },
+      message: `${result.message} Also cleared ${websiteLeadsResult.deleted} website lead(s).`,
+    });
   } catch (err) {
     const status = err.status || 500;
     return res.status(status).json({ error: err.message || 'Failed to clear database' });

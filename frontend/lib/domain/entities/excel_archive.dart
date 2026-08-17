@@ -27,6 +27,13 @@ class ExcelArchive extends Equatable {
   final String status;
   final DateTime? createdAt;
 
+  /// Whether `/api/excel-scans/:id/resume` can pick this archive back up —
+  /// any interrupted ("partial") archive, regardless of which engine made
+  /// it. The backend inspects the archive itself to route to the right
+  /// resume logic and reports back which live dashboard to open next (see
+  /// [LeadRemoteDataSource.resumeExcelArchive]).
+  bool get resumable => status == 'partial';
+
   factory ExcelArchive.fromJson(Map<String, dynamic> json) {
     return ExcelArchive(
       id: json['id'] as String,

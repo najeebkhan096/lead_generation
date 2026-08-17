@@ -1,13 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../domain/entities/lead.dart';
 import '../../domain/entities/multi_search_snapshot.dart';
 import '../../domain/repositories/lead_repository.dart';
 import '../utils/date_format.dart';
-import 'excel_scan_page.dart';
-import 'multi_scan_page.dart';
 
 enum _LoadStatus { loading, success, failure }
 
@@ -212,9 +211,7 @@ class _MultiScanBannerState extends State<_MultiScanBanner> {
               ),
             ),
             TextButton(
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const MultiScanPage()),
-              ),
+              onPressed: () => context.push('/multi-scan'),
               child: Text(running ? 'View progress' : 'View results'),
             ),
           ],
@@ -857,9 +854,7 @@ class _EmptyDashboard extends StatelessWidget {
           ),
           const SizedBox(height: 24),
           ElevatedButton.icon(
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const ExcelScanPage()),
-            ),
+            onPressed: () => context.push('/excel-scan'),
             icon: const Icon(AppIcons.download, size: 19),
             label: const Text('Start Excel scan'),
           ),

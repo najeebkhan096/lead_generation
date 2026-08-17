@@ -25,6 +25,21 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // "Website leads" — businesses found during a scan with no website at
+    // all, saved automatically alongside `leads`. Same read/update shape as
+    // `leads` (mobile can favorite/status/assign but not create/delete).
+    match /websiteLeads/{leadId} {
+      allow read: if request.auth != null;
+      allow update: if request.auth != null
+                    && request.resource.data.diff(resource.data).affectedKeys()
+                       .hasOnly([
+                         'isFavorite', 'status', 'reputationStatus',
+                         'hasWhatsApp', 'whatsAppCheckedAt',
+                         'assignedTo', 'updatedAt'
+                       ]);
+      allow create, delete: if false;
+    }
+
     // Mobile app users (salesmen) — each user creates/updates only their
     // own profile doc on sign-in; the web app's Admin SDK reads the full
     // list to populate "assign to salesman" pickers (Admin SDK bypasses
@@ -48,6 +63,14 @@ service cloud.firestore {
 
     match /whatsappValidatedScans/{id} {
       allow read: if request.auth != null;
+      allow write: if false;
+    }
+
+    // Salesman orders/earnings (mobile's Sales tab) — each mobile user can
+    // only read their own sales (salesmanId == their uid). Writes (status,
+    // payment amounts) stay Admin-SDK-only, set from the web app.
+    match /sales/{saleId} {
+      allow read: if request.auth != null && resource.data.salesmanId == request.auth.uid;
       allow write: if false;
     }
 

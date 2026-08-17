@@ -1,18 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/constants/business_categories.dart';
 import '../../core/theme/app_theme.dart';
 import '../../domain/repositories/lead_repository.dart';
-import 'multi_scan_page.dart';
 
-/// Configures and starts an "Excel scan" — runs the exact same concurrent
-/// multi-category scraping engine as the normal Multi-Category Scan, but
-/// skips writing individual businesses to Firestore entirely. Once every
-/// category finishes, the results are packaged into one .xlsx workbook
-/// (one sheet per category) and uploaded straight to Firebase Storage —
-/// see [MultiScanPage] for the live-progress/archive-ready view, and the
-/// Excel Archive page for browsing everything saved this way.
+/// Configures and starts a scan — for each category (one at a time),
+/// every US state is scanned in order, and within the active state, up to
+/// `concurrency` cities are scraped at once. Nothing is written to
+/// Firestore; each category's results are packaged into one .xlsx
+/// workbook (one sheet per state), checkpointed to Firebase Storage the
+/// instant each state finishes — see [StateScanPage] for the live
+/// state-by-state, city-by-city progress view, and the Excel Archive page
+/// for browsing everything saved this way.
 class ExcelScanPage extends StatefulWidget {
   const ExcelScanPage({super.key});
 
@@ -30,6 +31,7 @@ class _ExcelScanPageState extends State<ExcelScanPage> {
 
   static const _dateRanges = <String, String>{
     '7': 'Last 7 days',
+    '28': 'Last 28 days',
     '30': 'Last 30 days',
     '90': 'Last 90 days',
     '365': 'Last 365 days',
@@ -66,17 +68,13 @@ class _ExcelScanPageState extends State<ExcelScanPage> {
 
     setState(() => _starting = true);
     try {
-      await context.read<LeadRepository>().startMultiSearch(
+      await context.read<LeadRepository>().startStateScan(
             categories: List.from(_targetServices),
             concurrency: _concurrency,
             dateRange: _dateRange,
-            exportOnly: true,
-            country: 'US',
           );
       if (!mounted) return;
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const MultiScanPage()),
-      );
+      context.pushReplacement('/scan-progress');
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -101,10 +99,11 @@ class _ExcelScanPageState extends State<ExcelScanPage> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Text(
-                    'Runs the same nationwide scan as a normal search, but nothing '
-                    'is saved to your Leads list — the results are packaged into one '
-                    'Excel workbook (one sheet per category) and uploaded to Firebase '
-                    'automatically once the scan finishes.',
+                    'Scans every US state one at a time — within the active state, cities '
+                    'are scraped in parallel across your worker pool. Nothing is saved to '
+                    'your Leads list; each category becomes one Excel workbook (one sheet '
+                    'per state), auto-saved to Firebase the instant each state finishes so '
+                    'nothing scanned is ever lost, even if a scan is interrupted.',
                     style: Theme.of(context).textTheme.bodyLarge,
                   ),
                   const SizedBox(height: 24),
@@ -124,6 +123,26 @@ class _ExcelScanPageState extends State<ExcelScanPage> {
                             style: const TextStyle(color: AppTheme.sage700, fontWeight: FontWeight.w700, fontSize: 13.5),
                           ),
                         ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  Text('Country', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontSize: 14.5)),
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    decoration: BoxDecoration(
+                      color: AppTheme.neutral100,
+                      borderRadius: BorderRadius.circular(AppTheme.radius),
+                      border: Border.all(color: AppTheme.neutral200),
+                    ),
+                    child: const Row(
+                      children: [
+                        Icon(AppIcons.globe, size: 18, color: AppTheme.subtle),
+                        SizedBox(width: 10),
+                        Text('United States', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: AppTheme.ink)),
+                        Spacer(),
+                        Text('All 50 states + D.C.', style: TextStyle(fontSize: 12, color: AppTheme.faint)),
                       ],
                     ),
                   ),

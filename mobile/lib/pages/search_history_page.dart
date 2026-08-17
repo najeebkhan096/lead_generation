@@ -5,6 +5,7 @@ import '../services/lead_repository.dart';
 import '../theme/app_theme.dart';
 import '../utils/date_format.dart';
 import '../widgets/page_header.dart';
+import '../widgets/search_field.dart';
 import 'saved_businesses_page.dart' show StateBadge;
 
 /// Every past search run, live from Firestore's `searches` collection.
@@ -81,27 +82,11 @@ class _SearchHistoryPageState extends State<SearchHistoryPage> {
                 ),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: TextField(
+                  child: SearchField(
                     controller: _searchController,
+                    value: _searchQuery,
+                    hintText: 'Search history...',
                     onChanged: (value) => setState(() => _searchQuery = value),
-                    decoration: InputDecoration(
-                      hintText: 'Search history...',
-                      prefixIcon: Padding(
-                        padding: const EdgeInsets.only(left: 20, right: 12),
-                        child: Icon(AppIcons.search, size: 19, color: t.faint),
-                      ),
-                      suffixIcon: _searchQuery.isNotEmpty
-                          ? IconButton(
-                              icon: const Icon(AppIcons.x, size: 18),
-                              onPressed: () {
-                                _searchController.clear();
-                                setState(() => _searchQuery = '');
-                              },
-                            )
-                          : null,
-                      prefixIconConstraints:
-                          const BoxConstraints(minWidth: 0, minHeight: 0),
-                    ),
                   ),
                 ),
                 const SizedBox(height: 12),

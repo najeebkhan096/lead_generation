@@ -4,7 +4,9 @@ import '../services/archive_repository.dart';
 import '../theme/app_theme.dart';
 import '../widgets/business_row_card.dart';
 import '../widgets/page_header.dart';
+import '../widgets/search_field.dart';
 import 'saved_businesses_page.dart' show StateBadge;
+import 'whatsapp_validated_archive_page.dart';
 
 const _allCategories = 'All categories';
 
@@ -34,11 +36,19 @@ class _WhatsAppVerifiedLeadsPageState extends State<WhatsAppVerifiedLeadsPage> {
   bool _loading = true;
   String? _error;
   String _category = _allCategories;
+  String _searchQuery = '';
+  final _searchController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -87,7 +97,16 @@ class _WhatsAppVerifiedLeadsPageState extends State<WhatsAppVerifiedLeadsPage> {
   @override
   Widget build(BuildContext context) {
     final t = context.tokens;
-    final filtered = _category == _allCategories ? _rows : _rows.where((r) => r.category == _category).toList();
+    var filtered = _category == _allCategories ? _rows : _rows.where((r) => r.category == _category).toList();
+    if (_searchQuery.isNotEmpty) {
+      final query = _searchQuery.toLowerCase();
+      filtered = filtered.where((r) {
+        final name = (r.row['Business Name'] ?? '').toString().toLowerCase();
+        final address = (r.row['Address'] ?? '').toString().toLowerCase();
+        final phone = (r.row['Phone'] ?? '').toString().toLowerCase();
+        return name.contains(query) || address.contains(query) || phone.contains(query);
+      }).toList();
+    }
 
     return Scaffold(
       body: SafeArea(
@@ -101,6 +120,16 @@ class _WhatsAppVerifiedLeadsPageState extends State<WhatsAppVerifiedLeadsPage> {
                   : '${filtered.length} of ${_rows.length} businesses shown',
               trailing: HeaderBadge(icon: AppIcons.shieldCheck, background: t.sageTint, foreground: t.sageDeep),
             ),
+            if (_rows.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+                child: SearchField(
+                  controller: _searchController,
+                  value: _searchQuery,
+                  hintText: 'Search businesses...',
+                  onChanged: (value) => setState(() => _searchQuery = value),
+                ),
+              ),
             if (_categories.length > 2)
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
@@ -117,6 +146,36 @@ class _WhatsAppVerifiedLeadsPageState extends State<WhatsAppVerifiedLeadsPage> {
                       onChanged: (v) {
                         if (v != null) setState(() => _category = v);
                       },
+                    ),
+                  ),
+                ),
+              ),
+            if (_rows.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+                child: Material(
+                  color: t.sageTint,
+                  borderRadius: BorderRadius.circular(AppTheme.radius),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(AppTheme.radius),
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const WhatsAppValidatedArchivePage()),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      child: Row(
+                        children: [
+                          Icon(AppIcons.shieldCheck, size: 18, color: t.sageDeep),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              'Browse by upload batch',
+                              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: t.sageDeep),
+                            ),
+                          ),
+                          Icon(Icons.chevron_right_rounded, size: 18, color: t.sageDeep),
+                        ],
+                      ),
                     ),
                   ),
                 ),

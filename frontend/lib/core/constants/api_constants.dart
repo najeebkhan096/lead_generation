@@ -8,6 +8,12 @@ class ApiConstants {
     defaultValue: 'http://localhost:3001',
   );
 
+  static const String stateScan = '/api/state-scan';
+  static const String stateScanStatus = '/api/state-scan/status';
+  static const String stateScanCancel = '/api/state-scan/cancel';
+  static const String stateScanPause = '/api/state-scan/pause';
+  static const String stateScanResume = '/api/state-scan/resume';
+
   static const String multiSearch = '/api/search/multi';
   static const String multiSearchStatus = '/api/search/multi/status';
   static const String multiSearchCancel = '/api/search/multi/cancel';
@@ -20,6 +26,8 @@ class ApiConstants {
   static const String savedLeads = '/api/db/leads';
   static String leadWhatsAppStatus(String leadId) => '/api/db/leads/$leadId/whatsapp';
   static String leadDelete(String leadId) => '/api/db/leads/$leadId';
+  static const String websiteLeads = '/api/db/website-leads';
+  static String websiteLeadDelete(String leadId) => '/api/db/website-leads/$leadId';
   static const String clearDb = '/api/db/clear';
   static const String checkWhatsApp = '/api/whatsapp/check';
 

@@ -1,12 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/theme/app_theme.dart';
-import '../pages/dashboard_page.dart';
-import '../pages/excel_scan_page.dart';
-import '../pages/sales_page.dart';
-import '../pages/saved_businesses_page.dart';
-import '../pages/settings_page.dart';
-import '../pages/whatsapp_checker_page.dart';
 
 const _wideBreakpoint = 900.0;
 
@@ -21,34 +16,36 @@ const _wideBreakpoint = 900.0;
 /// into Leads' existing verified-only filter switch rather than kept as a
 /// separate destination, and Sales Dashboard/Sales merged into one page
 /// with an Overview/Manage tab switch — same data, fewer places to look.
-class AdminShell extends StatefulWidget {
-  const AdminShell({super.key});
+/// Website Leads earns its own slot despite that bar: it's populated by
+/// every scan exactly like Leads is, just filtered on the opposite signal
+/// (no website instead of a bad review), so it's just as frequent-use.
+///
+/// [navigationShell] comes from `app_router.dart`'s `StatefulShellRoute` —
+/// each branch (Dashboard/Leads/Website Leads/WhatsApp Tool/Sales/Settings)
+/// has its own URL and keeps its own state when you switch away and back,
+/// the same way the old `IndexedStack` did, just addressable now.
+class AdminShell extends StatelessWidget {
+  const AdminShell({super.key, required this.navigationShell});
 
-  @override
-  State<AdminShell> createState() => _AdminShellState();
-}
-
-class _AdminShellState extends State<AdminShell> {
-  int _index = 0;
-
-  static const _pages = [
-    DashboardPage(),
-    SavedBusinessesPage(),
-    WhatsAppCheckerPage(),
-    SalesPage(),
-    SettingsPage(),
-  ];
+  final StatefulNavigationShell navigationShell;
 
   static const _destinations = [
     (icon: AppIcons.dashboard, label: 'Dashboard'),
     (icon: AppIcons.leads, label: 'Leads'),
+    (icon: AppIcons.globe, label: 'Website Leads'),
     (icon: AppIcons.chat, label: 'WhatsApp Tool'),
     (icon: AppIcons.tag, label: 'Sales'),
     (icon: AppIcons.settings, label: 'Settings'),
   ];
 
-  void _openExcelScan() => Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => const ExcelScanPage()),
+  void _openExcelScan(BuildContext context) => context.push('/excel-scan');
+  void _openExcelArchive(BuildContext context) => context.push('/excel-archive');
+
+  void _select(int index) => navigationShell.goBranch(
+        index,
+        // Tapping the already-active tab pops it back to its own root
+        // instead of a no-op — matches Material's usual bottom-nav feel.
+        initialLocation: index == navigationShell.currentIndex,
       );
 
   @override
@@ -56,38 +53,30 @@ class _AdminShellState extends State<AdminShell> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final wide = constraints.maxWidth >= _wideBreakpoint;
-        // The IndexedStack carries each tab's live state (fetched leads,
-        // search text, scroll position). It keeps one stable key here so
-        // Flutter's keyed-list reconciliation preserves that state across
-        // the wide/narrow toggle instead of tearing the whole subtree
-        // down just because the sidebar appears or disappears next to it.
         return Scaffold(
           body: SafeArea(
             child: Row(
               children: [
                 if (wide)
                   _Sidebar(
-                    index: _index,
+                    index: navigationShell.currentIndex,
                     onSelect: _select,
-                    onExcelScan: _openExcelScan,
+                    onExcelScan: () => _openExcelScan(context),
+                    onExcelArchive: () => _openExcelArchive(context),
                   ),
-                Expanded(
-                  child: IndexedStack(
-                    key: const ValueKey('shell-content'),
-                    index: _index,
-                    children: _pages,
-                  ),
-                ),
+                Expanded(child: navigationShell),
               ],
             ),
           ),
           bottomNavigationBar: wide
               ? null
               : NavigationBar(
-                  selectedIndex: _index,
+                  selectedIndex: navigationShell.currentIndex,
                   onDestinationSelected: (i) {
                     if (i == _destinations.length) {
-                      _openExcelScan();
+                      _openExcelScan(context);
+                    } else if (i == _destinations.length + 1) {
+                      _openExcelArchive(context);
                     } else {
                       _select(i);
                     }
@@ -104,14 +93,16 @@ class _AdminShellState extends State<AdminShell> {
                       icon: Icon(AppIcons.download),
                       label: 'Excel Scan',
                     ),
+                    const NavigationDestination(
+                      icon: Icon(AppIcons.inbox),
+                      label: 'Archive',
+                    ),
                   ],
                 ),
         );
       },
     );
   }
-
-  void _select(int index) => setState(() => _index = index);
 }
 
 class _Sidebar extends StatelessWidget {
@@ -119,11 +110,13 @@ class _Sidebar extends StatelessWidget {
     required this.index,
     required this.onSelect,
     required this.onExcelScan,
+    required this.onExcelArchive,
   });
 
   final int index;
   final ValueChanged<int> onSelect;
   final VoidCallback onExcelScan;
+  final VoidCallback onExcelArchive;
 
   @override
   Widget build(BuildContext context) {
@@ -208,11 +201,45 @@ class _Sidebar extends StatelessWidget {
                 ),
               ),
             ),
+            const SizedBox(height: 10),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Material(
+                color: Colors.transparent,
+                borderRadius: BorderRadius.circular(AppTheme.radiusPill),
+                child: InkWell(
+                  onTap: onExcelArchive,
+                  borderRadius: BorderRadius.circular(AppTheme.radiusPill),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(AppTheme.radiusPill),
+                      border: Border.all(color: AppTheme.neutral200),
+                    ),
+                    child: const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(AppIcons.inbox, size: 17, color: AppTheme.subtle),
+                        SizedBox(width: 8),
+                        Text(
+                          'Excel Archive',
+                          style: TextStyle(
+                            color: AppTheme.ink,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 13.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
             const SizedBox(height: 24),
-            for (var i = 0; i < _AdminShellState._destinations.length; i++)
+            for (var i = 0; i < AdminShell._destinations.length; i++)
               _SidebarItem(
-                icon: _AdminShellState._destinations[i].icon,
-                label: _AdminShellState._destinations[i].label,
+                icon: AdminShell._destinations[i].icon,
+                label: AdminShell._destinations[i].label,
                 selected: i == index,
                 onTap: () => onSelect(i),
               ),

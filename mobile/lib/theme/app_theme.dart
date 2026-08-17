@@ -588,4 +588,6 @@ class AppIcons {
   static const info = LucideIcons.info600;
   static const download = LucideIcons.download600;
   static const trash = LucideIcons.trash2600;
+  static const wallet = LucideIcons.wallet600;
+  static const hourglass = LucideIcons.hourglass600;
 }

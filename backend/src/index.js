@@ -15,6 +15,7 @@ import excelArchiveRoutes from './routes/excelArchiveRoutes.js';
 import whatsappValidatedRoutes from './routes/whatsappValidatedRoutes.js';
 import userRoutes from './routes/userRoutes.js';
 import saleRoutes from './routes/saleRoutes.js';
+import stateCityScanRoutes from './routes/stateCityScanRoutes.js';
 import { initFirebase, getFirebaseStatus } from './firebase/admin.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -26,7 +27,11 @@ const webRoot = path.resolve(__dirname, '../public');
 
 app.use(cors({
   origin: '*',
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  // PATCH was missing here — every PATCH route (e.g. sale edits, lead
+  // WhatsApp-status updates) failed its CORS preflight and surfaced to
+  // the browser as a bare "Failed to fetch", indistinguishable from the
+  // backend being down.
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 app.use(express.json({ limit: '2mb' }));
@@ -55,6 +60,7 @@ app.use('/api/excel-scans', excelArchiveRoutes);
 app.use('/api/whatsapp-validated-scans', whatsappValidatedRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/sales', saleRoutes);
+app.use('/api/state-scan', stateCityScanRoutes);
 
 if (fs.existsSync(path.join(webRoot, 'index.html'))) {
   app.use(express.static(webRoot, { index: false }));

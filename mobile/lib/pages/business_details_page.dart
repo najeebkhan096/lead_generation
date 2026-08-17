@@ -6,10 +6,30 @@ import '../services/lead_repository.dart';
 import '../services/open_links.dart';
 import '../theme/app_theme.dart';
 
+/// Callback shape shared by [LeadRepository.updateStatus] and
+/// [WebsiteLeadRepository.updateStatus] — lets this page write back to
+/// whichever collection [lead] actually came from.
+typedef LeadStatusUpdater = Future<void> Function(String id, LeadStatus status, String? userId);
+
+/// Callback shape shared by [LeadRepository.updateWhatsAppStatus] and
+/// [WebsiteLeadRepository.updateWhatsAppStatus].
+typedef LeadWhatsAppUpdater = Future<void> Function(String id, bool hasWhatsApp, String? userId);
+
 class BusinessDetailsPage extends StatefulWidget {
-  const BusinessDetailsPage({super.key, required this.lead});
+  const BusinessDetailsPage({
+    super.key,
+    required this.lead,
+    this.updateStatus,
+    this.updateWhatsAppStatus,
+  });
 
   final Lead lead;
+
+  /// Defaults to [LeadRepository]'s `leads` collection — pass the
+  /// [WebsiteLeadRepository] equivalent when [lead] came from the Website
+  /// Leads tab instead.
+  final LeadStatusUpdater? updateStatus;
+  final LeadWhatsAppUpdater? updateWhatsAppStatus;
 
   @override
   State<BusinessDetailsPage> createState() => _BusinessDetailsPageState();
@@ -31,12 +51,14 @@ class _BusinessDetailsPageState extends State<BusinessDetailsPage> {
   Future<void> _saveChanges() async {
     setState(() => _loading = true);
     final user = FirebaseAuth.instance.currentUser;
+    final updateStatus = widget.updateStatus ?? _repo.updateStatus;
+    final updateWhatsAppStatus = widget.updateWhatsAppStatus ?? _repo.updateWhatsAppStatus;
     try {
       if (_currentStatus != widget.lead.status) {
-        await _repo.updateStatus(widget.lead.id, _currentStatus, user?.uid);
+        await updateStatus(widget.lead.id, _currentStatus, user?.uid);
       }
       if (_hasWhatsApp != widget.lead.hasWhatsApp) {
-        await _repo.updateWhatsAppStatus(widget.lead.id, _hasWhatsApp, user?.uid);
+        await updateWhatsAppStatus(widget.lead.id, _hasWhatsApp, user?.uid);
       }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Changes saved')));

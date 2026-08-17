@@ -79,3 +79,39 @@ function slug(name) {
     .replace(/(^-|-$)/g, '')
     .slice(0, 40);
 }
+
+/**
+ * Filters scraped businesses down to the ones with no website at all —
+ * a separate lead signal from `filterRecentOneStarLeads` (bad reviews):
+ * any business missing a website is a "website lead" regardless of its
+ * rating, so this runs against the full scraped list, not the 1-star
+ * subset.
+ *
+ * @param {Array} businesses - scraped businesses (same shape the scraper
+ *   returns — see googleMapsScraper.js)
+ * @returns {Array} lead-shaped objects, ready for `enrichLeadContacts` +
+ *   dedupe, same as `filterRecentOneStarLeads`'s output.
+ */
+export function filterNoWebsiteLeads(businesses) {
+  const leads = [];
+
+  for (const business of businesses) {
+    if (business.website && String(business.website).trim()) continue;
+
+    leads.push({
+      id: `${slug(business.name)}-web-${leads.length + 1}`,
+      business: business.name,
+      category: business.category,
+      location: business.location,
+      address: cleanText(business.address),
+      phone: cleanText(business.phone),
+      website: null,
+      mapsUrl: business.mapsUrl,
+      rating: business.rating,
+      totalReviews: business.totalReviews,
+      source: business.source,
+    });
+  }
+
+  return leads;
+}

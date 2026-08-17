@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import '../entities/lead.dart';
 import '../entities/multi_search_snapshot.dart';
+import '../entities/state_city_scan_snapshot.dart';
 import '../entities/excel_archive.dart';
 import '../entities/sale.dart';
 import '../entities/sales_user.dart';
@@ -15,6 +16,19 @@ abstract class LeadRepository {
   Future<Uint8List> exportMultiExcel();
 
   Future<List<Lead>> getSavedBusinesses();
+
+  /// Every business discovered during a scan that has no website — a
+  /// second, independent lead signal saved automatically alongside the
+  /// review-based [getSavedBusinesses] leads.
+  Future<List<Lead>> getWebsiteLeads();
+
+  /// Deletes a single saved website lead from Firestore. Irreversible.
+  /// `leadId` must be [Lead.dbId].
+  Future<void> deleteWebsiteLead(String leadId);
+
+  /// Deletes every saved website lead in an exact category. Irreversible.
+  /// Returns how many were deleted.
+  Future<int> deleteWebsiteLeadsByCategory(String category);
 
   /// Records a manually-checked WhatsApp result for one lead — for
   /// checking by hand (e.g. on a phone) instead of the automated
@@ -34,6 +48,29 @@ abstract class LeadRepository {
   Future<String> clearAllData();
 
   Future<WhatsAppCheckResult> checkWhatsAppNumber(String phone);
+
+  /// Starts the state-by-state, city-by-city scan — the sole scan engine
+  /// now that the app is US-only. Each category is processed one at a
+  /// time; within a category, every US state is scanned in order; within
+  /// the active state, up to [concurrency] cities are scraped at once.
+  /// Each category's results are packaged into one .xlsx workbook (one
+  /// sheet per state), checkpointed to Firebase Storage the instant each
+  /// state finishes — see [StateCityScanSnapshot].
+  Future<void> startStateScan({
+    required List<String> categories,
+    int concurrency = 4,
+    String dateRange = '30',
+    int maxResultsPerCity = 160,
+    bool analyze = false,
+  });
+
+  /// Live dashboard snapshot for the current (or most recently finished)
+  /// state/city scan.
+  Future<StateCityScanSnapshot> getStateScanStatus();
+
+  Future<void> cancelStateScan();
+  Future<void> pauseStateScan();
+  Future<void> resumeStateScan();
 
   /// Starts a concurrent multi-category search — a worker pool where each
   /// (category, country) pair runs independently and picks up the next
@@ -145,10 +182,10 @@ abstract class LeadRepository {
   /// Deletes an archive from Storage and its Firestore metadata. Irreversible.
   Future<void> deleteExcelArchive(String id);
 
-  /// Picks a stranded `status: 'partial'` archive back up — see
-  /// [LeadRemoteDataSource.resumeExcelArchive]. Starts a real scan job;
-  /// poll [getMultiSearchStatus] afterward same as [startMultiSearch].
-  Future<void> resumeExcelArchive(String id);
+  /// Picks a stranded `status: 'partial'` archive back up. Returns which
+  /// engine picked it up (`'state-city'` or `'multi-country'`) so the
+  /// caller knows whether to open [StateScanPage] or [MultiScanPage].
+  Future<String> resumeExcelArchive(String id);
 
   /// Extracts every business in an archive as [Lead]s for display — these
   /// were never saved to Firestore, so [Lead.dbId] is always null.

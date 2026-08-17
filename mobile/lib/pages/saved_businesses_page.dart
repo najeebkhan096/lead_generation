@@ -5,6 +5,7 @@ import '../services/lead_repository.dart';
 import '../theme/app_theme.dart';
 import '../widgets/page_header.dart';
 import '../widgets/saved_business_card.dart';
+import '../widgets/search_field.dart';
 import 'business_details_page.dart';
 
 /// Lists every business saved to Firestore, filterable by category.
@@ -116,30 +117,11 @@ class _SavedBusinessesPageState extends State<SavedBusinessesPage> {
                     padding: const EdgeInsets.symmetric(horizontal: 20),
                     child: Column(
                       children: [
-                        TextField(
+                        SearchField(
                           controller: _searchController,
-                          onChanged: (value) =>
-                              setState(() => _searchQuery = value),
-                          decoration: InputDecoration(
-                            hintText: 'Search leads...',
-                            prefixIcon: Padding(
-                              padding:
-                                  const EdgeInsets.only(left: 20, right: 12),
-                              child:
-                                  Icon(AppIcons.search, size: 19, color: t.faint),
-                            ),
-                            suffixIcon: _searchQuery.isNotEmpty
-                                ? IconButton(
-                                    icon: const Icon(AppIcons.x, size: 18),
-                                    onPressed: () {
-                                      _searchController.clear();
-                                      setState(() => _searchQuery = '');
-                                    },
-                                  )
-                                : null,
-                            prefixIconConstraints:
-                                const BoxConstraints(minWidth: 0, minHeight: 0),
-                          ),
+                          value: _searchQuery,
+                          hintText: 'Search leads...',
+                          onChanged: (value) => setState(() => _searchQuery = value),
                         ),
                         const SizedBox(height: 12),
                         _CategoryDropdown(

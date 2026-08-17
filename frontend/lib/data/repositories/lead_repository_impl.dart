@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import '../../domain/entities/lead.dart';
 import '../../domain/entities/multi_search_snapshot.dart';
+import '../../domain/entities/state_city_scan_snapshot.dart';
 import '../../domain/entities/excel_archive.dart';
 import '../../domain/entities/sale.dart';
 import '../../domain/entities/sales_user.dart';
@@ -23,6 +24,16 @@ class LeadRepositoryImpl implements LeadRepository {
   Future<List<Lead>> getSavedBusinesses() => _remote.getSavedLeads();
 
   @override
+  Future<List<Lead>> getWebsiteLeads() => _remote.getWebsiteLeads();
+
+  @override
+  Future<void> deleteWebsiteLead(String leadId) => _remote.deleteWebsiteLead(leadId);
+
+  @override
+  Future<int> deleteWebsiteLeadsByCategory(String category) =>
+      _remote.deleteWebsiteLeadsByCategory(category);
+
+  @override
   Future<void> markLeadWhatsAppStatus(String leadId, bool hasWhatsApp) =>
       _remote.markLeadWhatsAppStatus(leadId, hasWhatsApp);
 
@@ -38,6 +49,34 @@ class LeadRepositoryImpl implements LeadRepository {
   @override
   Future<WhatsAppCheckResult> checkWhatsAppNumber(String phone) =>
       _remote.checkWhatsApp(phone);
+
+  @override
+  Future<void> startStateScan({
+    required List<String> categories,
+    int concurrency = 4,
+    String dateRange = '30',
+    int maxResultsPerCity = 160,
+    bool analyze = false,
+  }) =>
+      _remote.startStateScan(
+        categories: categories,
+        concurrency: concurrency,
+        dateRange: dateRange,
+        maxResultsPerCity: maxResultsPerCity,
+        analyze: analyze,
+      );
+
+  @override
+  Future<StateCityScanSnapshot> getStateScanStatus() => _remote.getStateScanStatus();
+
+  @override
+  Future<void> cancelStateScan() => _remote.cancelStateScan();
+
+  @override
+  Future<void> pauseStateScan() => _remote.pauseStateScan();
+
+  @override
+  Future<void> resumeStateScan() => _remote.resumeStateScan();
 
   @override
   Future<void> startMultiSearch({
@@ -161,7 +200,7 @@ class LeadRepositoryImpl implements LeadRepository {
   Future<void> deleteExcelArchive(String id) => _remote.deleteExcelArchive(id);
 
   @override
-  Future<void> resumeExcelArchive(String id) => _remote.resumeExcelArchive(id);
+  Future<String> resumeExcelArchive(String id) => _remote.resumeExcelArchive(id);
 
   @override
   Future<List<Lead>> getExcelArchiveLeads(String id) => _remote.getExcelArchiveLeads(id);

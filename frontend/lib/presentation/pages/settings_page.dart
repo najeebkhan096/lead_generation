@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/theme/app_theme.dart';
-import 'excel_archive_page.dart';
-import 'watchlist_page.dart';
-import 'whatsapp_validated_archive_page.dart';
 
 /// Home for secondary tools that don't need to be one click away from
 /// every session — daily-review tracking and archived scan browsing.
@@ -36,7 +34,7 @@ class SettingsPage extends StatelessWidget {
                       icon: AppIcons.eye,
                       title: 'Watchlist',
                       subtitle: 'Manually-tracked client businesses, re-scanned on demand for new reviews',
-                      onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const WatchlistPage())),
+                      onTap: () => context.push('/watchlist'),
                     ),
                   ],
                 ),
@@ -48,14 +46,13 @@ class SettingsPage extends StatelessWidget {
                       icon: AppIcons.inbox,
                       title: 'Excel Archive',
                       subtitle: 'Browse and extract businesses from every Excel-only scan',
-                      onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ExcelArchivePage())),
+                      onTap: () => context.push('/excel-archive'),
                     ),
                     _SettingsItem(
                       icon: AppIcons.shieldCheck,
                       title: 'WhatsApp Verified',
                       subtitle: 'Businesses uploaded after real WhatsApp number validation',
-                      onTap: () => Navigator.of(context)
-                          .push(MaterialPageRoute(builder: (_) => const WhatsAppValidatedArchivePage())),
+                      onTap: () => context.push('/whatsapp-verified'),
                     ),
                   ],
                 ),

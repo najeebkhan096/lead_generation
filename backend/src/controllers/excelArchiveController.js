@@ -6,6 +6,10 @@ import {
 } from '../services/excelArchiveStore.js';
 import { xlsxBufferToJson, sheetsToLeadsJson } from '../services/exportService.js';
 import { resumeCategoryArchive } from '../services/multiCategoryOrchestrator.js';
+import { resumeStateCityScan } from '../services/stateCityOrchestrator.js';
+import { US_STATE_CITIES } from '../data/usStateCities.js';
+
+const US_STATE_NAMES = new Set(US_STATE_CITIES.map((s) => s.state));
 
 export async function listArchives(_req, res) {
   try {
@@ -68,20 +72,32 @@ export async function downloadArchive(req, res) {
 }
 
 /**
- * Picks a stranded `status: 'partial'` archive (e.g. the backend crashed
- * or was restarted mid-scan) back up — see `resumeCategoryArchive` for the
- * actual logic. Responds the same shape/status as starting a fresh scan
- * (202 + started job info) since that's exactly what this does under the
- * hood; the frontend can point the existing live-scan dashboard at it.
+ * Picks a stranded `status: 'partial'` archive (e.g. the backend crashed,
+ * restarted, or the scan was cancelled mid-way) back up. Two archive
+ * "shapes" exist depending on which engine produced it — the current
+ * state-by-state scan (`resumeStateCityScan`) and the older, dormant
+ * per-country one (`resumeCategoryArchive`), kept around for archives that
+ * predate the current engine. Neither stores which engine made it, so this
+ * infers it from the data itself: only the state/city engine's
+ * `completedCountries` list can ever contain real US state names (the
+ * older engine only ever put country codes/names there) — a reliable,
+ * self-describing signal rather than a stored flag that could drift.
+ * Responds the same shape/status as starting a fresh scan (202 + started
+ * job info); `engine` tells the frontend which live dashboard to open.
  */
 export async function resumeArchive(req, res) {
   try {
+    const archive = await getExcelArchive(req.params.id);
+    if (!archive) return res.status(404).json({ error: 'Archive not found' });
+
+    const isStateCity = (archive.completedCountries || []).some((name) => US_STATE_NAMES.has(name));
     const { concurrency } = req.body || {};
-    const result = await resumeCategoryArchive({
+    const opts = {
       archiveId: req.params.id,
       concurrency: concurrency != null ? Number(concurrency) : undefined,
-    });
-    return res.status(202).json({ started: true, ...result });
+    };
+    const result = isStateCity ? await resumeStateCityScan(opts) : await resumeCategoryArchive(opts);
+    return res.status(202).json({ started: true, engine: isStateCity ? 'state-city' : 'multi-country', ...result });
   } catch (err) {
     const status = err.status || 500;
     return res.status(status).json({ error: err.message || 'Failed to resume archive' });

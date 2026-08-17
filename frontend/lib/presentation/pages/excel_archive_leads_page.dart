@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../domain/entities/excel_archive.dart';
@@ -9,8 +10,6 @@ import '../../domain/entities/lead.dart';
 import '../../domain/entities/whatsapp_web_status.dart';
 import '../../domain/repositories/lead_repository.dart';
 import '../widgets/lead_card.dart';
-import 'whatsapp_checker_page.dart';
-import 'whatsapp_validated_archive_page.dart';
 
 const _allCategories = 'All categories';
 const _pollInterval = Duration(milliseconds: 1500);
@@ -48,9 +47,15 @@ Map<String, dynamic> _leadToJson(Lead lead) {
 /// building up a verified list per category that can be uploaded as its
 /// own archive once you're happy with it.
 class ExcelArchiveLeadsPage extends StatefulWidget {
-  const ExcelArchiveLeadsPage({super.key, required this.archive});
+  const ExcelArchiveLeadsPage({super.key, required this.archive, this.autoValidate = false});
 
   final ExcelArchive archive;
+
+  /// Jumps straight to the "Validate WhatsApp numbers?" confirmation the
+  /// moment the archive's (sole) category is known — the shortcut the
+  /// Excel Archive list's "Validate WhatsApp" button uses, so it doesn't
+  /// just land here and require an extra click to find the same button.
+  final bool autoValidate;
 
   @override
   State<ExcelArchiveLeadsPage> createState() => _ExcelArchiveLeadsPageState();
@@ -61,6 +66,7 @@ class _ExcelArchiveLeadsPageState extends State<ExcelArchiveLeadsPage> {
   bool _loading = true;
   String? _error;
   String _category = _allCategories;
+  bool _autoValidateTriggered = false;
 
   Timer? _validationTimer;
   WhatsAppValidationSnapshot? _validationSnapshot;
@@ -93,6 +99,24 @@ class _ExcelArchiveLeadsPageState extends State<ExcelArchiveLeadsPage> {
         _leads = leads;
         _loading = false;
       });
+      // The category dropdown only renders when there's more than one real
+      // category to choose between (see build()) — for the current, purely
+      // single-category scan engine that means it never appears, which
+      // silently made "Validate WhatsApp" unreachable (it requires a
+      // specific category, not "All categories"). Auto-selecting the sole
+      // category here fixes that for every archive, not just the
+      // auto-validate shortcut below.
+      final cats = _categories;
+      if (cats.length == 2) {
+        setState(() => _category = cats[1]);
+      }
+      if (widget.autoValidate && !_autoValidateTriggered && _category != _allCategories) {
+        _autoValidateTriggered = true;
+        final filtered = _leads.where((l) => l.category == _category).toList();
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _startValidation(filtered);
+        });
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -143,7 +167,7 @@ class _ExcelArchiveLeadsPageState extends State<ExcelArchiveLeadsPage> {
         ),
       );
       if (goConnect == true && mounted) {
-        Navigator.of(context).push(MaterialPageRoute(builder: (_) => const WhatsAppCheckerPage()));
+        context.go('/whatsapp');
       }
       return;
     }
@@ -276,9 +300,7 @@ class _ExcelArchiveLeadsPageState extends State<ExcelArchiveLeadsPage> {
           content: Text('Uploaded ${archive.totalLeads} verified businesses to Firebase.'),
           action: SnackBarAction(
             label: 'View',
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const WhatsAppValidatedArchivePage()),
-            ),
+            onPressed: () => context.push('/whatsapp-verified'),
           ),
         ),
       );

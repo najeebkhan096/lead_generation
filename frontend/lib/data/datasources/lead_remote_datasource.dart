@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import '../../core/constants/api_constants.dart';
 import '../../domain/entities/lead.dart';
 import '../../domain/entities/multi_search_snapshot.dart';
+import '../../domain/entities/state_city_scan_snapshot.dart';
 import '../../domain/entities/excel_archive.dart';
 import '../../domain/entities/sale.dart';
 import '../../domain/entities/sales_user.dart';
@@ -53,6 +54,50 @@ class LeadRemoteDataSource {
     return leadsJson
         .map((e) => Lead.fromJson(e as Map<String, dynamic>))
         .toList();
+  }
+
+  /// Fetches every business discovered during a scan that has no website,
+  /// from Firestore's `websiteLeads` collection via the backend proxy.
+  Future<List<Lead>> getWebsiteLeads() async {
+    final response = await _client.get(
+      _uri(ApiConstants.websiteLeads).replace(queryParameters: {'limit': '5000'}),
+    );
+    if (response.statusCode >= 400) {
+      final body = _tryDecode(response.body);
+      throw Exception(body['error'] ?? 'Failed to load website leads');
+    }
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    final leadsJson = (body['leads'] as List<dynamic>? ?? []);
+    return leadsJson
+        .map((e) => Lead.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// Deletes a single saved website lead from Firestore. [leadId] must be
+  /// the lead's Firestore [Lead.dbId].
+  Future<void> deleteWebsiteLead(String leadId) async {
+    final response = await _client.delete(
+      _uri(ApiConstants.websiteLeadDelete(leadId)),
+    );
+    if (response.statusCode >= 400) {
+      final body = _tryDecode(response.body);
+      throw Exception(body['error'] ?? 'Failed to delete website lead');
+    }
+  }
+
+  /// Deletes every saved website lead in an exact category. Returns the
+  /// number of leads deleted.
+  Future<int> deleteWebsiteLeadsByCategory(String category) async {
+    final response = await _client.delete(
+      _uri(
+        ApiConstants.websiteLeads,
+      ).replace(queryParameters: {'category': category}),
+    );
+    final body = _tryDecode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['error'] ?? 'Failed to delete website leads');
+    }
+    return (body['deleted'] as num?)?.toInt() ?? 0;
   }
 
   /// Records a manually-checked WhatsApp result for one lead (e.g. checked
@@ -227,6 +272,58 @@ class LeadRemoteDataSource {
         category: category,
         country: country,
       );
+
+  /// Starts the state-by-state, city-by-city scan — the sole scan engine
+  /// now that the app is US-only. For each category (processed one at a
+  /// time), every US state is scanned in order; within the active state,
+  /// up to [concurrency] cities are scraped at once. See
+  /// `stateCityOrchestrator.js` for the full sequencing.
+  Future<void> startStateScan({
+    required List<String> categories,
+    int concurrency = 4,
+    String dateRange = '30',
+    int maxResultsPerCity = 160,
+    bool analyze = false,
+  }) async {
+    final response = await _client
+        .post(
+          _uri(ApiConstants.stateScan),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'categories': categories,
+            'concurrency': concurrency,
+            'dateRange': dateRange,
+            'maxResultsPerCity': maxResultsPerCity,
+            'analyze': analyze,
+          }),
+        )
+        .timeout(const Duration(seconds: 30));
+
+    if (response.statusCode >= 400) {
+      final body = _tryDecode(response.body);
+      throw Exception(body['error'] ?? 'Failed to start scan');
+    }
+  }
+
+  Future<StateCityScanSnapshot> getStateScanStatus() async {
+    final response = await _client.get(_uri(ApiConstants.stateScanStatus));
+    if (response.statusCode >= 400) {
+      throw Exception('Failed to load scan status');
+    }
+    return StateCityScanSnapshot.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  Future<void> _postStateScanControl(String path) async {
+    final response = await _client.post(_uri(path));
+    if (response.statusCode >= 400) {
+      final body = _tryDecode(response.body);
+      throw Exception(body['error'] ?? 'Request failed');
+    }
+  }
+
+  Future<void> cancelStateScan() => _postStateScanControl(ApiConstants.stateScanCancel);
+  Future<void> pauseStateScan() => _postStateScanControl(ApiConstants.stateScanPause);
+  Future<void> resumeStateScan() => _postStateScanControl(ApiConstants.stateScanResume);
 
   Future<WhatsAppWebStatus> getWhatsAppWebStatus() async {
     final response = await _client.get(_uri(ApiConstants.whatsAppWebStatus));
@@ -540,17 +637,20 @@ class LeadRemoteDataSource {
   }
 
   /// Picks a stranded `status: 'partial'` archive back up — e.g. after the
-  /// backend crashed/restarted mid-scan. Only re-scrapes whatever countries
-  /// never finished; already-scraped ones are recovered from the archive's
-  /// existing workbook, not re-run. Starts a real (if small) scan job, so
-  /// the caller should route to the live scan dashboard afterward same as
-  /// starting a fresh multi-search.
-  Future<void> resumeExcelArchive(String id) async {
+  /// backend crashed/restarted, or the scan was cancelled mid-way. Only
+  /// re-scrapes whatever states/countries never finished; already-covered
+  /// ones are recovered from the archive's existing workbook, not re-run.
+  /// Starts a real scan job and returns which engine picked it up
+  /// (`'state-city'` or `'multi-country'`) so the caller knows which live
+  /// dashboard to open — the backend infers this from the archive itself,
+  /// since two different scan engines can produce a `'partial'` archive.
+  Future<String> resumeExcelArchive(String id) async {
     final response = await _client.post(_uri(ApiConstants.excelArchiveResume(id)));
+    final body = _tryDecode(response.body);
     if (response.statusCode >= 400) {
-      final body = _tryDecode(response.body);
       throw Exception(body['error'] ?? 'Failed to resume archive');
     }
+    return (body['engine'] as String?) ?? 'state-city';
   }
 
   Future<Sale> createSale({

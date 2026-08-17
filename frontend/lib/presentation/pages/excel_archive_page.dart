@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../domain/entities/excel_archive.dart';
 import '../../domain/repositories/lead_repository.dart';
 import 'excel_archive_leads_page.dart';
-import 'multi_scan_page.dart';
 
 String _timeAgo(DateTime? when) {
   if (when == null) return '';
@@ -75,18 +75,15 @@ class _ExcelArchivePageState extends State<ExcelArchivePage> {
   }
 
   /// Picks a stranded `status: 'partial'` archive back up — only the
-  /// countries that never finished get re-scraped, the rest is recovered
-  /// from the archive's existing workbook (see `resumeCategoryArchive` in
-  /// multiCategoryOrchestrator.js). Routes to the live scan dashboard
-  /// afterward, same as starting a fresh scan.
+  /// states/countries that never finished get re-scraped, the rest is
+  /// recovered from the archive's existing workbook. Routes to whichever
+  /// live dashboard the backend says actually picked it up.
   Future<void> _resume(ExcelArchive archive) async {
     setState(() => _resumingId = archive.id);
     try {
-      await _repo.resumeExcelArchive(archive.id);
+      final engine = await _repo.resumeExcelArchive(archive.id);
       if (!mounted) return;
-      Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => const MultiScanPage()),
-      );
+      context.push(engine == 'multi-country' ? '/multi-scan' : '/scan-progress');
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -256,7 +253,7 @@ class _ArchiveCard extends StatelessWidget {
                   ],
                 ),
               ),
-              if (archive.status == 'partial') ...[
+              if (archive.resumable) ...[
                 resuming
                     ? const Padding(
                         padding: EdgeInsets.symmetric(horizontal: 12),
@@ -283,6 +280,16 @@ class _ArchiveCard extends StatelessWidget {
                   MaterialPageRoute(builder: (_) => ExcelArchiveLeadsPage(archive: archive)),
                 ),
               ),
+              if (archive.totalLeads > 0)
+                IconButton(
+                  tooltip: 'Validate WhatsApp',
+                  icon: const Icon(AppIcons.chat, size: 18, color: AppTheme.sage700),
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => ExcelArchiveLeadsPage(archive: archive, autoValidate: true),
+                    ),
+                  ),
+                ),
               IconButton(
                 tooltip: 'Download .xlsx',
                 icon: const Icon(AppIcons.download, size: 18, color: AppTheme.faint),
