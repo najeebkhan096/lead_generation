@@ -1,0 +1,714 @@
+{
+  "Alabama": {
+    "cities": [
+      "Huntsville",
+      "Birmingham",
+      "Montgomery",
+      "Mobile",
+      "Tuscaloosa",
+      "Hoover",
+      "Auburn",
+      "Dothan",
+      "Madison",
+      "Decatur"
+    ]
+  },
+  "Alaska": {
+    "cities": [
+      "Anchorage",
+      "Fairbanks",
+      "Juneau",
+      "Badger",
+      "Knik-Fairview",
+      "College",
+      "Wasilla",
+      "Meadow Lakes",
+      "Sitka",
+      "Ketchikan"
+    ]
+  }
+,
+  "Arizona": {
+    "cities": [
+      "Phoenix",
+      "Tucson",
+      "Mesa",
+      "Gilbert",
+      "Chandler",
+      "Glendale",
+      "Scottsdale",
+      "Peoria",
+      "Tempe",
+      "Surprise"
+    ]
+  }
+,
+  "Arkansas": {
+    "cities": [
+      "Little Rock",
+      "Fayetteville",
+      "Fort Smith",
+      "Springdale",
+      "Jonesboro",
+      "Rogers",
+      "Conway",
+      "North Little Rock",
+      "Bentonville",
+      "Pine Bluff"
+    ]
+  }
+,
+  "California": {
+    "cities": [
+      "Los Angeles",
+      "San Diego",
+      "San Jose",
+      "San Francisco",
+      "Fresno",
+      "Sacramento",
+      "Long Beach",
+      "Oakland",
+      "Bakersfield",
+      "Anaheim"
+    ]
+  }
+,
+  "Colorado": {
+    "cities": [
+      "Denver",
+      "Colorado Springs",
+      "Aurora",
+      "Fort Collins",
+      "Lakewood",
+      "Thornton",
+      "Arvada",
+      "Greeley",
+      "Westminster",
+      "Pueblo"
+    ]
+  },
+
+  "Connecticut": {
+    "cities": [
+      "Bridgeport",
+      "Stamford",
+      "New Haven",
+      "Hartford",
+      "Waterbury",
+      "Norwalk",
+      "Danbury",
+      "New Britain",
+      "West Hartford",
+      "Greenwich"
+    ]
+  },
+  "Delaware": {
+    "cities": [
+      "Wilmington",
+      "Dover",
+      "Newark",
+      "Middletown",
+      "Bear",
+      "Glasgow",
+      "Brookside",
+      "Hockessin",
+      "Smyrna",
+      "Milford"
+    ]
+  },
+  "Florida": {
+    "cities": [
+      "Jacksonville",
+      "Miami",
+      "Tampa",
+      "Orlando",
+      "St. Petersburg",
+      "Hialeah",
+      "Port St. Lucie",
+      "Cape Coral",
+      "Tallahassee",
+      "Fort Lauderdale"
+    ]
+  },
+  "Georgia": {
+    "cities": [
+      "Atlanta",
+      "Columbus",
+      "Augusta",
+      "Macon",
+      "Savannah",
+      "Athens",
+      "Sandy Springs",
+      "South Fulton",
+      "Roswell",
+      "Johns Creek"
+    ]
+  },
+  "Hawaii": {
+    "cities": [
+      "Honolulu",
+      "East Honolulu",
+      "Hilo",
+      "Pearl City",
+      "Waipahu",
+      "Kailua",
+      "Kaneohe",
+      "Kahului",
+      "Mililani Town",
+      "Ewa Gentry"
+    ]
+  },
+  "Idaho": {
+    "cities": [
+      "Boise",
+      "Meridian",
+      "Nampa",
+      "Idaho Falls",
+      "Caldwell",
+      "Pocatello",
+      "Coeur d'Alene",
+      "Twin Falls",
+      "Post Falls",
+      "Rexburg"
+    ]
+  },
+  "Illinois": {
+    "cities": [
+      "Chicago",
+      "Aurora",
+      "Joliet",
+      "Naperville",
+      "Rockford",
+      "Elgin",
+      "Springfield",
+      "Peoria",
+      "Champaign",
+      "Waukegan"
+    ]
+  },
+  "Indiana": {
+    "cities": [
+      "Indianapolis",
+      "Fort Wayne",
+      "Evansville",
+      "Carmel",
+      "Fishers",
+      "South Bend",
+      "Bloomington",
+      "Hammond",
+      "Lafayette",
+      "Noblesville"
+    ]
+  },
+  "Iowa": {
+    "cities": [
+      "Des Moines",
+      "Cedar Rapids",
+      "Davenport",
+      "Sioux City",
+      "Iowa City",
+      "Ankeny",
+      "West Des Moines",
+      "Waterloo",
+      "Ames",
+      "Council Bluffs"
+    ]
+  },
+  "Kansas": {
+    "cities": [
+      "Wichita",
+      "Overland Park",
+      "Kansas City",
+      "Olathe",
+      "Topeka",
+      "Lawrence",
+      "Shawnee",
+      "Lenexa",
+      "Manhattan",
+      "Salina"
+    ]
+  },
+  "Kentucky": {
+    "cities": [
+      "Louisville",
+      "Lexington",
+      "Bowling Green",
+      "Owensboro",
+      "Covington",
+      "Georgetown",
+      "Richmond",
+      "Elizabethtown",
+      "Florence",
+      "Nicholasville"
+    ]
+  },
+  "Louisiana": {
+    "cities": [
+      "New Orleans",
+      "Baton Rouge",
+      "Shreveport",
+      "Metairie",
+      "Lafayette",
+      "Lake Charles",
+      "Kenner",
+      "Bossier City",
+      "Monroe",
+      "Alexandria"
+    ]
+  },
+  "Maine": {
+    "cities": [
+      "Portland",
+      "Lewiston",
+      "Bangor",
+      "South Portland",
+      "Auburn",
+      "Biddeford",
+      "Sanford",
+      "Saco",
+      "Westbrook",
+      "Augusta"
+    ]
+  },
+  "Maryland": {
+    "cities": [
+      "Baltimore",
+      "Columbia",
+      "Germantown",
+      "Silver Spring",
+      "Waldorf",
+      "Frederick",
+      "Ellicott City",
+      "Glen Burnie",
+      "Gaithersburg",
+      "Bethesda"
+    ]
+  },
+  "Massachusetts": {
+    "cities": [
+      "Boston",
+      "Worcester",
+      "Springfield",
+      "Cambridge",
+      "Lowell",
+      "Brockton",
+      "Quincy",
+      "Lynn",
+      "New Bedford",
+      "Fall River"
+    ]
+  },
+  "Michigan": {
+    "cities": [
+      "Detroit",
+      "Grand Rapids",
+      "Warren",
+      "Sterling Heights",
+      "Ann Arbor",
+      "Dearborn",
+      "Lansing",
+      "Livonia",
+      "Troy",
+      "Westland"
+    ]
+  },
+  "Minnesota": {
+    "cities": [
+      "Minneapolis",
+      "Saint Paul",
+      "Rochester",
+      "Bloomington",
+      "Duluth",
+      "Brooklyn Park",
+      "Plymouth",
+      "Woodbury",
+      "Lakeville",
+      "Eagan"
+    ]
+  },
+  "Mississippi": {
+    "cities": [
+      "Jackson",
+      "Gulfport",
+      "Southaven",
+      "Hattiesburg",
+      "Biloxi",
+      "Meridian",
+      "Tupelo",
+      "Greenville",
+      "Olive Branch",
+      "Horn Lake"
+    ]
+  },
+  "Missouri": {
+    "cities": [
+      "Kansas City",
+      "St. Louis",
+      "Springfield",
+      "Columbia",
+      "Independence",
+      "Lee's Summit",
+      "O'Fallon",
+      "St. Charles",
+      "St. Joseph",
+      "Blue Springs"
+    ]
+  },
+  "Montana": {
+    "cities": [
+      "Billings",
+      "Missoula",
+      "Great Falls",
+      "Bozeman",
+      "Butte",
+      "Helena",
+      "Kalispell",
+      "Belgrade",
+      "Anaconda",
+      "Havre"
+    ]
+  },
+  "Nebraska": {
+    "cities": [
+      "Omaha",
+      "Lincoln",
+      "Bellevue",
+      "Grand Island",
+      "Kearney",
+      "Fremont",
+      "Papillion",
+      "Hastings",
+      "Norfolk",
+      "Columbus"
+    ]
+  },
+  "Nevada": {
+    "cities": [
+      "Las Vegas",
+      "Henderson",
+      "Reno",
+      "North Las Vegas",
+      "Enterprise",
+      "Spring Valley",
+      "Sunrise Manor",
+      "Paradise",
+      "Sparks",
+      "Carson City"
+    ]
+  },
+  "New Hampshire": {
+    "cities": [
+      "Manchester",
+      "Nashua",
+      "Concord",
+      "Derry",
+      "Dover",
+      "Rochester",
+      "Salem",
+      "Merrimack",
+      "Londonderry",
+      "Hudson"
+    ]
+  },
+  "New Jersey": {
+    "cities": [
+      "Newark",
+      "Jersey City",
+      "Paterson",
+      "Elizabeth",
+      "Lakewood",
+      "Edison",
+      "Woodbridge",
+      "Toms River",
+      "Hamilton",
+      "Trenton"
+    ]
+  },
+  "New Mexico": {
+    "cities": [
+      "Albuquerque",
+      "Las Cruces",
+      "Rio Rancho",
+      "Santa Fe",
+      "Roswell",
+      "Farmington",
+      "Hobbs",
+      "Clovis",
+      "South Valley",
+      "Carlsbad"
+    ]
+  },
+  "New York": {
+    "cities": [
+      "New York City",
+      "Buffalo",
+      "Yonkers",
+      "Rochester",
+      "Syracuse",
+      "Albany",
+      "New Rochelle",
+      "Mount Vernon",
+      "Schenectady",
+      "Utica"
+    ]
+  },
+  "North Carolina": {
+    "cities": [
+      "Charlotte",
+      "Raleigh",
+      "Greensboro",
+      "Durham",
+      "Winston-Salem",
+      "Fayetteville",
+      "Cary",
+      "Wilmington",
+      "High Point",
+      "Concord"
+    ]
+  },
+  "North Dakota": {
+    "cities": [
+      "Fargo",
+      "Bismarck",
+      "Grand Forks",
+      "Minot",
+      "West Fargo",
+      "Williston",
+      "Dickinson",
+      "Mandan",
+      "Jamestown",
+      "Wahpeton"
+    ]
+  },
+
+  "Ohio": {
+    "cities": [
+      "Columbus",
+      "Cleveland",
+      "Cincinnati",
+      "Toledo",
+      "Akron",
+      "Dayton",
+      "Parma",
+      "Canton",
+      "Lorain",
+      "Hamilton"
+    ]
+  },
+  "Oklahoma": {
+    "cities": [
+      "Oklahoma City",
+      "Tulsa",
+      "Norman",
+      "Broken Arrow",
+      "Edmond",
+      "Lawton",
+      "Moore",
+      "Midwest City",
+      "Enid",
+      "Stillwater"
+    ]
+  },
+  "Oregon": {
+    "cities": [
+      "Portland",
+      "Eugene",
+      "Salem",
+      "Gresham",
+      "Hillsboro",
+      "Bend",
+      "Beaverton",
+      "Medford",
+      "Springfield",
+      "Corvallis"
+    ]
+  },
+  "Pennsylvania": {
+    "cities": [
+      "Philadelphia",
+      "Pittsburgh",
+      "Allentown",
+      "Reading",
+      "Erie",
+      "Upper Darby",
+      "Scranton",
+      "Bethlehem",
+      "Lower Merion",
+      "Bensalem"
+    ]
+  },
+  "Rhode Island": {
+    "cities": [
+      "Providence",
+      "Cranston",
+      "Warwick",
+      "Pawtucket",
+      "East Providence",
+      "Woonsocket",
+      "Cumberland",
+      "Coventry",
+      "North Providence",
+      "South Kingstown"
+    ]
+  },
+  "South Carolina": {
+    "cities": [
+      "Charleston",
+      "Columbia",
+      "North Charleston",
+      "Mount Pleasant",
+      "Rock Hill",
+      "Greenville",
+      "Summerville",
+      "Goose Creek",
+      "Sumter",
+      "Florence"
+    ]
+  },
+  "South Dakota": {
+    "cities": [
+      "Sioux Falls",
+      "Rapid City",
+      "Aberdeen",
+      "Brookings",
+      "Watertown",
+      "Mitchell",
+      "Yankton",
+      "Huron",
+      "Pierre",
+      "Box Elder"
+    ]
+  },
+  "Tennessee": {
+    "cities": [
+      "Nashville",
+      "Memphis",
+      "Knoxville",
+      "Chattanooga",
+      "Clarksville",
+      "Murfreesboro",
+      "Franklin",
+      "Jackson",
+      "Johnson City",
+      "Bartlett"
+    ]
+  },
+  "Texas": {
+    "cities": [
+      "Houston",
+      "San Antonio",
+      "Dallas",
+      "Austin",
+      "Fort Worth",
+      "El Paso",
+      "Arlington",
+      "Corpus Christi",
+      "Plano",
+      "Lubbock"
+    ]
+  },
+  "Utah": {
+    "cities": [
+      "Salt Lake City",
+      "West Valley City",
+      "West Jordan",
+      "Provo",
+      "St. George",
+      "Orem",
+      "Sandy",
+      "Ogden",
+      "Lehi",
+      "Layton"
+    ]
+  },
+  "Vermont": {
+    "cities": [
+      "Burlington",
+      "South Burlington",
+      "Rutland",
+      "Barre",
+      "Montpelier",
+      "Winooski",
+      "St. Albans",
+      "Newport",
+      "Vergennes",
+      "Essex Junction"
+    ]
+  },
+  "Virginia": {
+    "cities": [
+      "Virginia Beach",
+      "Chesapeake",
+      "Norfolk",
+      "Richmond",
+      "Newport News",
+      "Alexandria",
+      "Hampton",
+      "Roanoke",
+      "Portsmouth",
+      "Lynchburg"
+    ]
+  },
+  "Washington": {
+    "cities": [
+      "Seattle",
+      "Spokane",
+      "Tacoma",
+      "Vancouver",
+      "Bellevue",
+      "Kent",
+      "Everett",
+      "Spokane Valley",
+      "Renton",
+      "Federal Way"
+    ]
+  },
+  "West Virginia": {
+    "cities": [
+      "Charleston",
+      "Huntington",
+      "Morgantown",
+      "Parkersburg",
+      "Wheeling",
+      "Martinsburg",
+      "Fairmont",
+      "Weirton",
+      "Beckley",
+      "Clarksburg"
+    ]
+  },
+  "Wisconsin": {
+    "cities": [
+      "Milwaukee",
+      "Madison",
+      "Green Bay",
+      "Kenosha",
+      "Racine",
+      "Appleton",
+      "Eau Claire",
+      "Waukesha",
+      "Oshkosh",
+      "Janesville"
+    ]
+  },
+  "Wyoming": {
+    "cities": [
+      "Cheyenne",
+      "Casper",
+      "Gillette",
+      "Laramie",
+      "Rock Springs",
+      "Sheridan",
+      "Evanston",
+      "Green River",
+      "Riverton",
+      "Jackson"
+    ]
+  },
+  "District of Columbia": {
+    "cities": [
+      "Washington"
+    ]
+  },
+  "countries": []
+}
