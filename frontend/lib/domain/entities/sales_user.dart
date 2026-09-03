@@ -10,6 +10,7 @@ class SalesUser extends Equatable {
     this.email,
     this.photoURL,
     this.role = 'salesman',
+    this.approved = false,
     this.createdAt,
     this.lastLoginAt,
   });
@@ -19,6 +20,7 @@ class SalesUser extends Equatable {
   final String? email;
   final String? photoURL;
   final String role;
+  final bool approved;
   final DateTime? createdAt;
   final DateTime? lastLoginAt;
 
@@ -29,6 +31,7 @@ class SalesUser extends Equatable {
       email: json['email'] as String?,
       photoURL: json['photoURL'] as String?,
       role: (json['role'] as String?) ?? 'salesman',
+      approved: json['approved'] == true,
       createdAt: _parseDate(json['createdAt']),
       lastLoginAt: _parseDate(json['lastLoginAt']),
     );
@@ -40,5 +43,5 @@ class SalesUser extends Equatable {
   }
 
   @override
-  List<Object?> get props => [id, name, email, photoURL, role, createdAt, lastLoginAt];
+  List<Object?> get props => [id, name, email, photoURL, role, approved, createdAt, lastLoginAt];
 }

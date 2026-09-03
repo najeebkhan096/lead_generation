@@ -18,6 +18,8 @@ class BusinessRowCard extends StatelessWidget {
     this.badgeLabel,
     this.categoryLabel,
     this.footerLabel,
+    this.connected = false,
+    this.onWhatsAppPressed,
   });
 
   final Map<String, dynamic> row;
@@ -33,6 +35,13 @@ class BusinessRowCard extends StatelessWidget {
 
   /// Small label under the address, e.g. the source archive's file name.
   final String? footerLabel;
+
+  /// This salesman already opened WhatsApp for this business.
+  final bool connected;
+
+  /// Called before launching WhatsApp. Return false to cancel (e.g. the
+  /// lead was already claimed by someone else).
+  final Future<bool> Function()? onWhatsAppPressed;
 
   @override
   Widget build(BuildContext context) {
@@ -56,13 +65,17 @@ class BusinessRowCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (badgeLabel != null) ...[
+          if (badgeLabel != null || connected) ...[
             Row(
               children: [
-                Icon(AppIcons.circleCheck, size: 13, color: t.sageDeep),
+                Icon(
+                  connected ? AppIcons.chat : AppIcons.circleCheck,
+                  size: 13,
+                  color: t.sageDeep,
+                ),
                 const SizedBox(width: 5),
                 Text(
-                  badgeLabel!,
+                  connected ? 'Connected' : badgeLabel!,
                   style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: t.sageDeep),
                 ),
               ],
@@ -122,7 +135,13 @@ class BusinessRowCard extends StatelessWidget {
                 if (waUrl != null)
                   Expanded(
                     child: FilledButton.icon(
-                      onPressed: () => launchUrl(Uri.parse(waUrl)),
+                      onPressed: () async {
+                        if (onWhatsAppPressed != null) {
+                          final ok = await onWhatsAppPressed!();
+                          if (!ok) return;
+                        }
+                        await launchUrl(Uri.parse(waUrl));
+                      },
                       style: FilledButton.styleFrom(
                         backgroundColor: t.sage,
                         foregroundColor: t.onFill,

@@ -29,7 +29,9 @@ enum WhatsAppWebConnectionStatus {
   }
 
   bool get isConnecting =>
-      this == WhatsAppWebConnectionStatus.initializing || this == WhatsAppWebConnectionStatus.qr;
+      this == WhatsAppWebConnectionStatus.initializing ||
+      this == WhatsAppWebConnectionStatus.qr ||
+      this == WhatsAppWebConnectionStatus.authenticated;
 }
 
 /// How much of today's safe WhatsApp-check budget is left, whether the
@@ -171,6 +173,7 @@ class WhatsAppValidationSnapshot extends Equatable {
     this.currentLeadBusiness,
     this.results = const {},
     this.elapsedMs = 0,
+    this.stoppedReason,
   });
 
   final bool active;
@@ -183,6 +186,7 @@ class WhatsAppValidationSnapshot extends Equatable {
   final String? currentLeadBusiness;
   final Map<String, WhatsAppCheckResultEntry> results;
   final int elapsedMs;
+  final String? stoppedReason;
 
   bool get hasJob => status != 'idle';
 
@@ -201,10 +205,50 @@ class WhatsAppValidationSnapshot extends Equatable {
         (k, v) => MapEntry(k, WhatsAppCheckResultEntry.fromJson(v as Map<String, dynamic>)),
       ),
       elapsedMs: (json['elapsedMs'] as num?)?.toInt() ?? 0,
+      stoppedReason: json['stoppedReason'] as String?,
     );
   }
 
   @override
   List<Object?> get props =>
       [active, status, total, checked, validCount, invalidCount, errorCount];
+}
+
+class UnvalidatedLocationCount extends Equatable {
+  const UnvalidatedLocationCount({required this.name, required this.count});
+
+  final String name;
+  final int count;
+
+  factory UnvalidatedLocationCount.fromJson(Map<String, dynamic> json) {
+    return UnvalidatedLocationCount(
+      name: (json['name'] as String?) ?? 'Unknown',
+      count: (json['count'] as num?)?.toInt() ?? 0,
+    );
+  }
+
+  @override
+  List<Object?> get props => [name, count];
+}
+
+/// Unchecked Firestore leads, grouped by state, so the WhatsApp Tool can
+/// offer "validate all" vs a selected subset of states.
+class UnvalidatedWhatsAppSummary extends Equatable {
+  const UnvalidatedWhatsAppSummary({this.total = 0, this.locations = const []});
+
+  final int total;
+  final List<UnvalidatedLocationCount> locations;
+
+  factory UnvalidatedWhatsAppSummary.fromJson(Map<String, dynamic> json) {
+    final locationsJson = (json['locations'] as List<dynamic>? ?? []);
+    return UnvalidatedWhatsAppSummary(
+      total: (json['total'] as num?)?.toInt() ?? 0,
+      locations: locationsJson
+          .map((e) => UnvalidatedLocationCount.fromJson(e as Map<String, dynamic>))
+          .toList(),
+    );
+  }
+
+  @override
+  List<Object?> get props => [total, locations];
 }

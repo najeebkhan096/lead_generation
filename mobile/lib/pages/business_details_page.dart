@@ -11,8 +11,9 @@ import '../theme/app_theme.dart';
 /// whichever collection [lead] actually came from.
 typedef LeadStatusUpdater = Future<void> Function(String id, LeadStatus status, String? userId);
 
-/// Callback shape shared by [LeadRepository.updateWhatsAppStatus] and
-/// [WebsiteLeadRepository.updateWhatsAppStatus].
+/// Callback shape for [LeadRepository.updateWhatsAppStatus] — only ever
+/// used for review leads; website leads pass `isWebsiteLead: true` instead
+/// and never wire this up.
 typedef LeadWhatsAppUpdater = Future<void> Function(String id, bool hasWhatsApp, String? userId);
 
 class BusinessDetailsPage extends StatefulWidget {
@@ -21,6 +22,7 @@ class BusinessDetailsPage extends StatefulWidget {
     required this.lead,
     this.updateStatus,
     this.updateWhatsAppStatus,
+    this.isWebsiteLead = false,
   });
 
   final Lead lead;
@@ -30,6 +32,11 @@ class BusinessDetailsPage extends StatefulWidget {
   /// Leads tab instead.
   final LeadStatusUpdater? updateStatus;
   final LeadWhatsAppUpdater? updateWhatsAppStatus;
+
+  /// Website leads ("no website found") never carry a real WhatsApp signal
+  /// — hides the WhatsApp validation section entirely instead of showing a
+  /// toggle for a status this lead type is never actually checked for.
+  final bool isWebsiteLead;
 
   @override
   State<BusinessDetailsPage> createState() => _BusinessDetailsPageState();
@@ -57,7 +64,7 @@ class _BusinessDetailsPageState extends State<BusinessDetailsPage> {
       if (_currentStatus != widget.lead.status) {
         await updateStatus(widget.lead.id, _currentStatus, user?.uid);
       }
-      if (_hasWhatsApp != widget.lead.hasWhatsApp) {
+      if (!widget.isWebsiteLead && _hasWhatsApp != widget.lead.hasWhatsApp) {
         await updateWhatsAppStatus(widget.lead.id, _hasWhatsApp, user?.uid);
       }
       if (mounted) {
@@ -87,7 +94,8 @@ class _BusinessDetailsPageState extends State<BusinessDetailsPage> {
   Widget build(BuildContext context) {
     final t = context.tokens;
     final lead = widget.lead;
-    final dirty = _currentStatus != lead.status || _hasWhatsApp != lead.hasWhatsApp;
+    final dirty = _currentStatus != lead.status ||
+        (!widget.isWebsiteLead && _hasWhatsApp != lead.hasWhatsApp);
 
     return Scaffold(
       appBar: AppBar(),
@@ -106,14 +114,16 @@ class _BusinessDetailsPageState extends State<BusinessDetailsPage> {
             ],
             const SizedBox(height: 28),
             _ReviewCard(review: lead.badReview),
-            const SizedBox(height: 32),
-            Text('WhatsApp Validation',
-                style: Theme.of(context).textTheme.headlineSmall),
-            const SizedBox(height: 14),
-            _WhatsAppToggle(
-              value: _hasWhatsApp,
-              onChanged: (val) => setState(() => _hasWhatsApp = val),
-            ),
+            if (!widget.isWebsiteLead) ...[
+              const SizedBox(height: 32),
+              Text('WhatsApp Validation',
+                  style: Theme.of(context).textTheme.headlineSmall),
+              const SizedBox(height: 14),
+              _WhatsAppToggle(
+                value: _hasWhatsApp,
+                onChanged: (val) => setState(() => _hasWhatsApp = val),
+              ),
+            ],
             const SizedBox(height: 32),
             Text('Where does this lead stand?',
                 style: Theme.of(context).textTheme.headlineSmall),

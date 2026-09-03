@@ -3,8 +3,10 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 
 import 'firebase_options.dart';
+import 'pages/access_error_page.dart';
 import 'pages/login_page.dart';
 import 'pages/main_navigation_page.dart';
+import 'services/auth_service.dart';
 import 'services/theme_controller.dart';
 import 'theme/app_theme.dart';
 
@@ -40,12 +42,43 @@ class LeadMobileApp extends StatelessWidget {
                 );
               }
               if (snapshot.hasData) {
-                return const MainNavigationPage();
+                return const _ApprovedGate();
               }
               return const LoginPage();
             },
           ),
         );
+      },
+    );
+  }
+}
+
+/// After Firebase Auth succeeds, load `users/{uid}.approved`. Unapproved
+/// accounts see a generic error — never an "awaiting approval" message.
+class _ApprovedGate extends StatefulWidget {
+  const _ApprovedGate();
+
+  @override
+  State<_ApprovedGate> createState() => _ApprovedGateState();
+}
+
+class _ApprovedGateState extends State<_ApprovedGate> {
+  late final Future<bool> _approved = AuthService().isCurrentUserApproved();
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<bool>(
+      future: _approved,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
+        if (snapshot.data == true) {
+          return const MainNavigationPage();
+        }
+        return const AccessErrorPage();
       },
     );
   }

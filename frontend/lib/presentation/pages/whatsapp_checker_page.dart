@@ -67,7 +67,11 @@ class _WhatsAppCheckerPageState extends State<WhatsAppCheckerPage> {
         _webPollTimer = null;
       }
     } catch (_) {
-      // Backend unreachable — leave last-known status showing.
+      // Keep polling while a connect is in flight so a transient blip
+      // doesn't freeze the spinner on "Starting session…".
+      if (_webStatus?.status.isConnecting == true) {
+        _webPollTimer ??= Timer.periodic(const Duration(seconds: 2), (_) => _pollWebStatus());
+      }
     }
   }
 
@@ -85,10 +89,10 @@ class _WhatsAppCheckerPageState extends State<WhatsAppCheckerPage> {
     } catch (_) {}
   }
 
-  Future<void> _startAutoValidation() async {
+  Future<void> _startAutoValidation({List<String>? states}) async {
     setState(() => _startingValidation = true);
     try {
-      await context.read<LeadRepository>().startWhatsAppAutoValidation();
+      await context.read<LeadRepository>().startWhatsAppAutoValidation(states: states);
       await _pollValidationStatus();
     } catch (e) {
       if (mounted) {
@@ -185,7 +189,7 @@ class _WhatsAppCheckerPageState extends State<WhatsAppCheckerPage> {
           child: SingleChildScrollView(
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 520),
+              constraints: const BoxConstraints(maxWidth: 720),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -270,7 +274,7 @@ class _WhatsAppCheckerPageState extends State<WhatsAppCheckerPage> {
   }
 }
 
-class _AutomationCard extends StatelessWidget {
+class _AutomationCard extends StatefulWidget {
   const _AutomationCard({
     required this.status,
     required this.busy,
@@ -280,14 +284,77 @@ class _AutomationCard extends StatelessWidget {
 
   final WhatsAppValidationSnapshot? status;
   final bool busy;
-  final VoidCallback onStart;
+  final Future<void> Function({List<String>? states}) onStart;
   final VoidCallback onRefresh;
 
   @override
+  State<_AutomationCard> createState() => _AutomationCardState();
+}
+
+class _AutomationCardState extends State<_AutomationCard> {
+  UnvalidatedWhatsAppSummary? _summary;
+  bool _loadingSummary = true;
+  String? _summaryError;
+  bool _allStates = true;
+  final Set<String> _selectedStates = {};
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadSummary());
+  }
+
+  @override
+  void didUpdateWidget(covariant _AutomationCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.status?.active == true && widget.status?.active != true) {
+      _loadSummary();
+    }
+  }
+
+  Future<void> _loadSummary() async {
+    setState(() {
+      _loadingSummary = true;
+      _summaryError = null;
+    });
+    try {
+      final summary = await context.read<LeadRepository>().getUnvalidatedWhatsAppSummary();
+      if (!mounted) return;
+      setState(() {
+        _summary = summary;
+        _loadingSummary = false;
+        _selectedStates.removeWhere((name) => summary.locations.every((l) => l.name != name));
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loadingSummary = false;
+        _summaryError = e.toString().replaceFirst('Exception: ', '');
+      });
+    }
+  }
+
+  int get _selectedCount {
+    final summary = _summary;
+    if (summary == null) return 0;
+    if (_allStates) return summary.total;
+    return summary.locations.where((l) => _selectedStates.contains(l.name)).fold<int>(0, (s, l) => s + l.count);
+  }
+
+  Future<void> _start() async {
+    if (_allStates) {
+      await widget.onStart();
+    } else {
+      await widget.onStart(states: _selectedStates.toList());
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final active = status?.active ?? false;
-    final checked = status?.checked ?? 0;
-    final total = status?.total ?? 0;
+    final active = widget.status?.active ?? false;
+    final checked = widget.status?.checked ?? 0;
+    final total = widget.status?.total ?? 0;
+    final canStart = !widget.busy && !active && _selectedCount > 0;
 
     return Container(
       padding: const EdgeInsets.all(22),
@@ -327,13 +394,17 @@ class _AutomationCard extends StatelessWidget {
                     Text(
                       active
                           ? 'Checking $checked of $total leads'
-                          : 'Discover and check all unvalidated leads from Firestore',
+                          : _loadingSummary
+                              ? 'Counting unvalidated leads…'
+                              : _summary == null
+                                  ? 'Discover and check unvalidated leads from Firestore'
+                                  : '${_summary!.total} unvalidated lead${_summary!.total == 1 ? '' : 's'} · no batch cap',
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
                   ],
                 ),
               ),
-              if (busy)
+              if (widget.busy)
                 const SizedBox(
                   height: 20,
                   width: 20,
@@ -342,11 +413,11 @@ class _AutomationCard extends StatelessWidget {
               else if (active)
                 IconButton(
                   icon: const Icon(AppIcons.refresh, size: 18),
-                  onPressed: onRefresh,
+                  onPressed: widget.onRefresh,
                 )
               else
                 ElevatedButton(
-                  onPressed: onStart,
+                  onPressed: canStart ? _start : null,
                   style: ElevatedButton.styleFrom(
                     minimumSize: const Size(100, 40),
                     padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -366,6 +437,59 @@ class _AutomationCard extends StatelessWidget {
                 valueColor: const AlwaysStoppedAnimation(AppTheme.sage500),
               ),
             ),
+          ] else ...[
+            const SizedBox(height: 16),
+            if (_loadingSummary)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: LinearProgressIndicator(minHeight: 3),
+              )
+            else if (_summaryError != null)
+              Text(_summaryError!, style: const TextStyle(fontSize: 12.5, color: AppTheme.danger))
+            else if (_summary != null && _summary!.locations.isNotEmpty) ...[
+              Text('States', style: Theme.of(context).textTheme.titleSmall),
+              const SizedBox(height: 8),
+              SegmentedButton<bool>(
+                segments: const [
+                  ButtonSegment(value: true, label: Text('All states'), icon: Icon(AppIcons.globe, size: 16)),
+                  ButtonSegment(value: false, label: Text('Selected states'), icon: Icon(AppIcons.mapPin, size: 16)),
+                ],
+                selected: {_allStates},
+                onSelectionChanged: (next) {
+                  setState(() => _allStates = next.first);
+                },
+              ),
+              if (!_allStates) ...[
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final loc in _summary!.locations)
+                      FilterChip(
+                        label: Text('${loc.name} (${loc.count})'),
+                        selected: _selectedStates.contains(loc.name),
+                        onSelected: (selected) {
+                          setState(() {
+                            if (selected) {
+                              _selectedStates.add(loc.name);
+                            } else {
+                              _selectedStates.remove(loc.name);
+                            }
+                          });
+                        },
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  _selectedStates.isEmpty
+                      ? 'Pick one or more states to validate.'
+                      : 'Will check $_selectedCount lead${_selectedCount == 1 ? '' : 's'} in ${_selectedStates.length} state${_selectedStates.length == 1 ? '' : 's'}.',
+                  style: const TextStyle(fontSize: 12.5, color: AppTheme.faint, fontWeight: FontWeight.w600),
+                ),
+              ],
+            ],
           ],
         ],
       ),
@@ -536,6 +660,14 @@ class _WhatsAppWebConnectionCard extends StatelessWidget {
               padding: EdgeInsets.symmetric(vertical: 12),
               child: Center(child: CircularProgressIndicator(strokeWidth: 2.4)),
             ),
+            Text(
+              s == WhatsAppWebConnectionStatus.authenticated
+                  ? 'Signed in. Finishing setup — this can take up to a minute.'
+                  : 'Loading WhatsApp Web in the background. A QR code should appear within about a minute.',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const SizedBox(height: 8),
             TextButton(
               onPressed: busy ? null : onDisconnect,
               child: const Text('Cancel'),

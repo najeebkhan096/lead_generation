@@ -186,7 +186,7 @@ class LeadRemoteDataSource {
   Future<void> startMultiSearch({
     required List<String> categories,
     List<String>? countries,
-    int concurrency = 4,
+    int concurrency = 10,
     String dateRange = '30',
     int maxResultsPerState = 150,
     int targetLeadCount = 100,
@@ -280,7 +280,7 @@ class LeadRemoteDataSource {
   /// `stateCityOrchestrator.js` for the full sequencing.
   Future<void> startStateScan({
     required List<String> categories,
-    int concurrency = 4,
+    int concurrency = 10,
     String dateRange = '30',
     int maxResultsPerCity = 160,
     bool analyze = false,
@@ -362,7 +362,7 @@ class LeadRemoteDataSource {
       _uri(ApiConstants.whatsAppWebValidate),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({'leads': leads}),
-    );
+    ).timeout(const Duration(minutes: 2));
     if (response.statusCode >= 400) {
       final body = _tryDecode(response.body);
       throw Exception(body['error'] ?? 'Failed to start WhatsApp validation');
@@ -378,23 +378,38 @@ class LeadRemoteDataSource {
       _uri(ApiConstants.whatsAppWebValidateList),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({'leads': leads}),
-    );
+    ).timeout(const Duration(minutes: 2));
     if (response.statusCode >= 400) {
       final body = _tryDecode(response.body);
       throw Exception(body['error'] ?? 'Failed to start WhatsApp validation');
     }
   }
 
-  Future<void> startWhatsAppAutoValidation() async {
-    final response = await _client.post(
-      _uri(ApiConstants.whatsAppWebValidateAuto),
-    );
+  Future<void> startWhatsAppAutoValidation({List<String>? states}) async {
+    final response = await _client
+        .post(
+          _uri(ApiConstants.whatsAppWebValidateAuto),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'states': ?states}),
+        )
+        .timeout(const Duration(minutes: 2));
     if (response.statusCode >= 400) {
       final body = _tryDecode(response.body);
       throw Exception(
         body['error'] ?? 'Failed to start auto WhatsApp validation',
       );
     }
+  }
+
+  Future<UnvalidatedWhatsAppSummary> getUnvalidatedWhatsAppSummary() async {
+    final response = await _client
+        .get(_uri(ApiConstants.whatsAppWebUnvalidated))
+        .timeout(const Duration(minutes: 2));
+    if (response.statusCode >= 400) {
+      final body = _tryDecode(response.body);
+      throw Exception(body['error'] ?? 'Failed to load unvalidated leads');
+    }
+    return UnvalidatedWhatsAppSummary.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
   }
 
   Future<WhatsAppValidationSnapshot> getWhatsAppValidationStatus() async {
@@ -478,7 +493,34 @@ class LeadRemoteDataSource {
     }
     final body = jsonDecode(response.body) as Map<String, dynamic>;
     final usersJson = (body['users'] as List<dynamic>? ?? []);
+    return usersJson
+        .map((e) => SalesUser.fromJson(e as Map<String, dynamic>))
+        .where((u) => u.approved)
+        .toList();
+  }
+
+  Future<List<SalesUser>> listUsers() async {
+    final response = await _client.get(_uri(ApiConstants.users));
+    if (response.statusCode >= 400) {
+      final body = _tryDecode(response.body);
+      throw Exception(body['error'] ?? 'Failed to load users');
+    }
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    final usersJson = (body['users'] as List<dynamic>? ?? []);
     return usersJson.map((e) => SalesUser.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  Future<SalesUser> setUserApproved(String id, {required bool approved}) async {
+    final response = await _client.patch(
+      _uri(ApiConstants.userUpdate(id)),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'approved': approved}),
+    );
+    final body = _tryDecode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['error'] ?? 'Failed to update user');
+    }
+    return SalesUser.fromJson(body['user'] as Map<String, dynamic>);
   }
 
   Future<List<WatchlistEntry>> listWatchlist() async {
@@ -644,8 +686,12 @@ class LeadRemoteDataSource {
   /// (`'state-city'` or `'multi-country'`) so the caller knows which live
   /// dashboard to open — the backend infers this from the archive itself,
   /// since two different scan engines can produce a `'partial'` archive.
-  Future<String> resumeExcelArchive(String id) async {
-    final response = await _client.post(_uri(ApiConstants.excelArchiveResume(id)));
+  Future<String> resumeExcelArchive(String id, {int concurrency = 10}) async {
+    final response = await _client.post(
+      _uri(ApiConstants.excelArchiveResume(id)),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'concurrency': concurrency}),
+    );
     final body = _tryDecode(response.body);
     if (response.statusCode >= 400) {
       throw Exception(body['error'] ?? 'Failed to resume archive');
@@ -763,6 +809,27 @@ class LeadRemoteDataSource {
     }
     final body = jsonDecode(response.body) as Map<String, dynamic>;
     return SalesStats.fromJson(body['stats'] as Map<String, dynamic>);
+  }
+
+  /// Re-scrapes ongoing and completed sales for 1-star reviews in the last
+  /// [dateRange] days. Generous timeout — each business is a real Maps load.
+  Future<List<SaleReviewScanResult>> scanSaleReviews({String dateRange = '30', String? salesmanId}) async {
+    final response = await _client
+        .post(
+          _uri(ApiConstants.salesScanReviews),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'dateRange': dateRange,
+            'salesmanId': ?salesmanId,
+          }),
+        )
+        .timeout(const Duration(minutes: 20));
+    final body = _tryDecode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['error'] ?? 'Sales review scan failed');
+    }
+    final resultsJson = (body['results'] as List<dynamic>? ?? []);
+    return resultsJson.map((e) => SaleReviewScanResult.fromJson(e as Map<String, dynamic>)).toList();
   }
 
   Map<String, dynamic> _tryDecode(String body) {

@@ -102,7 +102,13 @@ function dailyCapFor(state) {
 function isCircuitOpen(state) {
   if (state.consecutiveFailures < CIRCUIT_FAILURE_THRESHOLD) return false;
   if (!state.circuitOpenedAt) return false;
-  return _now() - state.circuitOpenedAt < CIRCUIT_RESET_MS;
+  if (_now() - state.circuitOpenedAt >= CIRCUIT_RESET_MS) {
+    state.consecutiveFailures = 0;
+    state.circuitOpenedAt = null;
+    saveState(state);
+    return false;
+  }
+  return true;
 }
 
 /** Called once, the moment a *fresh* QR scan succeeds (not a restored session). */
@@ -196,14 +202,29 @@ export async function guardedCheck(phone) {
 
     const result = await whatsappWeb.checkNumber(phone);
 
+    // Session dropped mid-job — stop the rest of the batch instead of
+    // counting three "not connected" answers as a rate-limit trip.
+    if (
+      !result.checked &&
+      /not connected|Target closed|Session closed|disconnected mid-check|Protocol error/i.test(
+        result.error || ''
+      )
+    ) {
+      return { ...result, skipped: true };
+    }
+
     const fresh = loadState(); // re-read: another path (rare) may have written meanwhile
     const day = today();
     fresh.checksByDay[day] = (fresh.checksByDay[day] || 0) + 1;
 
+    // Only session-level failures (timeouts, protocol errors) trip the
+    // circuit. A bad listing ("invalid wid", no digits) must not halt
+    // hundreds of remaining checks — that was showing 0 validated on
+    // 700-lead runs after the first three junk numbers.
     if (result.checked) {
       fresh.consecutiveFailures = 0;
       fresh.circuitOpenedAt = null;
-    } else {
+    } else if (result.sessionFailure !== false) {
       fresh.consecutiveFailures = (fresh.consecutiveFailures || 0) + 1;
       if (fresh.consecutiveFailures >= CIRCUIT_FAILURE_THRESHOLD && !fresh.circuitOpenedAt) {
         fresh.circuitOpenedAt = _now();

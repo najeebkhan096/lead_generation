@@ -46,8 +46,23 @@ class AuthService {
     };
     if (!snap.exists) {
       data['createdAt'] = FieldValue.serverTimestamp();
+      data['approved'] = false;
     }
     await ref.set(data, SetOptions(merge: true));
+  }
+
+  /// True only when the admin has set `approved` on this user's profile.
+  /// Missing/false both count as not approved — do not mention that to the
+  /// user; callers show a generic error instead.
+  Future<bool> isCurrentUserApproved() async {
+    final user = _auth.currentUser;
+    if (user == null) return false;
+    try {
+      final snap = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+      return snap.data()?['approved'] == true;
+    } catch (_) {
+      return false;
+    }
   }
 
   Future<void> signOut() async {

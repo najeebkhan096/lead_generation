@@ -5,6 +5,7 @@ import {
   deleteSale,
   getSalesStats,
 } from '../services/saleStore.js';
+import { scanSaleReviews } from '../services/salesReviewScanner.js';
 
 export async function addSale(req, res) {
   try {
@@ -55,5 +56,26 @@ export async function getStats(req, res) {
     return res.json({ stats });
   } catch (err) {
     return res.status(err.status || 500).json({ error: err.message || 'Failed to load sales stats' });
+  }
+}
+
+let scanningReviews = false;
+
+export async function scanReviews(req, res) {
+  if (scanningReviews) {
+    return res.status(409).json({ error: 'A sales review scan is already running' });
+  }
+  scanningReviews = true;
+  try {
+    const { dateRange, salesmanId } = req.body || {};
+    const results = await scanSaleReviews({
+      dateRange: dateRange ? String(dateRange) : '30',
+      salesmanId: salesmanId ? String(salesmanId) : undefined,
+    });
+    return res.json({ results, scannedAt: new Date().toISOString() });
+  } catch (err) {
+    return res.status(err.status || 500).json({ error: err.message || 'Sales review scan failed' });
+  } finally {
+    scanningReviews = false;
   }
 }

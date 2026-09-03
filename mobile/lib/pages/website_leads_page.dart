@@ -148,12 +148,13 @@ class _WebsiteLeadsPageState extends State<WebsiteLeadsPage> {
                               final lead = filtered[index];
                               return SavedBusinessCard(
                                 lead: lead,
+                                showWhatsAppAction: false,
                                 onTap: () => Navigator.of(context).push(
                                   MaterialPageRoute(
                                     builder: (_) => BusinessDetailsPage(
                                       lead: lead,
                                       updateStatus: _repo.updateStatus,
-                                      updateWhatsAppStatus: _repo.updateWhatsAppStatus,
+                                      isWebsiteLead: true,
                                     ),
                                   ),
                                 ),

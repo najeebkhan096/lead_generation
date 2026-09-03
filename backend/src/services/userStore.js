@@ -1,3 +1,4 @@
+import { FieldValue } from 'firebase-admin/firestore';
 import { getFirestore } from '../firebase/admin.js';
 
 // Every mobile app account is created here on sign-in with role 'salesman'
@@ -13,6 +14,7 @@ function docToUser(doc) {
     email: data.email || null,
     photoURL: data.photoURL || null,
     role: data.role || 'salesman',
+    approved: data.approved === true,
     createdAt: data.createdAt?.toDate?.()?.toISOString() || null,
     lastLoginAt: data.lastLoginAt?.toDate?.()?.toISOString() || null,
   };
@@ -24,6 +26,30 @@ export async function listUsers({ role } = {}) {
   if (role) query = query.where('role', '==', role);
   const snap = await query.get();
   const users = snap.docs.map(docToUser);
-  users.sort((a, b) => a.name.localeCompare(b.name));
+  users.sort((a, b) => {
+    if (a.approved !== b.approved) return a.approved ? 1 : -1;
+    return a.name.localeCompare(b.name);
+  });
   return users;
+}
+
+export async function setUserApproved(id, approved) {
+  if (typeof approved !== 'boolean') {
+    const err = new Error('approved must be true or false');
+    err.status = 400;
+    throw err;
+  }
+  const db = getFirestore();
+  const ref = db.collection(COLLECTION).doc(id);
+  const existing = await ref.get();
+  if (!existing.exists) {
+    const err = new Error('User not found');
+    err.status = 404;
+    throw err;
+  }
+  await ref.update({
+    approved,
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+  return docToUser(await ref.get());
 }

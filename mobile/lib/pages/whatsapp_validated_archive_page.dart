@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../models/excel_archive.dart';
 import '../services/api_service.dart';
 import '../services/archive_repository.dart';
+import '../services/whatsapp_claim_store.dart';
 import '../theme/app_theme.dart';
 import '../widgets/business_row_card.dart';
 import '../widgets/page_header.dart';
@@ -329,21 +330,32 @@ class _VerifiedArchiveViewerPageState extends State<_VerifiedArchiveViewerPage> 
   }
 }
 
-class _VerifiedSheetList extends StatelessWidget {
+class _VerifiedSheetList extends StatefulWidget {
   const _VerifiedSheetList({required this.sheet});
 
   final ExcelArchiveSheet sheet;
 
   @override
+  State<_VerifiedSheetList> createState() => _VerifiedSheetListState();
+}
+
+class _VerifiedSheetListState extends State<_VerifiedSheetList> with WhatsAppClaimsMixin {
+  @override
   Widget build(BuildContext context) {
     final t = context.tokens;
-    if (sheet.rows.isEmpty) {
+    final rows = widget.sheet.rows.where(claimVisible).toList();
+    if (rows.isEmpty) {
       return Center(child: Text('No rows in this sheet.', style: TextStyle(color: t.faint)));
     }
     return ListView.builder(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-      itemCount: sheet.rows.length,
-      itemBuilder: (context, i) => BusinessRowCard(row: sheet.rows[i], badgeLabel: 'WhatsApp Verified'),
+      itemCount: rows.length,
+      itemBuilder: (context, i) => BusinessRowCard(
+        row: rows[i],
+        badgeLabel: 'WhatsApp Verified',
+        connected: claimIsMine(rows[i]),
+        onWhatsAppPressed: () => claimAndOpen(rows[i]),
+      ),
     );
   }
 }

@@ -53,7 +53,7 @@ class LeadRepositoryImpl implements LeadRepository {
   @override
   Future<void> startStateScan({
     required List<String> categories,
-    int concurrency = 4,
+    int concurrency = 10,
     String dateRange = '30',
     int maxResultsPerCity = 160,
     bool analyze = false,
@@ -82,7 +82,7 @@ class LeadRepositoryImpl implements LeadRepository {
   Future<void> startMultiSearch({
     required List<String> categories,
     List<String>? countries,
-    int concurrency = 4,
+    int concurrency = 10,
     String dateRange = '30',
     int maxResultsPerState = 150,
     int targetLeadCount = 100,
@@ -144,7 +144,12 @@ class LeadRepositoryImpl implements LeadRepository {
       _remote.validateExternalLeads(leads);
 
   @override
-  Future<void> startWhatsAppAutoValidation() => _remote.startWhatsAppAutoValidation();
+  Future<void> startWhatsAppAutoValidation({List<String>? states}) =>
+      _remote.startWhatsAppAutoValidation(states: states);
+
+  @override
+  Future<UnvalidatedWhatsAppSummary> getUnvalidatedWhatsAppSummary() =>
+      _remote.getUnvalidatedWhatsAppSummary();
 
   @override
   Future<WhatsAppValidationSnapshot> getWhatsAppValidationStatus() =>
@@ -187,6 +192,13 @@ class LeadRepositoryImpl implements LeadRepository {
   Future<List<SalesUser>> listSalesmen() => _remote.listSalesmen();
 
   @override
+  Future<List<SalesUser>> listUsers() => _remote.listUsers();
+
+  @override
+  Future<SalesUser> setUserApproved(String id, {required bool approved}) =>
+      _remote.setUserApproved(id, approved: approved);
+
+  @override
   Future<List<WatchlistScanResult>> scanWatchlist({String dateRange = '30'}) =>
       _remote.scanWatchlist(dateRange: dateRange);
 
@@ -200,7 +212,8 @@ class LeadRepositoryImpl implements LeadRepository {
   Future<void> deleteExcelArchive(String id) => _remote.deleteExcelArchive(id);
 
   @override
-  Future<String> resumeExcelArchive(String id) => _remote.resumeExcelArchive(id);
+  Future<String> resumeExcelArchive(String id, {int concurrency = 10}) =>
+      _remote.resumeExcelArchive(id, concurrency: concurrency);
 
   @override
   Future<List<Lead>> getExcelArchiveLeads(String id) => _remote.getExcelArchiveLeads(id);
@@ -301,4 +314,8 @@ class LeadRepositoryImpl implements LeadRepository {
 
   @override
   Future<SalesStats> getSalesStats({String? salesmanId}) => _remote.getSalesStats(salesmanId: salesmanId);
+
+  @override
+  Future<List<SaleReviewScanResult>> scanSaleReviews({String dateRange = '30', String? salesmanId}) =>
+      _remote.scanSaleReviews(dateRange: dateRange, salesmanId: salesmanId);
 }

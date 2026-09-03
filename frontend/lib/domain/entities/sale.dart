@@ -1,5 +1,7 @@
 import 'package:equatable/equatable.dart';
 
+import 'watchlist_entry.dart';
+
 /// Deal-stage progression — separate from either payment status below.
 enum LeadStatus {
   newLead,
@@ -110,6 +112,11 @@ class Sale extends Equatable {
     this.profit = 0,
     this.createdAt,
     this.updatedAt,
+    this.lastReviewScannedAt,
+    this.lastOneStarCount = 0,
+    this.lastReviewScanError,
+    this.lastRating,
+    this.lastTotalReviews,
   });
 
   final String id;
@@ -144,6 +151,13 @@ class Sale extends Equatable {
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
+  /// Last on-demand 1-star rescan of [reviewLink] (last 30 days).
+  final DateTime? lastReviewScannedAt;
+  final int lastOneStarCount;
+  final String? lastReviewScanError;
+  final double? lastRating;
+  final int? lastTotalReviews;
+
   factory Sale.fromJson(Map<String, dynamic> json) {
     return Sale(
       id: json['id'] as String,
@@ -162,6 +176,11 @@ class Sale extends Equatable {
       profit: (json['profit'] as num?)?.toDouble() ?? 0,
       createdAt: _parseDate(json['createdAt']),
       updatedAt: _parseDate(json['updatedAt']),
+      lastReviewScannedAt: _parseDate(json['lastReviewScannedAt']),
+      lastOneStarCount: (json['lastOneStarCount'] as num?)?.toInt() ?? 0,
+      lastReviewScanError: json['lastReviewScanError'] as String?,
+      lastRating: (json['lastRating'] as num?)?.toDouble(),
+      lastTotalReviews: (json['lastTotalReviews'] as num?)?.toInt(),
     );
   }
 
@@ -188,7 +207,55 @@ class Sale extends Equatable {
         profit,
         createdAt,
         updatedAt,
+        lastReviewScannedAt,
+        lastOneStarCount,
+        lastReviewScanError,
+        lastRating,
+        lastTotalReviews,
       ];
+}
+
+/// Result of re-scraping a sold / in-progress business for recent 1-star reviews.
+class SaleReviewScanResult extends Equatable {
+  const SaleReviewScanResult({
+    required this.id,
+    required this.url,
+    this.name,
+    this.leadStatus,
+    this.rating,
+    this.totalReviews,
+    this.newReviews = const [],
+    this.error,
+    this.skipped = false,
+  });
+
+  final String id;
+  final String url;
+  final String? name;
+  final String? leadStatus;
+  final double? rating;
+  final int? totalReviews;
+  final List<WatchlistReview> newReviews;
+  final String? error;
+  final bool skipped;
+
+  factory SaleReviewScanResult.fromJson(Map<String, dynamic> json) {
+    final reviewsJson = (json['newReviews'] as List<dynamic>? ?? []);
+    return SaleReviewScanResult(
+      id: json['id'] as String,
+      url: (json['url'] as String?) ?? '',
+      name: json['name'] as String?,
+      leadStatus: json['leadStatus'] as String?,
+      rating: (json['rating'] as num?)?.toDouble(),
+      totalReviews: (json['totalReviews'] as num?)?.toInt(),
+      newReviews: reviewsJson.map((e) => WatchlistReview.fromJson(e as Map<String, dynamic>)).toList(),
+      error: json['error'] as String?,
+      skipped: json['skipped'] == true,
+    );
+  }
+
+  @override
+  List<Object?> get props => [id, url, name, leadStatus, rating, totalReviews, newReviews, error, skipped];
 }
 
 class StatusCount extends Equatable {

@@ -9,6 +9,7 @@ import '../bloc/website_leads/website_leads_bloc.dart';
 import '../bloc/website_leads/website_leads_event.dart';
 import '../bloc/website_leads/website_leads_state.dart';
 import '../widgets/saved_business_card.dart';
+import 'business_details_page.dart' show LeadDetailsArgs;
 
 const _allCategories = 'All categories';
 
@@ -294,7 +295,10 @@ class _WebsiteLeadsViewState extends State<_WebsiteLeadsView> {
                   return SavedBusinessCard(
                     lead: lead,
                     onTap: () async {
-                      final changed = await context.push<bool>('/leads/details', extra: lead);
+                      final changed = await context.push<bool>(
+                        '/leads/details',
+                        extra: LeadDetailsArgs(lead: lead, isWebsiteLead: true),
+                      );
                       if (changed == true && context.mounted) {
                         context.read<WebsiteLeadsBloc>().add(const WebsiteLeadsRequested());
                       }

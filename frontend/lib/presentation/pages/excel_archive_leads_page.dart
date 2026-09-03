@@ -44,8 +44,8 @@ Map<String, dynamic> _leadToJson(Lead lead) {
 /// through from the backend, so the dropdown here just groups by it rather
 /// than re-deriving anything. A "Validate WhatsApp" action runs the real
 /// guarded WhatsApp Web checker over the selected category's businesses,
-/// building up a verified list per category that can be uploaded as its
-/// own archive once you're happy with it.
+/// building up a verified list per category that is uploaded as its
+/// own archive automatically when validation finishes.
 class ExcelArchiveLeadsPage extends StatefulWidget {
   const ExcelArchiveLeadsPage({super.key, required this.archive, this.autoValidate = false});
 
@@ -76,6 +76,9 @@ class _ExcelArchiveLeadsPageState extends State<ExcelArchiveLeadsPage> {
 
   final Map<String, List<Lead>> _validatedByCategory = {};
   bool _uploading = false;
+  String? _uploadError;
+  bool _allStates = true;
+  final Set<String> _selectedStates = {};
 
   LeadRepository get _repo => context.read<LeadRepository>();
 
@@ -136,6 +139,28 @@ class _ExcelArchiveLeadsPageState extends State<ExcelArchiveLeadsPage> {
     return [_allCategories, ...sorted];
   }
 
+  String _stateLabel(String location) {
+    final loc = location.trim();
+    if (loc.isEmpty) return 'Unknown';
+    final comma = loc.lastIndexOf(',');
+    return (comma >= 0 ? loc.substring(comma + 1) : loc).trim();
+  }
+
+  List<({String name, int count})> _statesIn(List<Lead> leads) {
+    final counts = <String, int>{};
+    for (final l in leads) {
+      final name = _stateLabel(l.location);
+      counts[name] = (counts[name] ?? 0) + 1;
+    }
+    final names = counts.keys.toList()..sort();
+    return [for (final n in names) (name: n, count: counts[n]!)];
+  }
+
+  List<Lead> _applyStateFilter(List<Lead> leads) {
+    if (_allStates) return leads;
+    return leads.where((l) => _selectedStates.contains(_stateLabel(l.location))).toList();
+  }
+
   int get _totalValidated => _validatedByCategory.values.fold(0, (sum, l) => sum + l.length);
 
   Future<void> _startValidation(List<Lead> candidates) async {
@@ -188,20 +213,31 @@ class _ExcelArchiveLeadsPageState extends State<ExcelArchiveLeadsPage> {
       return;
     }
 
-    final eligible = candidates.where((l) => (l.phone?.trim().isNotEmpty ?? false)).toList();
+    final eligible = _applyStateFilter(candidates).where((l) => (l.phone?.trim().isNotEmpty ?? false)).toList();
     if (eligible.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('None of these businesses have a phone number to check.')),
+        SnackBar(
+          content: Text(
+            _allStates
+                ? 'None of these businesses have a phone number to check.'
+                : _selectedStates.isEmpty
+                    ? 'Pick one or more states first.'
+                    : 'No phone numbers in the selected states.',
+          ),
+        ),
       );
       return;
     }
 
+    final scope = _allStates
+        ? '"$_category"'
+        : '${_selectedStates.length} selected state${_selectedStates.length == 1 ? '' : 's'} in "$_category"';
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Validate WhatsApp numbers?'),
         content: Text(
-          'Checks ${eligible.length} business${eligible.length == 1 ? '' : 'es'} in "$_category" '
+          'Checks ${eligible.length} business${eligible.length == 1 ? '' : 'es'} in $scope '
           'against your connected WhatsApp Web session (roughly ${(eligible.length * 3 / 60).ceil()}-'
           '${(eligible.length * 6 / 60).ceil()} min). No messages are sent.',
         ),
@@ -251,12 +287,16 @@ class _ExcelArchiveLeadsPageState extends State<ExcelArchiveLeadsPage> {
           _validatedByCategory[_validatingCategory] = validated;
         });
         if (!mounted) return;
+        if (snap.status == 'done' && validated.isNotEmpty) {
+          await _uploadValidated();
+          return;
+        }
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
               validated.isEmpty
                   ? 'Validation complete — no WhatsApp numbers found in "$_validatingCategory".'
-                  : 'Validation complete — ${validated.length} verified in "$_validatingCategory".',
+                  : 'Validation stopped — ${validated.length} verified in "$_validatingCategory" were not uploaded.',
             ),
           ),
         );
@@ -281,7 +321,10 @@ class _ExcelArchiveLeadsPageState extends State<ExcelArchiveLeadsPage> {
 
   Future<void> _uploadValidated() async {
     if (_totalValidated == 0 || _uploading) return;
-    setState(() => _uploading = true);
+    setState(() {
+      _uploading = true;
+      _uploadError = null;
+    });
     try {
       final sheets = [
         for (final entry in _validatedByCategory.entries)
@@ -297,7 +340,7 @@ class _ExcelArchiveLeadsPageState extends State<ExcelArchiveLeadsPage> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Uploaded ${archive.totalLeads} verified businesses to Firebase.'),
+          content: Text('Validation complete — uploaded ${archive.totalLeads} verified businesses.'),
           action: SnackBarAction(
             label: 'View',
             onPressed: () => context.push('/whatsapp-verified'),
@@ -306,8 +349,12 @@ class _ExcelArchiveLeadsPageState extends State<ExcelArchiveLeadsPage> {
       );
     } catch (e) {
       if (!mounted) return;
+      setState(() => _uploadError = e.toString().replaceFirst('Exception: ', ''));
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+        SnackBar(
+          content: Text(_uploadError!),
+          action: SnackBarAction(label: 'Retry', onPressed: _uploadValidated),
+        ),
       );
     } finally {
       if (mounted) setState(() => _uploading = false);
@@ -325,16 +372,23 @@ class _ExcelArchiveLeadsPageState extends State<ExcelArchiveLeadsPage> {
       appBar: AppBar(
         title: const Text('Businesses in Archive'),
         actions: [
-          if (_totalValidated > 0) ...[
+          if (_uploading)
+            const Padding(
+              padding: EdgeInsets.only(right: 16),
+              child: Row(
+                children: [
+                  SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+                  SizedBox(width: 8),
+                  Text('Uploading verified…'),
+                ],
+              ),
+            )
+          else if (_uploadError != null)
             TextButton.icon(
-              onPressed: _uploading ? null : _uploadValidated,
-              icon: _uploading
-                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Icon(AppIcons.cloudUpload, size: 18),
-              label: Text(_uploading ? 'Uploading…' : 'Upload Verified ($_totalValidated)'),
+              onPressed: _uploadValidated,
+              icon: const Icon(AppIcons.cloudUpload, size: 18),
+              label: const Text('Retry upload'),
             ),
-            const SizedBox(width: 8),
-          ],
         ],
       ),
       body: SafeArea(
@@ -381,17 +435,43 @@ class _ExcelArchiveLeadsPageState extends State<ExcelArchiveLeadsPage> {
                                   onChanged: _validating
                                       ? null
                                       : (v) {
-                                          if (v != null) setState(() => _category = v);
+                                          if (v != null) {
+                                            setState(() {
+                                              _category = v;
+                                              _selectedStates.clear();
+                                              _allStates = true;
+                                            });
+                                          }
                                         },
                                 ),
                               ],
+                              const SizedBox(height: 16),
+                              if (filtered.isNotEmpty)
+                                _StateScopeSection(
+                                  states: _statesIn(filtered),
+                                  allStates: _allStates,
+                                  selected: _selectedStates,
+                                  enabled: !_validating,
+                                  onAllChanged: (all) => setState(() => _allStates = all),
+                                  onToggle: (name, selected) {
+                                    setState(() {
+                                      if (selected) {
+                                        _selectedStates.add(name);
+                                      } else {
+                                        _selectedStates.remove(name);
+                                      }
+                                    });
+                                  },
+                                ),
                               const SizedBox(height: 16),
                               _ValidationCard(
                                 category: _category,
                                 validating: _validating,
                                 snapshot: _validationSnapshot,
                                 validatedCount: validatedHere.length,
-                                canValidate: _category != _allCategories && !_validating,
+                                canValidate: _category != _allCategories &&
+                                    !_validating &&
+                                    (_allStates || _selectedStates.isNotEmpty),
                                 onValidate: () => _startValidation(filtered),
                                 onCancel: _cancelValidation,
                               ),
@@ -421,6 +501,83 @@ class _ExcelArchiveLeadsPageState extends State<ExcelArchiveLeadsPage> {
                           ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _StateScopeSection extends StatelessWidget {
+  const _StateScopeSection({
+    required this.states,
+    required this.allStates,
+    required this.selected,
+    required this.enabled,
+    required this.onAllChanged,
+    required this.onToggle,
+  });
+
+  final List<({String name, int count})> states;
+  final bool allStates;
+  final Set<String> selected;
+  final bool enabled;
+  final ValueChanged<bool> onAllChanged;
+  final void Function(String name, bool selected) onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    if (states.isEmpty) return const SizedBox.shrink();
+    final selectedCount = allStates
+        ? states.fold<int>(0, (s, l) => s + l.count)
+        : states.where((l) => selected.contains(l.name)).fold<int>(0, (s, l) => s + l.count);
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppTheme.surface,
+        borderRadius: BorderRadius.circular(AppTheme.radius),
+        border: Border.all(color: AppTheme.neutral200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('States', style: Theme.of(context).textTheme.titleSmall),
+          const SizedBox(height: 4),
+          const Text(
+            'Validate every business in this category, or only the states you pick.',
+            style: TextStyle(fontSize: 12.5, color: AppTheme.faint),
+          ),
+          const SizedBox(height: 10),
+          SegmentedButton<bool>(
+            segments: const [
+              ButtonSegment(value: true, label: Text('All states'), icon: Icon(AppIcons.globe, size: 16)),
+              ButtonSegment(value: false, label: Text('Selected states'), icon: Icon(AppIcons.mapPin, size: 16)),
+            ],
+            selected: {allStates},
+            onSelectionChanged: enabled ? (next) => onAllChanged(next.first) : null,
+          ),
+          if (!allStates) ...[
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final loc in states)
+                  FilterChip(
+                    label: Text('${loc.name} (${loc.count})'),
+                    selected: selected.contains(loc.name),
+                    onSelected: enabled ? (v) => onToggle(loc.name, v) : null,
+                  ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              selected.isEmpty
+                  ? 'Pick one or more states to validate.'
+                  : 'Will check $selectedCount business${selectedCount == 1 ? '' : 'es'} in ${selected.length} state${selected.length == 1 ? '' : 's'}.',
+              style: const TextStyle(fontSize: 12.5, color: AppTheme.faint, fontWeight: FontWeight.w600),
+            ),
+          ],
+        ],
       ),
     );
   }
@@ -464,7 +621,9 @@ class _ValidationCard extends StatelessWidget {
                   child: Text(
                     snap == null
                         ? 'Starting WhatsApp validation…'
-                        : 'Validating "$category" — ${snap.checked}/${snap.total} checked · ${snap.validCount} verified',
+                        : (snap.errorCount > 0
+                            ? 'Validating "$category" — ${snap.checked}/${snap.total} checked · ${snap.validCount} verified · ${snap.errorCount} errors'
+                            : 'Validating "$category" — ${snap.checked}/${snap.total} checked · ${snap.validCount} verified'),
                     style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: AppTheme.subtle),
                   ),
                 ),
@@ -476,6 +635,13 @@ class _ValidationCard extends StatelessWidget {
               borderRadius: BorderRadius.circular(AppTheme.radiusPill),
               child: LinearProgressIndicator(value: fraction, minHeight: 6),
             ),
+            if (snap?.stoppedReason != null && snap!.stoppedReason!.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(
+                snap.stoppedReason!,
+                style: const TextStyle(fontSize: 12, color: AppTheme.accent700),
+              ),
+            ],
           ],
         ),
       );

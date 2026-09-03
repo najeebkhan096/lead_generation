@@ -47,25 +47,16 @@ class WebsiteLeadRepository {
     await _db.collection('websiteLeads').doc(leadId).update(updates);
   }
 
+  // No `updateWhatsAppStatus` here on purpose — website leads ("no website
+  // found") are a different signal from review leads and never go through
+  // WhatsApp validation (see websiteLeadStore.js on the backend).
+
   Future<void> updateStatus(String leadId, LeadStatus status, String? userId) async {
     final updates = <String, dynamic>{
       'status': status.name,
       'updatedAt': FieldValue.serverTimestamp(),
     };
     if (userId != null && status != LeadStatus.lead) {
-      updates['assignedTo'] = userId;
-    }
-    await _db.collection('websiteLeads').doc(leadId).update(updates);
-  }
-
-  Future<void> updateWhatsAppStatus(
-      String leadId, bool hasWhatsApp, String? userId) async {
-    final updates = <String, dynamic>{
-      'hasWhatsApp': hasWhatsApp,
-      'whatsAppCheckedAt': FieldValue.serverTimestamp(),
-      'updatedAt': FieldValue.serverTimestamp(),
-    };
-    if (userId != null) {
       updates['assignedTo'] = userId;
     }
     await _db.collection('websiteLeads').doc(leadId).update(updates);

@@ -36,6 +36,14 @@ function withCountrySuffix(category, countrySuffix) {
   return `${trimmed} ${countrySuffix}`;
 }
 
+/**
+ * Website leads ("no website found") are a different signal from review
+ * leads entirely — no `waLink`/`hasWhatsApp` here on purpose. WhatsApp
+ * outreach/validation is specific to the review-lead flow (see
+ * `firebaseLeadStore.js`); a website lead never goes through that pipeline,
+ * so it never gets those fields instead of carrying a permanently-unchecked
+ * WhatsApp status that looks like it means something.
+ */
 function toFirestoreWebsiteLead(lead, { searchLocation, country } = {}) {
   const countrySuffix = countryMeta(country).shortName;
   return {
@@ -50,8 +58,6 @@ function toFirestoreWebsiteLead(lead, { searchLocation, country } = {}) {
     mapsUrl: lead.mapsUrl || null,
     rating: lead.rating ?? null,
     totalReviews: lead.totalReviews ?? null,
-    waLink: lead.waLink || null,
-    hasWhatsApp: lead.hasWhatsApp === true,
     source: lead.source || null,
     updatedAt: FieldValue.serverTimestamp(),
   };
@@ -115,8 +121,12 @@ function docToWebsiteLead(doc) {
     mapsUrl: d.mapsUrl,
     rating: d.rating,
     totalReviews: d.totalReviews,
-    hasWhatsApp: d.hasWhatsApp === true,
-    waLink: d.waLink,
+    // Not a WhatsApp-eligible lead type — always false/null regardless of
+    // what an older saved doc might still have on it (see
+    // `toFirestoreWebsiteLead`), so no client renders a stale WhatsApp
+    // status for a lead type that was never checked in the first place.
+    hasWhatsApp: false,
+    waLink: null,
     badReview: { stars: 1, text: '', date: 'Unknown' },
     savedAt: d.updatedAt?.toDate?.()?.toISOString?.() || null,
   };

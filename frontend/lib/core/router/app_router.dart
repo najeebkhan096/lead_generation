@@ -9,6 +9,7 @@ import '../../presentation/pages/multi_scan_page.dart';
 import '../../presentation/pages/sales_page.dart';
 import '../../presentation/pages/saved_businesses_page.dart';
 import '../../presentation/pages/settings_page.dart';
+import '../../presentation/pages/users_page.dart';
 import '../../presentation/pages/state_scan_page.dart';
 import '../../presentation/pages/watchlist_page.dart';
 import '../../presentation/pages/website_leads_page.dart';
@@ -58,6 +59,7 @@ final GoRouter appRouter = GoRouter(
     GoRoute(path: '/scan-progress', builder: (context, state) => const StateScanPage()),
     GoRoute(path: '/excel-archive', builder: (context, state) => const ExcelArchivePage()),
     GoRoute(path: '/watchlist', builder: (context, state) => const WatchlistPage()),
+    GoRoute(path: '/users', builder: (context, state) => const UsersPage()),
     GoRoute(path: '/whatsapp-verified', builder: (context, state) => const WhatsAppValidatedArchivePage()),
     // Legacy/dormant multi-country scan dashboard — still reachable from
     // the handful of old archives that predate the state/city scan engine.
@@ -69,9 +71,12 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: '/leads/details',
       builder: (context, state) {
-        final lead = state.extra as Lead?;
-        if (lead == null) return const SavedBusinessesPage();
-        return BusinessDetailsPage(lead: lead);
+        final extra = state.extra;
+        if (extra is LeadDetailsArgs) {
+          return BusinessDetailsPage(lead: extra.lead, isWebsiteLead: extra.isWebsiteLead);
+        }
+        if (extra is Lead) return BusinessDetailsPage(lead: extra);
+        return const SavedBusinessesPage();
       },
     ),
   ],

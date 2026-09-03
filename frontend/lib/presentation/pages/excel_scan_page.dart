@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/constants/business_categories.dart';
 import '../../core/theme/app_theme.dart';
 import '../../domain/repositories/lead_repository.dart';
+import '../../domain/entities/state_city_scan_snapshot.dart';
 
 /// Configures and starts a scan — for each category (one at a time),
 /// every US state is scanned in order, and within the active state, up to
@@ -26,8 +27,9 @@ class _ExcelScanPageState extends State<ExcelScanPage> {
   final List<String> _targetServices = [];
 
   String _dateRange = '365';
-  int _concurrency = 4;
+  int _concurrency = 10;
   bool _starting = false;
+  StateCityScanSnapshot? _existingJob;
 
   static const _dateRanges = <String, String>{
     '7': 'Last 7 days',
@@ -36,6 +38,26 @@ class _ExcelScanPageState extends State<ExcelScanPage> {
     '90': 'Last 90 days',
     '365': 'Last 365 days',
   };
+
+  @override
+  void initState() {
+    super.initState();
+    _checkExistingJob();
+  }
+
+  // Detects a scan already running on the backend (started earlier, or
+  // from another tab/device) so the form can surface a direct link to its
+  // live progress up front, instead of only telling the user after they
+  // fill in the form and hit "Start" only to be rejected.
+  Future<void> _checkExistingJob() async {
+    try {
+      final snap = await context.read<LeadRepository>().getStateScanStatus();
+      if (!mounted) return;
+      if (snap.hasJob && snap.status == 'running') setState(() => _existingJob = snap);
+    } catch (_) {
+      // Best-effort only — the form still works even if this check fails.
+    }
+  }
 
   @override
   void dispose() {
@@ -77,9 +99,16 @@ class _ExcelScanPageState extends State<ExcelScanPage> {
       context.pushReplacement('/scan-progress');
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
-      );
+      final message = e.toString().replaceFirst('Exception: ', '');
+      // A scan is already active on the backend (e.g. started earlier, or
+      // from another tab) — nothing new was started, so send the user
+      // straight to the live dashboard for it instead of leaving them
+      // stuck on a form that just rejected their input.
+      if (message.toLowerCase().contains('already running')) {
+        context.push('/scan-progress');
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
     } finally {
       if (mounted) setState(() => _starting = false);
     }
@@ -126,6 +155,39 @@ class _ExcelScanPageState extends State<ExcelScanPage> {
                       ],
                     ),
                   ),
+                  if (_existingJob != null) ...[
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                      decoration: BoxDecoration(
+                        color: AppTheme.accent100,
+                        borderRadius: BorderRadius.circular(AppTheme.radius),
+                      ),
+                      child: Row(
+                        children: [
+                          const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.accent700),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              'A scan is already running'
+                              '${_existingJob!.currentCategory != null ? ' ("${_existingJob!.currentCategory}")' : ''}.',
+                              style: const TextStyle(color: AppTheme.accent700, fontWeight: FontWeight.w700, fontSize: 13.5),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          FilledButton(
+                            onPressed: () => context.push('/scan-progress'),
+                            style: FilledButton.styleFrom(backgroundColor: AppTheme.accent700),
+                            child: const Text('View live progress'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 24),
                   Text('Country', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontSize: 14.5)),
                   const SizedBox(height: 8),
@@ -267,8 +329,8 @@ class _ExcelScanPageState extends State<ExcelScanPage> {
                           child: Slider(
                             value: _concurrency.toDouble(),
                             min: 2,
-                            max: 8,
-                            divisions: 6,
+                            max: 10,
+                            divisions: 8,
                             activeColor: AppTheme.accent500,
                             label: '$_concurrency workers',
                             onChanged: _starting ? null : (v) => setState(() => _concurrency = v.round()),

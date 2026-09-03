@@ -1,8 +1,10 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../models/lead.dart';
 import '../services/lead_repository.dart';
 import '../theme/app_theme.dart';
+import '../utils/seeded_shuffle.dart';
 import '../widgets/page_header.dart';
 import '../widgets/saved_business_card.dart';
 import '../widgets/search_field.dart';
@@ -73,7 +75,17 @@ class _SavedBusinessesPageState extends State<SavedBusinessesPage> {
 
             final allLeads = snapshot.data ?? const <Lead>[];
             // Only show leads with status 'lead'
-            final newLeads = allLeads.where((l) => l.status == LeadStatus.lead).toList();
+            var newLeads = allLeads.where((l) => l.status == LeadStatus.lead).toList();
+            // Every salesman shares this same "New" pool — without this,
+            // Firestore's newest-first order would put everyone onto the
+            // exact same businesses first. Reordering it per-salesman (uid
+            // is the seed) spreads different salesmen across different
+            // parts of the list instead, so they naturally end up texting
+            // different clients rather than piling onto the same ones.
+            final salesmanId = FirebaseAuth.instance.currentUser?.uid;
+            if (salesmanId != null && salesmanId.isNotEmpty) {
+              newLeads = seededShuffle(newLeads, (l) => l.id, salesmanId);
+            }
 
             final categories = _categoriesFrom(allLeads);
             final effectiveCategory = categories.contains(_selectedCategory)

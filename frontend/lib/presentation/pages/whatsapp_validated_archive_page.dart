@@ -18,7 +18,7 @@ String _timeAgo(DateTime? when) {
 }
 
 /// Browses businesses that passed real WhatsApp Web validation and were
-/// uploaded from the Excel Archive's "Upload Verified" action — a separate
+  /// uploaded automatically when Excel Archive WhatsApp validation finishes — a separate
 /// Firebase collection from the source Excel scans, holding only confirmed
 /// WhatsApp-registered numbers. Available on web and mobile.
 class WhatsAppValidatedArchivePage extends StatefulWidget {
@@ -138,8 +138,8 @@ class _EmptyState extends StatelessWidget {
             Text('No verified businesses yet', style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 6),
             Text(
-              'Validate WhatsApp numbers from an Excel Archive scan, then upload the '
-              'verified list — it shows up here.',
+              'Validate WhatsApp numbers from an Excel Archive scan — verified '
+              'businesses are uploaded here automatically when validation finishes.',
               style: Theme.of(context).textTheme.bodyMedium,
               textAlign: TextAlign.center,
             ),

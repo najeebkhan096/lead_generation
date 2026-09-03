@@ -1,7 +1,12 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../services/archive_repository.dart';
+import '../services/auth_service.dart';
+import '../services/whatsapp_businesses_cache.dart';
+import '../services/whatsapp_claim_store.dart';
 import '../theme/app_theme.dart';
+import '../utils/seeded_shuffle.dart';
 import '../widgets/business_row_card.dart';
 import '../widgets/page_header.dart';
 import '../widgets/search_field.dart';
@@ -16,6 +21,26 @@ class _BusinessRow {
   final Map<String, dynamic> row;
   final String category;
   final String archiveFileName;
+
+  /// Best-effort stable identity for this row — there's no document id here
+  /// (these come from an Excel archive, not Firestore), so phone/name/
+  /// archive together stand in as the shuffle key.
+  String get stableKey =>
+      '${row['Phone'] ?? ''}|${row['Business Name'] ?? ''}|$archiveFileName';
+
+  Map<String, dynamic> toCacheJson() => {
+        'row': row,
+        'category': category,
+        'archiveFileName': archiveFileName,
+      };
+
+  factory _BusinessRow.fromCacheJson(Map<String, dynamic> json) {
+    return _BusinessRow(
+      row: Map<String, dynamic>.from(json['row'] as Map? ?? const {}),
+      category: (json['category'] as String?) ?? '',
+      archiveFileName: (json['archiveFileName'] as String?) ?? '',
+    );
+  }
 }
 
 /// Combines businesses from every WhatsApp-verified archive (see
@@ -30,8 +55,10 @@ class WhatsAppVerifiedLeadsPage extends StatefulWidget {
   State<WhatsAppVerifiedLeadsPage> createState() => _WhatsAppVerifiedLeadsPageState();
 }
 
-class _WhatsAppVerifiedLeadsPageState extends State<WhatsAppVerifiedLeadsPage> {
+class _WhatsAppVerifiedLeadsPageState extends State<WhatsAppVerifiedLeadsPage> with WhatsAppClaimsMixin {
   final _archiveRepo = ArchiveRepository();
+  final _cache = WhatsAppBusinessesCache();
+  final _auth = AuthService();
   List<_BusinessRow> _rows = [];
   bool _loading = true;
   String? _error;
@@ -53,6 +80,31 @@ class _WhatsAppVerifiedLeadsPageState extends State<WhatsAppVerifiedLeadsPage> {
 
   Future<void> _load() async {
     setState(() => _loading = true);
+    final salesmanId = FirebaseAuth.instance.currentUser?.uid ?? '';
+
+    final approved = await _auth.isCurrentUserApproved();
+    if (!approved) {
+      await _cache.clear();
+      if (!mounted) return;
+      setState(() {
+        _rows = [];
+        _loading = false;
+        _error = 'An error occurred';
+      });
+      return;
+    }
+
+    final cached = salesmanId.isEmpty ? null : await _cache.read(salesmanId: salesmanId);
+    if (cached != null && cached.isFresh) {
+      if (!mounted) return;
+      setState(() {
+        _rows = cached.rows.map(_BusinessRow.fromCacheJson).toList();
+        _loading = false;
+        _error = null;
+      });
+      return;
+    }
+
     try {
       final archives = await _archiveRepo.listValidatedScans();
       final sheetsPerArchive = await Future.wait(archives.map((a) => _archiveRepo.fetchSheets(a)));
@@ -70,24 +122,59 @@ class _WhatsAppVerifiedLeadsPageState extends State<WhatsAppVerifiedLeadsPage> {
           }
         }
       }
+      // Every salesman browses this same shared pool of verified businesses
+      // — without this, everyone would see it in the exact same order and
+      // tend to message the same top businesses first. Seeding by uid gives
+      // each salesman a different, but stable, order instead.
+      final ordered = salesmanId.isNotEmpty
+          ? seededShuffle(rows, (r) => r.stableKey, salesmanId)
+          : rows;
+
+      if (salesmanId.isNotEmpty) {
+        try {
+          await _cache.write(
+            salesmanId: salesmanId,
+            rows: [for (final r in ordered) r.toCacheJson()],
+          );
+        } catch (_) {}
+      }
+
       if (!mounted) return;
       setState(() {
-        _rows = rows;
+        _rows = ordered;
         _loading = false;
         _error = null;
       });
     } catch (e) {
+      if (cached != null) {
+        if (!mounted) return;
+        setState(() {
+          _rows = cached.rows.map(_BusinessRow.fromCacheJson).toList();
+          _loading = false;
+          _error = null;
+        });
+        return;
+      }
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = e.toString().replaceFirst('Exception: ', '');
+        _error = _friendlyError(e);
       });
     }
+  }
+
+  String _friendlyError(Object e) {
+    final raw = e.toString();
+    if (raw.contains('permission-denied') || raw.contains('PERMISSION_DENIED')) {
+      return 'An error occurred';
+    }
+    return raw.replaceFirst('Exception: ', '');
   }
 
   List<String> get _categories {
     final present = <String>{};
     for (final r in _rows) {
+      if (!claimVisible(r.row)) continue;
       if (r.category.isNotEmpty) present.add(r.category);
     }
     final sorted = present.toList()..sort();
@@ -97,7 +184,10 @@ class _WhatsAppVerifiedLeadsPageState extends State<WhatsAppVerifiedLeadsPage> {
   @override
   Widget build(BuildContext context) {
     final t = context.tokens;
-    var filtered = _category == _allCategories ? _rows : _rows.where((r) => r.category == _category).toList();
+    final available = _rows.where((r) => claimVisible(r.row)).toList();
+    final categories = _categories;
+    final categoryValue = categories.contains(_category) ? _category : _allCategories;
+    var filtered = categoryValue == _allCategories ? available : available.where((r) => r.category == categoryValue).toList();
     if (_searchQuery.isNotEmpty) {
       final query = _searchQuery.toLowerCase();
       filtered = filtered.where((r) {
@@ -115,12 +205,12 @@ class _WhatsAppVerifiedLeadsPageState extends State<WhatsAppVerifiedLeadsPage> {
           children: [
             PageHeader(
               title: 'WhatsApp Verified Leads',
-              subtitle: _rows.isEmpty
+              subtitle: available.isEmpty
                   ? 'Verified businesses from every upload will show up here'
-                  : '${filtered.length} of ${_rows.length} businesses shown',
+                  : '${filtered.length} of ${available.length} businesses shown',
               trailing: HeaderBadge(icon: AppIcons.shieldCheck, background: t.sageTint, foreground: t.sageDeep),
             ),
-            if (_rows.isNotEmpty)
+            if (available.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
                 child: SearchField(
@@ -130,7 +220,7 @@ class _WhatsAppVerifiedLeadsPageState extends State<WhatsAppVerifiedLeadsPage> {
                   onChanged: (value) => setState(() => _searchQuery = value),
                 ),
               ),
-            if (_categories.length > 2)
+            if (categories.length > 2)
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
                 child: Container(
@@ -138,11 +228,11 @@ class _WhatsAppVerifiedLeadsPageState extends State<WhatsAppVerifiedLeadsPage> {
                   decoration: BoxDecoration(color: t.neutralTint, borderRadius: BorderRadius.circular(AppTheme.radius)),
                   child: DropdownButtonHideUnderline(
                     child: DropdownButton<String>(
-                      value: _category,
+                      value: categoryValue,
                       isExpanded: true,
                       icon: Icon(AppIcons.chevronDown, size: 18, color: t.subtle),
                       style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: t.ink),
-                      items: [for (final c in _categories) DropdownMenuItem(value: c, child: Text(c))],
+                      items: [for (final c in categories) DropdownMenuItem(value: c, child: Text(c))],
                       onChanged: (v) {
                         if (v != null) setState(() => _category = v);
                       },
@@ -150,7 +240,7 @@ class _WhatsAppVerifiedLeadsPageState extends State<WhatsAppVerifiedLeadsPage> {
                   ),
                 ),
               ),
-            if (_rows.isNotEmpty)
+            if (available.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
                 child: Material(
@@ -206,12 +296,12 @@ class _WhatsAppVerifiedLeadsPageState extends State<WhatsAppVerifiedLeadsPage> {
                                   StateBadge(icon: AppIcons.shieldCheck, background: t.sageTint, foreground: t.sageDeep),
                                   const SizedBox(height: 20),
                                   Text(
-                                    _rows.isEmpty ? 'No verified businesses yet' : 'No businesses in this category',
+                                    available.isEmpty ? 'No verified businesses yet' : 'No businesses in this category',
                                     style: Theme.of(context).textTheme.headlineSmall,
                                   ),
                                   const SizedBox(height: 8),
                                   Text(
-                                    _rows.isEmpty
+                                    available.isEmpty
                                         ? 'Validate WhatsApp numbers and upload them from the web app — they show up here.'
                                         : 'Try a different category.',
                                     textAlign: TextAlign.center,
@@ -223,7 +313,11 @@ class _WhatsAppVerifiedLeadsPageState extends State<WhatsAppVerifiedLeadsPage> {
                           : ListView.builder(
                               padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
                               itemCount: filtered.length,
-                              itemBuilder: (context, i) => _BusinessCard(business: filtered[i]),
+                              itemBuilder: (context, i) => _BusinessCard(
+                                business: filtered[i],
+                                connected: claimIsMine(filtered[i].row),
+                                onWhatsAppPressed: () => claimAndOpen(filtered[i].row),
+                              ),
                             ),
             ),
           ],
@@ -255,9 +349,15 @@ class _ScrollableCenter extends StatelessWidget {
 }
 
 class _BusinessCard extends StatelessWidget {
-  const _BusinessCard({required this.business});
+  const _BusinessCard({
+    required this.business,
+    required this.connected,
+    required this.onWhatsAppPressed,
+  });
 
   final _BusinessRow business;
+  final bool connected;
+  final Future<bool> Function() onWhatsAppPressed;
 
   @override
   Widget build(BuildContext context) {
@@ -266,6 +366,8 @@ class _BusinessCard extends StatelessWidget {
       badgeLabel: 'WhatsApp Verified',
       categoryLabel: business.category,
       footerLabel: business.archiveFileName,
+      connected: connected,
+      onWhatsAppPressed: onWhatsAppPressed,
     );
   }
 }

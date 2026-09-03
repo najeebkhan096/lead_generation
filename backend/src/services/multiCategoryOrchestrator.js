@@ -34,8 +34,8 @@ import { leadsToXlsxBuffer, xlsxBufferToJson, sheetsToLeadsJson } from './export
 import { uploadExcelArchive, buildArchiveFileName, getExcelArchive, downloadExcelArchiveBuffer } from './excelArchiveStore.js';
 
 const MIN_CONCURRENCY = 2;
-const MAX_CONCURRENCY = 8;
-const DEFAULT_CONCURRENCY = 4;
+const MAX_CONCURRENCY = 10;
+const DEFAULT_CONCURRENCY = 10;
 const ACTIVITY_LOG_LIMIT = 300;
 const WORKER_STAGGER_MS = 1200;
 const PAUSE_POLL_MS = 300;
@@ -347,6 +347,7 @@ async function uploadCategoryArchiveNow(thisJob, category, { isFinal }) {
       maxResultsPerState: thisJob.maxResultsPerState,
       targetLeadCount: thisJob.targetLeadCount,
       analyze: thisJob.analyze,
+      concurrency: thisJob.concurrency,
     });
 
     archive.status = isFinal ? 'done' : 'partial';
@@ -437,7 +438,7 @@ function isRunningStatus(status) {
  *   `[country]` for backward compatibility with the single-country form.
  * @param {string} [opts.country] - convenience single-country shorthand,
  *   used only when `countries` isn't provided.
- * @param {number} [opts.concurrency] - 2-8, default 4
+ * @param {number} [opts.concurrency] - 2-10, default 10
  * @param {string} [opts.dateRange]
  * @param {number} [opts.maxResultsPerState]
  * @param {number} [opts.targetLeadCount]
@@ -654,7 +655,7 @@ export async function resumeCategoryArchive({ archiveId, concurrency, scrapeLoca
   const result = await startMultiCategorySearch({
     categories: [category],
     countries: missingCountries,
-    concurrency,
+    concurrency: concurrency ?? archive.concurrency,
     exportOnly: true,
     dateRange: archive.dateRange || '30',
     maxResultsPerState: archive.maxResultsPerState || 150,

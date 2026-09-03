@@ -20,7 +20,7 @@ export async function startMultiSearch(req, res) {
   const {
     categories,
     countries,
-    concurrency = 4,
+    concurrency = 10,
     dateRange = '30',
     maxResultsPerState = 150,
     targetLeadCount = 100,

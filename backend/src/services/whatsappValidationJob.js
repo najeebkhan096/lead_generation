@@ -13,8 +13,6 @@ import * as whatsappWeb from './whatsappWebService.js';
 import * as whatsappSafety from './whatsappSafety.js';
 import { updateLeadWhatsAppStatus } from './firebaseLeadStore.js';
 
-const MAX_BATCH = 1000;
-
 /** @type {Job | null} */
 let job = null;
 
@@ -53,7 +51,9 @@ export function startValidationJob({
     }
   }
 
-  const batch = leads.filter((l) => l?.id && l?.phone).slice(0, MAX_BATCH);
+  const batch = leads
+    .map((l) => ({ ...l, id: l?.id || l?.dbId }))
+    .filter((l) => l?.id && l?.phone);
   if (!batch.length) {
     throw new Error('None of the selected leads have a phone number to check.');
   }

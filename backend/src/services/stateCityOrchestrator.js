@@ -26,10 +26,11 @@ import { US_STATE_CITIES } from '../data/usStateCities.js';
 import { Mutex } from '../utils/asyncMutex.js';
 import { leadsToXlsxBuffer, xlsxBufferToJson, sheetsToLeadsJson } from './exportService.js';
 import { uploadExcelArchive, buildArchiveFileName, getExcelArchive, downloadExcelArchiveBuffer } from './excelArchiveStore.js';
+import { createSearchRecord, upsertLeadToFirebase } from './firebaseLeadStore.js';
 
 const MIN_CONCURRENCY = 2;
-const MAX_CONCURRENCY = 8;
-const DEFAULT_CONCURRENCY = 4;
+const MAX_CONCURRENCY = 10;
+const DEFAULT_CONCURRENCY = 10;
 // Listing pages within a city are opened one at a time, so this directly
 // sets a city's worst-case duration (up to 45s per listing on a bad
 // connection) — 160 favors real thoroughness per city; the live
@@ -83,9 +84,53 @@ function newStateRecord(state, cities) {
     status: 'pending', // pending | running | done | cancelled
     leadsCollected: 0,
     businessesProcessed: 0,
+    firebaseLeadsSaved: 0,
+    // Of `firebaseLeadsSaved`, how many were confirmed on WhatsApp — a
+    // strict subset (only ever set when WhatsApp Web is connected), not a
+    // separate pool of leads.
+    waValidated: 0,
+    // How many of those saved leads were actually looked up against
+    // WhatsApp Web (valid or not). Distinguishes "0 on WhatsApp" from
+    // "never checked because WhatsApp Web wasn't connected."
+    waChecked: 0,
+    // "No website found" is a completely separate signal from review
+    // leads (see `captureWebsiteLeads`/`websiteLeadStore.js`) — tracked
+    // here purely for the live scan-progress totals, not mixed into
+    // `leadsCollected`.
+    websiteLeadsFound: 0,
     startedAt: null,
     finishedAt: null,
   };
+}
+
+/** Saves one just-found (and, if WhatsApp Web is connected, already WhatsApp-
+ * checked) lead straight to Firestore — called the instant each business is
+ * ready, before the scan moves on to the next one, so a lead is durable in
+ * the live database right away instead of only living in the in-memory
+ * Excel archive until the whole category finishes. Best-effort: a failure
+ * here (e.g. Firestore not configured) is logged and swallowed so it never
+ * stops or slows down the scrape itself. */
+async function saveLeadLive(job, category, stateRec, city, lead) {
+  const searchId = job.searchIds[category];
+  try {
+    await upsertLeadToFirebase(lead, { searchId, country: 'US' });
+    job.firebaseLeadsSaved = (job.firebaseLeadsSaved || 0) + 1;
+    stateRec.firebaseLeadsSaved = (stateRec.firebaseLeadsSaved || 0) + 1;
+    if (lead.whatsAppCheckedAt) {
+      job.waChecked = (job.waChecked || 0) + 1;
+      stateRec.waChecked = (stateRec.waChecked || 0) + 1;
+    }
+    if (lead.hasWhatsApp === true) {
+      job.waValidated = (job.waValidated || 0) + 1;
+      stateRec.waValidated += 1;
+    }
+  } catch (err) {
+    logActivity(
+      job,
+      `"${category}" · ${stateRec.state} · ${city} — Firebase save failed for "${lead.business || 'lead'}": ${err.message}`,
+      'warn'
+    );
+  }
 }
 
 /** Scrapes every city in `stateRec` with up to `job.concurrency` workers
@@ -111,7 +156,7 @@ async function scanStateCities(job, category, stateRec) {
       stateRec.activity[city] = 'starting…';
 
       try {
-        const { leads, businessesScraped } = await scrapeOneCity(
+        const { leads, businessesScraped, websiteLeadsFound } = await scrapeOneCity(
           category,
           { city, state: stateRec.state },
           {
@@ -125,12 +170,14 @@ async function scanStateCities(job, category, stateRec) {
             },
             shouldStop: () => job.cancelled,
             scrapeLocationFn: job.scrapeLocationFn,
+            onLeadReady: (lead) => saveLeadLive(job, category, stateRec, city, lead),
           }
         );
 
         (job.collectedLeadsByState[category][stateRec.state] ??= []).push(...leads);
         stateRec.leadsCollected += leads.length;
         stateRec.businessesProcessed += businessesScraped;
+        stateRec.websiteLeadsFound += websiteLeadsFound || 0;
         stateRec.covered.push(city);
         logActivity(
           job,
@@ -212,6 +259,7 @@ async function uploadCategoryArchiveNow(job, category, { isFinal }) {
       maxResultsPerState: job.maxResultsPerCity,
       targetLeadCount: null,
       analyze: job.analyze,
+      concurrency: job.concurrency,
     });
 
     archive.status = isFinal ? 'done' : 'partial';
@@ -234,6 +282,26 @@ async function runJob(job) {
       job.currentCategory = category;
       job.categoryStatus[category] = 'running';
       const archive = job.categoryArchives[category];
+
+      // Created once per category, up front, so every lead found while
+      // scanning it can be written straight to Firestore as it's found
+      // (see `saveLeadLive`) instead of only at the very end. Best-effort —
+      // if Firestore isn't configured, `job.searchIds[category]` stays
+      // undefined and `upsertLeadToFirebase` calls fail individually
+      // (logged, swallowed) without touching the scrape itself.
+      if (!job.searchIds[category]) {
+        try {
+          job.searchIds[category] = await createSearchRecord({
+            category,
+            location: 'All US states',
+            dateRange: job.dateRange,
+            nationwide: true,
+            country: 'US',
+          });
+        } catch (err) {
+          logActivity(job, `Could not create Firestore search record for "${category}": ${err.message}`, 'warn');
+        }
+      }
 
       // Tracks whether this run covered every state it was responsible
       // for — a resumed run's "every state" is just its own missing
@@ -285,7 +353,7 @@ async function runJob(job) {
 /**
  * @param {object} opts
  * @param {string[]} opts.categories
- * @param {number} [opts.concurrency] - 2-8, default 4. Workers scan cities
+ * @param {number} [opts.concurrency] - 2-10, default 10. Workers scan cities
  *   within whichever ONE state is currently active, not across states.
  * @param {string} [opts.dateRange]
  * @param {number} [opts.maxResultsPerCity]
@@ -380,6 +448,12 @@ export async function startStateCityScan({
     categoryArchives,
     archiveMutexes,
     activityLog: [],
+    // category -> Firestore `searches/{id}` doc id, created lazily the
+    // first time that category starts scanning (see `runJob`).
+    searchIds: {},
+    firebaseLeadsSaved: 0,
+    waValidated: 0,
+    waChecked: 0,
   };
 
   currentJob = thisJob;
@@ -389,7 +463,19 @@ export async function startStateCityScan({
     `Starting scan: ${uniqueCategories.length} categor${uniqueCategories.length === 1 ? 'y' : 'ies'} × ${categoryStates[uniqueCategories[0]].length} states (${totalCities} cities each), ${poolSize} workers.`
   );
 
-  thisJob.browser = await launchBrowser();
+  try {
+    thisJob.browser = await launchBrowser();
+  } catch (err) {
+    // Without this, a browser-launch failure (e.g. Playwright browsers not
+    // installed) leaves `currentJob` permanently stuck at status 'running'
+    // — `runJob` (the only thing that ever reads `cancelled` and flips
+    // status to 'done') never even started, so Cancel would set a flag
+    // nothing is listening for, and every future scan attempt would keep
+    // failing with "a scan is already running" forever until the backend
+    // process itself was restarted.
+    currentJob = null;
+    throw err;
+  }
   runJob(thisJob).catch((err) => {
     console.error('State/city scan crashed:', err);
     logActivity(thisJob, `Scan crashed: ${err.message}`, 'error');
@@ -451,7 +537,7 @@ export async function resumeStateCityScan({ archiveId, concurrency, scrapeLocati
 
   const result = await startStateCityScan({
     categories: [category],
-    concurrency,
+    concurrency: concurrency ?? archive.concurrency,
     dateRange: archive.dateRange || '30',
     maxResultsPerCity: archive.maxResultsPerState || DEFAULT_MAX_RESULTS_PER_CITY,
     analyze: archive.analyze || false,
@@ -485,6 +571,10 @@ export function getStateCityJobSnapshot() {
     const citiesDone = states.reduce((sum, s) => sum + s.covered.length + s.failed.length, 0);
     const leadsCollected = states.reduce((sum, s) => sum + s.leadsCollected, 0);
     const businessesProcessed = states.reduce((sum, s) => sum + s.businessesProcessed, 0);
+    const firebaseLeadsSaved = states.reduce((sum, s) => sum + (s.firebaseLeadsSaved || 0), 0);
+    const waValidated = states.reduce((sum, s) => sum + (s.waValidated || 0), 0);
+    const waChecked = states.reduce((sum, s) => sum + (s.waChecked || 0), 0);
+    const websiteLeadsFound = states.reduce((sum, s) => sum + (s.websiteLeadsFound || 0), 0);
 
     return {
       category,
@@ -495,6 +585,16 @@ export function getStateCityJobSnapshot() {
       citiesDone,
       leadsCollected,
       businessesProcessed,
+      // Leads already written to Firestore live, as they were found —
+      // see `saveLeadLive`. Distinct from `leadsCollected`, which counts
+      // leads in the in-memory Excel archive regardless of Firestore.
+      firebaseLeadsSaved,
+      // Of `firebaseLeadsSaved`, how many were confirmed on WhatsApp.
+      waValidated,
+      waChecked,
+      // Separate lead type entirely (no website found) — never counted
+      // in `leadsCollected`/`firebaseLeadsSaved`, which are review leads.
+      websiteLeadsFound,
       archive: { status: archive.status, result: archive.result, error: archive.error },
       states: states.map((s) => ({
         state: s.state,
@@ -506,6 +606,10 @@ export function getStateCityJobSnapshot() {
         failed: s.failed,
         leadsCollected: s.leadsCollected,
         businessesProcessed: s.businessesProcessed,
+        firebaseLeadsSaved: s.firebaseLeadsSaved || 0,
+        waValidated: s.waValidated || 0,
+        waChecked: s.waChecked || 0,
+        websiteLeadsFound: s.websiteLeadsFound || 0,
         startedAt: s.startedAt,
         finishedAt: s.finishedAt,
       })),
@@ -517,6 +621,10 @@ export function getStateCityJobSnapshot() {
     status: job.status,
     concurrency: job.concurrency,
     currentCategory: job.currentCategory,
+    firebaseLeadsSaved: job.firebaseLeadsSaved || 0,
+    waValidated: job.waValidated || 0,
+    waChecked: job.waChecked || 0,
+    websiteLeadsFound: categories.reduce((sum, c) => sum + (c.websiteLeadsFound || 0), 0),
     startedAt: job.startedAt,
     finishedAt: job.finishedAt,
     paused: job.paused,

@@ -12,9 +12,9 @@ import '../bloc/saved_businesses/saved_businesses_bloc.dart';
 import '../bloc/saved_businesses/saved_businesses_event.dart';
 import '../bloc/saved_businesses/saved_businesses_state.dart';
 import '../widgets/saved_business_card.dart';
+import 'business_details_page.dart' show LeadDetailsArgs;
 
 const _allCategories = 'All categories';
-const _validationBatchSize = 50;
 
 /// Every business saved to Firestore — searchable, filterable by
 /// category and by real WhatsApp verification, laid out as a responsive
@@ -143,14 +143,13 @@ class _SavedBusinessesViewState extends State<_SavedBusinessesView> {
       return;
     }
 
-    final batch = unchecked.take(_validationBatchSize).toList();
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Validate WhatsApp numbers?'),
         content: Text(
-          'Checks ${batch.length} of ${unchecked.length} unverified lead${unchecked.length == 1 ? '' : 's'} '
-          'against your connected WhatsApp Web session (${(batch.length * 5 / 60).ceil()}-${(batch.length * 7 / 60).ceil()} min). '
+          'Checks ${unchecked.length} unverified lead${unchecked.length == 1 ? '' : 's'} '
+          'against your connected WhatsApp Web session (${(unchecked.length * 5 / 60).ceil()}-${(unchecked.length * 7 / 60).ceil()} min). '
           'This only looks up whether each number is on WhatsApp — no messages are sent.',
         ),
         actions: [
@@ -163,7 +162,7 @@ class _SavedBusinessesViewState extends State<_SavedBusinessesView> {
 
     try {
       await repo.startWhatsAppValidation([
-        for (final l in batch)
+        for (final l in unchecked)
           {'id': l.dbId!, 'phone': l.phone!, 'business': l.business},
       ]);
     } catch (e) {
@@ -438,7 +437,10 @@ class _SavedBusinessesViewState extends State<_SavedBusinessesView> {
                   return SavedBusinessCard(
                     lead: lead,
                     onTap: () async {
-                      final changed = await context.push<bool>('/leads/details', extra: lead);
+                      final changed = await context.push<bool>(
+                        '/leads/details',
+                        extra: LeadDetailsArgs(lead: lead),
+                      );
                       if (changed == true && context.mounted) {
                         context.read<SavedBusinessesBloc>().add(const SavedBusinessesRequested());
                       }
@@ -603,6 +605,13 @@ class _ValidationProgressDialogState extends State<_ValidationProgressDialog> {
                   _ResultChip(label: 'Errors', value: snap!.errorCount, color: AppTheme.accent700, background: AppTheme.accent100),
               ],
             ),
+            if (snap?.stoppedReason != null && snap!.stoppedReason!.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Text(
+                snap.stoppedReason!,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppTheme.accent700),
+              ),
+            ],
           ],
         ),
       ),

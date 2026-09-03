@@ -23,10 +23,22 @@ class SettingsPage extends StatelessWidget {
                 Text('Settings', style: Theme.of(context).textTheme.headlineMedium),
                 const SizedBox(height: 6),
                 Text(
-                  'Watchlist tracking and archived scan data live here.',
+                  'Users, watchlist tracking, and archived scan data live here.',
                   style: Theme.of(context).textTheme.bodyMedium,
                 ),
                 const SizedBox(height: 24),
+                _SettingsSection(
+                  title: 'Access',
+                  items: [
+                    _SettingsItem(
+                      icon: AppIcons.users,
+                      title: 'Users',
+                      subtitle: 'Approve or revoke mobile app accounts',
+                      onTap: () => context.push('/users'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
                 _SettingsSection(
                   title: 'Client tracking',
                   items: [

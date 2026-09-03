@@ -9,10 +9,20 @@ import '../theme/app_theme.dart';
 import '../utils/date_format.dart';
 
 class SavedBusinessCard extends StatefulWidget {
-  const SavedBusinessCard({super.key, required this.lead, required this.onTap});
+  const SavedBusinessCard({
+    super.key,
+    required this.lead,
+    required this.onTap,
+    this.showWhatsAppAction = true,
+  });
 
   final Lead lead;
   final VoidCallback onTap;
+
+  /// Website leads never have a real WhatsApp signal attached — pass
+  /// `false` from the Website Leads tab so this card doesn't offer a
+  /// "message on WhatsApp" action for a lead type that was never checked.
+  final bool showWhatsAppAction;
 
   @override
   State<SavedBusinessCard> createState() => _SavedBusinessCardState();
@@ -160,10 +170,12 @@ class _SavedBusinessCardState extends State<SavedBusinessCard> {
                       Expanded(
                         child: _StatusBadge(status: widget.lead.status),
                       ),
-                      const SizedBox(width: 12),
-                      _WhatsAppButton(
-                        onTap: () => openWhatsApp(widget.lead.whatsAppUrl),
-                      ),
+                      if (widget.showWhatsAppAction) ...[
+                        const SizedBox(width: 12),
+                        _WhatsAppButton(
+                          onTap: () => openWhatsApp(widget.lead.whatsAppUrl),
+                        ),
+                      ],
                       const SizedBox(width: 8),
                       _RoundIconButton(
                         icon: AppIcons.more,

@@ -1,16 +1,28 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    // Only mobile accounts the admin has flipped `approved` on can read
+    // lead data. The flag is Admin-SDK-only after create — see users rules.
+    function isApproved() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.approved == true;
+    }
+
     // Mobile app can read leads and update tracking status.
     // Writes (creation/deletion) only via Admin SDK (backend).
     match /leads/{leadId} {
-      allow read: if request.auth != null;
+      allow read: if isApproved();
       // Restricted to the exact fields mobile's 4 update methods write
       // (mobile/lib/services/lead_repository.dart:60-105) — each one also
       // conditionally stamps `assignedTo` with the acting user's uid, and
       // updateWhatsAppStatus writes hasWhatsApp + whatsAppCheckedAt, so all
       // of these must stay listed or those calls get silently rejected.
-      allow update: if request.auth != null
+      allow update: if isApproved()
                     && request.resource.data.diff(resource.data).affectedKeys()
                        .hasOnly([
                          'isFavorite', 'status', 'reputationStatus',
@@ -21,7 +33,7 @@ service cloud.firestore {
     }
 
     match /searches/{searchId} {
-      allow read: if request.auth != null;
+      allow read: if isApproved();
       allow write: if false;
     }
 
@@ -29,8 +41,8 @@ service cloud.firestore {
     // all, saved automatically alongside `leads`. Same read/update shape as
     // `leads` (mobile can favorite/status/assign but not create/delete).
     match /websiteLeads/{leadId} {
-      allow read: if request.auth != null;
-      allow update: if request.auth != null
+      allow read: if isApproved();
+      allow update: if isApproved()
                     && request.resource.data.diff(resource.data).affectedKeys()
                        .hasOnly([
                          'isFavorite', 'status', 'reputationStatus',
@@ -45,8 +57,14 @@ service cloud.firestore {
     // list to populate "assign to salesman" pickers (Admin SDK bypasses
     // these rules entirely).
     match /users/{userId} {
-      allow read: if request.auth != null;
-      allow create, update: if request.auth != null && request.auth.uid == userId;
+      allow read: if signedIn() && request.auth.uid == userId;
+      allow create: if signedIn()
+                    && request.auth.uid == userId
+                    && request.resource.data.approved == false;
+      // Own-profile refresh on sign-in — cannot flip `approved`.
+      allow update: if signedIn()
+                    && request.auth.uid == userId
+                    && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['approved']);
       allow delete: if false;
     }
 
@@ -57,20 +75,29 @@ service cloud.firestore {
     // (which only runs on the desktop Launcher's machine, unreachable from
     // a phone off that network). Writes stay Admin-SDK-only (the backend).
     match /excelScans/{id} {
-      allow read: if request.auth != null;
+      allow read: if isApproved();
       allow write: if false;
     }
 
     match /whatsappValidatedScans/{id} {
-      allow read: if request.auth != null;
+      allow read: if isApproved();
       allow write: if false;
+    }
+
+    // First salesman to tap WhatsApp on a verified business owns it.
+    // Create-only so a second tap from someone else cannot steal the claim.
+    match /whatsappClaims/{id} {
+      allow read: if isApproved();
+      allow create: if isApproved()
+                    && request.resource.data.claimedBy == request.auth.uid;
+      allow update, delete: if false;
     }
 
     // Salesman orders/earnings (mobile's Sales tab) — each mobile user can
     // only read their own sales (salesmanId == their uid). Writes (status,
     // payment amounts) stay Admin-SDK-only, set from the web app.
     match /sales/{saleId} {
-      allow read: if request.auth != null && resource.data.salesmanId == request.auth.uid;
+      allow read: if isApproved() && resource.data.salesmanId == request.auth.uid;
       allow write: if false;
     }
 

@@ -42,6 +42,11 @@ function docToSale(doc) {
     profit: computeProfit({ clientAmountReceived, removalCost, employeePaymentAmount }),
     createdAt: data.createdAt?.toDate?.()?.toISOString() || null,
     updatedAt: data.updatedAt?.toDate?.()?.toISOString() || null,
+    lastReviewScannedAt: data.lastReviewScannedAt?.toDate?.()?.toISOString() || null,
+    lastOneStarCount: Number(data.lastOneStarCount) || 0,
+    lastReviewScanError: data.lastReviewScanError || null,
+    lastRating: data.lastRating ?? null,
+    lastTotalReviews: data.lastTotalReviews ?? null,
   };
 }
 
@@ -205,4 +210,18 @@ export async function deleteSale(id) {
   if (!existing.exists) return false;
   await ref.delete();
   return true;
+}
+
+/** Persists the last 1-star review scan onto the sale — separate from
+ * form edits so a scan never overwrites billing/status fields. */
+export async function recordSaleReviewScan(id, { rating, totalReviews, newReviewCount, error }) {
+  const db = getFirestore();
+  await db.collection(COLLECTION).doc(id).update({
+    lastReviewScannedAt: FieldValue.serverTimestamp(),
+    lastRating: rating ?? null,
+    lastTotalReviews: totalReviews ?? null,
+    lastOneStarCount: newReviewCount ?? 0,
+    lastReviewScanError: error || null,
+    updatedAt: FieldValue.serverTimestamp(),
+  });
 }

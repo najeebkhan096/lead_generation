@@ -330,6 +330,7 @@ class _OverallCard extends StatelessWidget {
     final citiesDone = snapshot.categories.fold<int>(0, (s, c) => s + c.citiesDone);
     final leads = snapshot.categories.fold<int>(0, (s, c) => s + c.leadsCollected);
     final businesses = snapshot.categories.fold<int>(0, (s, c) => s + c.businessesProcessed);
+    final websiteLeads = snapshot.categories.fold<int>(0, (s, c) => s + c.websiteLeadsFound);
     final percent = citiesTotal > 0 ? (citiesDone / citiesTotal * 100).round() : 0;
     final categoriesDone = snapshot.categories.where((c) => c.status == 'done').length;
 
@@ -377,7 +378,8 @@ class _OverallCard extends StatelessWidget {
                 _StatTile('States done', '$statesDone/$statesTotal', AppIcons.mapPinned),
                 _StatTile('Cities done', '$citiesDone/$citiesTotal', AppIcons.mapPin),
                 _StatTile('Businesses scanned', '$businesses', AppIcons.search),
-                _StatTile('Leads found', '$leads', AppIcons.trendingUp),
+                _StatTile('Review leads found', '$leads', AppIcons.trendingUp),
+                _StatTile('Website leads found', '$websiteLeads', AppIcons.inbox),
               ];
               return GridView.builder(
                 shrinkWrap: true,
@@ -679,8 +681,8 @@ class _StateRow extends StatelessWidget {
                         const SizedBox(height: 2),
                         Text(
                           state.inProgress.isNotEmpty
-                              ? '$label · ${state.citiesDone}/${state.citiesTotal} cities · ${state.inProgress.length} active now · ${state.leadsCollected} leads'
-                              : '$label · ${state.citiesDone}/${state.citiesTotal} cities · ${state.leadsCollected} leads',
+                              ? '$label · ${state.citiesDone}/${state.citiesTotal} cities · ${state.inProgress.length} active now · ${state.leadsCollected} leads · ${state.websiteLeadsFound} website'
+                              : '$label · ${state.citiesDone}/${state.citiesTotal} cities · ${state.leadsCollected} leads · ${state.websiteLeadsFound} website',
                           style: const TextStyle(fontSize: 11.5, color: AppTheme.faint),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,

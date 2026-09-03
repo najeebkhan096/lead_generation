@@ -59,14 +59,11 @@ function toFirestoreLead(lead, searchId, countrySuffix) {
     },
     searchId,
     source: lead.source || null,
-    whatsAppCheckedAt: null, // Default to null for unvalidated leads
-    hasWhatsApp: false,
     updatedAt: FieldValue.serverTimestamp(),
   };
 
   // Only include the WhatsApp check fields when this lead was actually
-  // checked during this scan (inline validation while scraping — see
-  // leadService.js's inlineValidateWhatsApp). Omitting them otherwise lets
+  // checked (Excel Archive validation). Omitting them otherwise lets
   // `merge: true` below leave an already-checked lead's status alone
   // instead of clobbering it back to "unchecked" the next time the same
   // lead resurfaces in a scrape.
@@ -152,6 +149,55 @@ export async function saveLeadsToFirebase(leadsInput) {
   };
 }
 
+/**
+ * Creates a `searches/{id}` record up front for a category/location run —
+ * used by the state-city scan so leads can be written to Firestore one at a
+ * time as they're found (see `upsertLeadToFirebase`) instead of only in one
+ * big batch after the whole category finishes scanning.
+ */
+export async function createSearchRecord({ category, location, dateRange, nationwide = true, country = 'US' } = {}) {
+  const db = getFirestore();
+  const countrySuffix = countryMeta(country).shortName;
+  const searchRef = db.collection('searches').doc();
+  await searchRef.set({
+    category: withCountrySuffix(category, countrySuffix),
+    location: location || 'All US states',
+    dateRange: dateRange || null,
+    nationwide: Boolean(nationwide),
+    leadCount: 0,
+    createdAt: FieldValue.serverTimestamp(),
+  });
+  return searchRef.id;
+}
+
+/**
+ * Writes ONE lead to Firestore immediately — the per-lead counterpart to
+ * `saveLeadsToFirebase`'s batch write. Used by the state-city scan so a
+ * lead (WhatsApp status included, if it was already checked) is durable in
+ * Firestore the instant it's found, rather than only living in the
+ * in-memory Excel archive until the entire category scan finishes.
+ */
+export async function upsertLeadToFirebase(lead, { searchId = null, country = 'US' } = {}) {
+  const db = getFirestore();
+  const countrySuffix = countryMeta(country).shortName;
+  const id = leadDocId(lead);
+  const ref = db.collection('leads').doc(id);
+  const snap = await ref.get();
+  const exists = snap.exists;
+
+  const payload = toFirestoreLead(lead, searchId, countrySuffix);
+  if (!exists) payload.createdAt = FieldValue.serverTimestamp();
+  await ref.set(payload, { merge: true });
+
+  if (searchId) {
+    // Best-effort — losing an accurate leadCount on the search record is
+    // harmless (it's just a display total), so this never blocks the save.
+    db.collection('searches').doc(searchId).update({ leadCount: FieldValue.increment(1) }).catch(() => {});
+  }
+
+  return { inserted: !exists, dbId: id };
+}
+
 /** Firestore doc -> the API/export lead shape, shared by every lead-listing query. */
 function docToLead(doc) {
   const d = doc.data();
@@ -200,25 +246,64 @@ export async function listLeadsByCategory(category) {
   return snap.docs.map(docToLead);
 }
 
-/**
- * Fetches leads that have not yet been checked for WhatsApp validation.
- */
-export async function listUnvalidatedLeads({ limit = 100 } = {}) {
-  const db = getFirestore();
-  const snap = await db
-    .collection('leads')
-    .where('whatsAppCheckedAt', '==', null)
-    .limit(Math.min(limit, 500))
-    .get();
+function stateKeyFromLocation(location) {
+  const loc = String(location || '').trim();
+  if (!loc) return '';
+  const comma = loc.lastIndexOf(',');
+  return (comma >= 0 ? loc.slice(comma + 1) : loc).trim();
+}
 
-  return snap.docs.map((doc) => {
+function locationMatchesStates(location, wantedLower) {
+  if (!wantedLower?.size) return true;
+  const loc = String(location || '').trim().toLowerCase();
+  if (!loc) return false;
+  if (wantedLower.has(loc)) return true;
+  const key = stateKeyFromLocation(location).toLowerCase();
+  return Boolean(key) && wantedLower.has(key);
+}
+
+/**
+ * Every saved lead that has not yet been checked for WhatsApp. No hard
+ * cap — previously this stopped at 1000. Optional `states` (state names,
+ * e.g. "California") filters on `location`, which the state-city scanner
+ * stores as the state name.
+ */
+export async function listUnvalidatedLeads({ states } = {}) {
+  const db = getFirestore();
+  const wanted = Array.isArray(states) && states.length
+    ? new Set(states.map((s) => String(s).trim().toLowerCase()).filter(Boolean))
+    : null;
+
+  const snap = await db.collection('leads').where('whatsAppCheckedAt', '==', null).get();
+  const out = [];
+  for (const doc of snap.docs) {
     const d = doc.data();
-    return {
+    if (!d.phone) continue;
+    if (wanted && !locationMatchesStates(d.location, wanted)) continue;
+    out.push({
+      id: doc.id,
       dbId: doc.id,
       phone: d.phone,
       business: d.business,
-    };
-  });
+      location: d.location || null,
+    });
+  }
+  return out;
+}
+
+/** Distinct state labels among unvalidated leads, with counts — used by
+ * the WhatsApp Tool so the user can pick "all" vs a subset of states. */
+export async function summarizeUnvalidatedLeads() {
+  const leads = await listUnvalidatedLeads();
+  const byState = new Map();
+  for (const lead of leads) {
+    const name = stateKeyFromLocation(lead.location) || 'Unknown';
+    byState.set(name, (byState.get(name) || 0) + 1);
+  }
+  const locations = [...byState.entries()]
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  return { total: leads.length, locations };
 }
 
 /**

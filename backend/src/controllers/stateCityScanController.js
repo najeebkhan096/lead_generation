@@ -7,7 +7,7 @@ import {
 } from '../services/stateCityOrchestrator.js';
 
 export async function startScan(req, res) {
-  const { categories, concurrency = 4, dateRange = '30', maxResultsPerCity = 160, analyze = false } = req.body || {};
+  const { categories, concurrency = 10, dateRange = '30', maxResultsPerCity = 160, analyze = false } = req.body || {};
 
   if (!Array.isArray(categories) || !categories.length) {
     return res.status(400).json({ error: 'categories array is required' });

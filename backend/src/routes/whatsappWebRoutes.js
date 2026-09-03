@@ -7,6 +7,7 @@ import {
   startValidation,
   startExternalValidation,
   startAutoValidation,
+  getUnvalidatedSummary,
   getValidationStatus,
   cancelValidation,
 } from '../controllers/whatsappWebController.js';
@@ -20,6 +21,7 @@ router.post('/disconnect', disconnect);
 router.post('/validate', startValidation);
 router.post('/validate-list', startExternalValidation);
 router.post('/validate-auto', startAutoValidation);
+router.get('/unvalidated', getUnvalidatedSummary);
 router.get('/validate/status', getValidationStatus);
 router.post('/validate/cancel', cancelValidation);
 

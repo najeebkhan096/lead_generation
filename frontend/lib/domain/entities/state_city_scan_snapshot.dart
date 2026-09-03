@@ -36,6 +36,9 @@ class StateCityProgress extends Equatable {
     this.failed = const [],
     this.leadsCollected = 0,
     this.businessesProcessed = 0,
+    this.waValidated = 0,
+    this.waChecked = 0,
+    this.websiteLeadsFound = 0,
     this.startedAt,
     this.finishedAt,
   });
@@ -51,6 +54,18 @@ class StateCityProgress extends Equatable {
   final List<String> failed;
   final int leadsCollected;
   final int businessesProcessed;
+
+  /// Of the review leads already saved live, how many were confirmed on
+  /// WhatsApp — a strict subset of `leadsCollected`, not a separate pool.
+  final int waValidated;
+
+  /// How many review leads were actually looked up on WhatsApp Web
+  /// (registered or not). Zero means the session wasn't connected.
+  final int waChecked;
+
+  /// A completely separate lead type ("no website found") — never counted
+  /// in `leadsCollected`/`waValidated`, which are review leads.
+  final int websiteLeadsFound;
   final DateTime? startedAt;
   final DateTime? finishedAt;
 
@@ -70,6 +85,9 @@ class StateCityProgress extends Equatable {
       failed: ((json['failed'] as List<dynamic>?) ?? const []).map((e) => e.toString()).toList(),
       leadsCollected: (json['leadsCollected'] as num?)?.toInt() ?? 0,
       businessesProcessed: (json['businessesProcessed'] as num?)?.toInt() ?? 0,
+      waValidated: (json['waValidated'] as num?)?.toInt() ?? 0,
+      waChecked: (json['waChecked'] as num?)?.toInt() ?? 0,
+      websiteLeadsFound: (json['websiteLeadsFound'] as num?)?.toInt() ?? 0,
       startedAt: ms(json['startedAt']),
       finishedAt: ms(json['finishedAt']),
     );
@@ -113,6 +131,9 @@ class CategoryStateProgress extends Equatable {
     required this.leadsCollected,
     required this.businessesProcessed,
     required this.archive,
+    this.waValidated = 0,
+    this.waChecked = 0,
+    this.websiteLeadsFound = 0,
     this.states = const [],
   });
 
@@ -126,6 +147,15 @@ class CategoryStateProgress extends Equatable {
   final int citiesDone;
   final int leadsCollected;
   final int businessesProcessed;
+
+  /// Of `leadsCollected`, how many are already confirmed on WhatsApp.
+  final int waValidated;
+
+  /// How many of those leads were looked up on WhatsApp Web.
+  final int waChecked;
+
+  /// Separate lead type ("no website found") found while scanning.
+  final int websiteLeadsFound;
   final StateCityArchive archive;
   final List<StateCityProgress> states;
 
@@ -139,6 +169,9 @@ class CategoryStateProgress extends Equatable {
       citiesDone: (json['citiesDone'] as num?)?.toInt() ?? 0,
       leadsCollected: (json['leadsCollected'] as num?)?.toInt() ?? 0,
       businessesProcessed: (json['businessesProcessed'] as num?)?.toInt() ?? 0,
+      waValidated: (json['waValidated'] as num?)?.toInt() ?? 0,
+      waChecked: (json['waChecked'] as num?)?.toInt() ?? 0,
+      websiteLeadsFound: (json['websiteLeadsFound'] as num?)?.toInt() ?? 0,
       archive: StateCityArchive.fromJson((json['archive'] as Map<String, dynamic>?) ?? const {}),
       states: ((json['states'] as List<dynamic>?) ?? const [])
           .map((e) => StateCityProgress.fromJson(e as Map<String, dynamic>))
@@ -179,6 +212,9 @@ class StateCityScanSnapshot extends Equatable {
     this.paused = false,
     this.startedAt,
     this.finishedAt,
+    this.waValidated = 0,
+    this.waChecked = 0,
+    this.websiteLeadsFound = 0,
     this.categories = const [],
     this.activity = const [],
   });
@@ -192,6 +228,17 @@ class StateCityScanSnapshot extends Equatable {
   final bool paused;
   final DateTime? startedAt;
   final DateTime? finishedAt;
+
+  /// Job-wide count of review leads already confirmed on WhatsApp,
+  /// summed across every category (see `saveLeadLive`).
+  final int waValidated;
+
+  /// Job-wide count of leads actually looked up on WhatsApp Web.
+  final int waChecked;
+
+  /// Job-wide count of website leads ("no website found") across every
+  /// category — a separate lead type entirely, not part of review leads.
+  final int websiteLeadsFound;
   final List<CategoryStateProgress> categories;
   final List<StateScanActivityEntry> activity;
 
@@ -207,6 +254,9 @@ class StateCityScanSnapshot extends Equatable {
       paused: json['paused'] == true,
       startedAt: ms(json['startedAt']),
       finishedAt: ms(json['finishedAt']),
+      waValidated: (json['waValidated'] as num?)?.toInt() ?? 0,
+      waChecked: (json['waChecked'] as num?)?.toInt() ?? 0,
+      websiteLeadsFound: (json['websiteLeadsFound'] as num?)?.toInt() ?? 0,
       categories: ((json['categories'] as List<dynamic>?) ?? const [])
           .map((e) => CategoryStateProgress.fromJson(e as Map<String, dynamic>))
           .toList(),

@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/theme/app_theme.dart';
 import '../../domain/entities/sale.dart';
 import '../../domain/entities/sales_user.dart';
+import '../../domain/entities/watchlist_entry.dart';
 import '../../domain/repositories/lead_repository.dart';
 
 const _allSalesmen = 'All salesmen';
@@ -64,12 +65,10 @@ String pkr(double value) => 'PKR ${_formatAmount(value)}';
       : (AppTheme.neutral600, AppTheme.neutral100);
 }
 
-/// Sales hub: an "Overview" tab (rollup statistics — USD revenue, PKR
-/// profit/costs, a lead-status funnel, payment-status breakdowns, a
-/// per-salesman leaderboard) and a "Manage" tab (full CRUD on individual
-/// sale records — client billing in USD, employee payout/costs in PKR,
-/// three independent status tracks). One shared salesman filter drives
-/// both tabs at once.
+/// Sales hub: Overview (rollup stats), Ongoing and Completed deal lists,
+/// Manage (CRUD), and Team. One shared salesman filter drives every tab.
+/// WhatsApp is not part of this page — review monitoring lives here via
+/// the 30-day 1-star rescan on ongoing/completed businesses.
 class SalesPage extends StatefulWidget {
   const SalesPage({super.key});
 
@@ -78,11 +77,13 @@ class SalesPage extends StatefulWidget {
 }
 
 class _SalesPageState extends State<SalesPage> with SingleTickerProviderStateMixin {
-  late final TabController _tabController = TabController(length: 3, vsync: this);
+  late final TabController _tabController = TabController(length: 5, vsync: this);
   List<SalesUser> _salesmen = [];
   bool _loadingSalesmen = true;
   String? _salesmenError;
   String _filterSalesmanId = _allSalesmen;
+  bool _scanningReviews = false;
+  List<SaleReviewScanResult> _reviewScanResults = [];
 
   LeadRepository get _repo => context.read<LeadRepository>();
 
@@ -121,9 +122,47 @@ class _SalesPageState extends State<SalesPage> with SingleTickerProviderStateMix
     }
   }
 
+  Future<void> _scanSaleReviews() async {
+    if (_scanningReviews) return;
+    setState(() {
+      _scanningReviews = true;
+      _reviewScanResults = [];
+    });
+    try {
+      final salesmanId = _filterSalesmanId == _allSalesmen ? null : _filterSalesmanId;
+      final results = await _repo.scanSaleReviews(dateRange: '30', salesmanId: salesmanId);
+      if (!mounted) return;
+      final flagged = results.where((r) => r.newReviews.isNotEmpty).length;
+      final errors = results.where((r) => r.error != null && !r.skipped).length;
+      final skipped = results.where((r) => r.skipped).length;
+      setState(() => _reviewScanResults = results);
+      final String message;
+      if (flagged > 0) {
+        message = 'Scan complete — $flagged business${flagged == 1 ? '' : 'es'} with 1★ reviews in the last 30 days.';
+      } else if (results.isEmpty) {
+        message = 'No ongoing or completed sales to scan.';
+      } else if (skipped == results.length) {
+        message = 'Scan skipped — add a Google Maps review link on each sale first.';
+      } else if (errors > 0) {
+        message = 'Scan complete — no new 1★ reviews. $errors failed.';
+      } else {
+        message = 'Scan complete — no 1★ reviews in the last 30 days.';
+      }
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+      );
+    } finally {
+      if (mounted) setState(() => _scanningReviews = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final salesmanId = _filterSalesmanId == _allSalesmen ? null : _filterSalesmanId;
+    final scanById = {for (final r in _reviewScanResults) r.id: r};
     return Scaffold(
       appBar: AppBar(
         title: const Text('Sales'),
@@ -146,17 +185,50 @@ class _SalesPageState extends State<SalesPage> with SingleTickerProviderStateMix
               ),
             ),
           ),
+          const SizedBox(width: 8),
+          TextButton.icon(
+            onPressed: _scanningReviews ? null : _scanSaleReviews,
+            icon: _scanningReviews
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(AppIcons.star, size: 18),
+            label: Text(_scanningReviews ? 'Scanning 1★…' : 'Scan 1★ (30 days)'),
+          ),
           const SizedBox(width: 12),
         ],
         bottom: TabBar(
           controller: _tabController,
-          tabs: const [Tab(text: 'Overview'), Tab(text: 'Manage'), Tab(text: 'Team')],
+          isScrollable: true,
+          tabs: const [
+            Tab(text: 'Overview'),
+            Tab(text: 'Ongoing'),
+            Tab(text: 'Completed'),
+            Tab(text: 'Manage'),
+            Tab(text: 'Team'),
+          ],
         ),
       ),
       body: TabBarView(
         controller: _tabController,
         children: [
           _OverviewTab(salesmanId: salesmanId),
+          _PipelineTab(
+            salesmanId: salesmanId,
+            ongoing: true,
+            scanning: _scanningReviews,
+            scanById: scanById,
+            onScan: _scanSaleReviews,
+          ),
+          _PipelineTab(
+            salesmanId: salesmanId,
+            ongoing: false,
+            scanning: _scanningReviews,
+            scanById: scanById,
+            onScan: _scanSaleReviews,
+          ),
           _ManageTab(
             salesmanId: salesmanId,
             salesmen: _salesmen,
@@ -301,7 +373,7 @@ class _EmptyStatsState extends StatelessWidget {
             Text('No sales data yet', style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 6),
             Text(
-              'Statistics show up here once sales are logged on the Manage tab.',
+              'Statistics show up here once sales are logged. Ongoing and completed deals are listed on their own tabs.',
               style: Theme.of(context).textTheme.bodyMedium,
               textAlign: TextAlign.center,
             ),
@@ -675,6 +747,134 @@ class _LeaderboardRow extends StatelessWidget {
             },
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Ongoing / Completed pipeline tabs
+// ---------------------------------------------------------------------------
+
+class _PipelineTab extends StatefulWidget {
+  const _PipelineTab({
+    required this.salesmanId,
+    required this.ongoing,
+    required this.scanning,
+    required this.scanById,
+    required this.onScan,
+  });
+
+  final String? salesmanId;
+  /// True = new + in_progress; false = completed.
+  final bool ongoing;
+  final bool scanning;
+  final Map<String, SaleReviewScanResult> scanById;
+  final VoidCallback onScan;
+
+  @override
+  State<_PipelineTab> createState() => _PipelineTabState();
+}
+
+class _PipelineTabState extends State<_PipelineTab> {
+  List<Sale> _sales = [];
+  bool _loading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void didUpdateWidget(covariant _PipelineTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.salesmanId != widget.salesmanId) _load();
+    if (oldWidget.scanning && !widget.scanning) _load();
+  }
+
+  Future<void> _load() async {
+    setState(() => _loading = true);
+    try {
+      final sales = await context.read<LeadRepository>().listSales(salesmanId: widget.salesmanId);
+      if (!mounted) return;
+      setState(() {
+        _sales = widget.ongoing
+            ? sales.where((s) => s.leadStatus == LeadStatus.newLead || s.leadStatus == LeadStatus.inProgress).toList()
+            : sales.where((s) => s.leadStatus == LeadStatus.completed).toList();
+        _loading = false;
+        _error = null;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = e.toString().replaceFirst('Exception: ', '');
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final label = widget.ongoing ? 'ongoing' : 'completed';
+    final withLink = _sales.where((s) => s.reviewLink != null && s.reviewLink!.isNotEmpty).length;
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 900),
+        child: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : _error != null
+                ? Center(child: Text(_error!, style: const TextStyle(color: AppTheme.danger)))
+                : ListView(
+                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 40),
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                        decoration: BoxDecoration(
+                          color: AppTheme.neutral100,
+                          borderRadius: BorderRadius.circular(AppTheme.radius),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(AppIcons.star, size: 16, color: AppTheme.accent700),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                widget.scanning
+                                    ? 'Scanning Google Maps for 1★ reviews in the last 30 days…'
+                                    : '${_sales.length} $label sale${_sales.length == 1 ? '' : 's'}'
+                                        '${withLink < _sales.length ? ' · $withLink with a review link' : ''}. '
+                                        'Scan checks ongoing and completed businesses for new 1★ reviews.',
+                                style: const TextStyle(fontSize: 12.5, color: AppTheme.subtle, fontWeight: FontWeight.w600),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            TextButton.icon(
+                              onPressed: (widget.scanning || _sales.isEmpty) ? null : widget.onScan,
+                              icon: widget.scanning
+                                  ? const SizedBox(
+                                      width: 14,
+                                      height: 14,
+                                      child: CircularProgressIndicator(strokeWidth: 2),
+                                    )
+                                  : const Icon(AppIcons.refresh, size: 16),
+                              label: Text(widget.scanning ? 'Scanning…' : 'Scan 1★ (30 days)'),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      if (_sales.isEmpty)
+                        _EmptyTabState(label: label)
+                      else
+                        for (final sale in _sales)
+                          _SaleCard(
+                            sale: sale,
+                            scanResult: widget.scanById[sale.id],
+                          ),
+                    ],
+                  ),
       ),
     );
   }
@@ -1557,11 +1757,12 @@ class _EmptySalesState extends StatelessWidget {
 }
 
 class _SaleCard extends StatelessWidget {
-  const _SaleCard({required this.sale, this.onEdit, this.onDelete});
+  const _SaleCard({required this.sale, this.onEdit, this.onDelete, this.scanResult});
 
   final Sale sale;
   final VoidCallback? onEdit;
   final VoidCallback? onDelete;
+  final SaleReviewScanResult? scanResult;
 
   @override
   Widget build(BuildContext context) {
@@ -1575,7 +1776,11 @@ class _SaleCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppTheme.surface,
         borderRadius: BorderRadius.circular(AppTheme.radiusCard),
-        border: Border.all(color: AppTheme.neutral200),
+        border: Border.all(
+          color: (scanResult?.newReviews.isNotEmpty == true || sale.lastOneStarCount > 0)
+              ? AppTheme.accent300
+              : AppTheme.neutral200,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1632,6 +1837,55 @@ class _SaleCard extends StatelessWidget {
                           ],
                         ],
                       ),
+                      if (scanResult != null || sale.lastReviewScannedAt != null || sale.lastOneStarCount > 0) ...[
+                        const SizedBox(height: 8),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 6,
+                          children: [
+                            if (scanResult != null && scanResult!.newReviews.isNotEmpty)
+                              _ScanChip(
+                                icon: AppIcons.messageWarning,
+                                label: '${scanResult!.newReviews.length} new 1★ (30 days)',
+                                color: AppTheme.accent700,
+                                background: AppTheme.accent100,
+                              )
+                            else if (sale.lastOneStarCount > 0)
+                              _ScanChip(
+                                icon: AppIcons.messageWarning,
+                                label: '${sale.lastOneStarCount} 1★ last scan',
+                                color: AppTheme.accent700,
+                                background: AppTheme.accent100,
+                              )
+                            else if (scanResult != null && !scanResult!.skipped)
+                              const _ScanChip(
+                                icon: AppIcons.checkCircle,
+                                label: 'No 1★ in last 30 days',
+                                color: AppTheme.sage700,
+                                background: AppTheme.sage100,
+                              ),
+                            if (scanResult?.error != null)
+                              _ScanChip(
+                                icon: AppIcons.alert,
+                                label: scanResult!.error!,
+                                color: AppTheme.danger,
+                                background: AppTheme.accent100,
+                              )
+                            else if (sale.lastReviewScanError != null && scanResult == null)
+                              _ScanChip(
+                                icon: AppIcons.alert,
+                                label: sale.lastReviewScanError!,
+                                color: AppTheme.danger,
+                                background: AppTheme.accent100,
+                              ),
+                            if (sale.lastReviewScannedAt != null)
+                              _ScanChip(
+                                icon: AppIcons.clock,
+                                label: 'Scanned ${_timeAgo(sale.lastReviewScannedAt!)}',
+                              ),
+                          ],
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -1710,6 +1964,118 @@ class _SaleCard extends StatelessWidget {
                   pkr(sale.profit),
                   style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: profitColor),
                 ),
+              ],
+            ),
+          ),
+          if (scanResult != null && scanResult!.newReviews.isNotEmpty) ...[
+            const Divider(height: 1, color: AppTheme.neutral200),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 12, 18, 14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    '1★ reviews in the last 30 days',
+                    style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: AppTheme.accent700),
+                  ),
+                  const SizedBox(height: 10),
+                  for (final review in scanResult!.newReviews) _SaleReviewTile(review: review),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _ScanChip extends StatelessWidget {
+  const _ScanChip({
+    required this.icon,
+    required this.label,
+    this.color = AppTheme.subtle,
+    this.background = AppTheme.neutral100,
+  });
+
+  final IconData icon;
+  final String label;
+  final Color color;
+  final Color background;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(color: background, borderRadius: BorderRadius.circular(AppTheme.radiusPill)),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: color),
+          const SizedBox(width: 4),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 280),
+            child: Text(
+              label,
+              style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: color),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SaleReviewTile extends StatelessWidget {
+  const _SaleReviewTile({required this.review});
+
+  final WatchlistReview review;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(AppIcons.star, size: 15, color: AppTheme.accent700),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '${review.reviewer} · ${review.stars ?? '?'}★ · ${review.date}',
+                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.subtle),
+                      ),
+                    ),
+                    if (review.link != null)
+                      InkWell(
+                        onTap: () => launchUrl(Uri.parse(review.link!)),
+                        child: const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 4),
+                          child: Text(
+                            'Open',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: AppTheme.accent700,
+                              decoration: TextDecoration.underline,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                if (review.text.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(review.text, style: Theme.of(context).textTheme.bodyMedium),
+                ],
               ],
             ),
           ),

@@ -25,6 +25,13 @@ const PORT = process.env.PORT || 3001;
 // Flutter web build (copied to backend/public in production / Docker)
 const webRoot = path.resolve(__dirname, '../public');
 
+// Chrome Private Network Access: the Firebase-hosted HTTPS origin talking
+// to localhost:3001 is a public→private request and gets blocked unless
+// this header is on the CORS preflight. Must run before `cors()`.
+app.use((req, res, next) => {
+  res.setHeader('Access-Control-Allow-Private-Network', 'true');
+  next();
+});
 app.use(cors({
   origin: '*',
   // PATCH was missing here — every PATCH route (e.g. sale edits, lead
@@ -34,7 +41,7 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
-app.use(express.json({ limit: '2mb' }));
+app.use(express.json({ limit: '16mb' }));
 
 initFirebase();
 

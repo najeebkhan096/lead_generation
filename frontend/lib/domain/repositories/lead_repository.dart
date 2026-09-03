@@ -58,7 +58,7 @@ abstract class LeadRepository {
   /// state finishes — see [StateCityScanSnapshot].
   Future<void> startStateScan({
     required List<String> categories,
-    int concurrency = 4,
+    int concurrency = 10,
     String dateRange = '30',
     int maxResultsPerCity = 160,
     bool analyze = false,
@@ -87,7 +87,7 @@ abstract class LeadRepository {
   Future<void> startMultiSearch({
     required List<String> categories,
     List<String>? countries,
-    int concurrency = 4,
+    int concurrency = 10,
     String dateRange = '30',
     int maxResultsPerState = 150,
     int targetLeadCount = 100,
@@ -123,7 +123,7 @@ abstract class LeadRepository {
   /// Runs a real WhatsApp Web check against each lead's phone number and
   /// flags `hasWhatsApp` on the ones confirmed registered. `leads` is
   /// `{id, phone, business}` per lead, where `id` is the Firestore [Lead.dbId].
-  /// Capped server-side at 100 leads per run.
+  /// Capped only by the live WhatsApp safety budget, not a batch size.
   Future<void> startWhatsAppValidation(List<Map<String, String>> leads);
 
   /// Same as [startWhatsAppValidation] but for leads that were never saved
@@ -133,7 +133,11 @@ abstract class LeadRepository {
   Future<void> validateExternalLeads(List<Map<String, String>> leads);
 
   /// Automatically discovers and validates unchecked leads from Firestore.
-  Future<void> startWhatsAppAutoValidation();
+  /// Pass [states] to limit the run to those state names; omit for every
+  /// unvalidated lead (no batch cap).
+  Future<void> startWhatsAppAutoValidation({List<String>? states});
+
+  Future<UnvalidatedWhatsAppSummary> getUnvalidatedWhatsAppSummary();
 
   Future<WhatsAppValidationSnapshot> getWhatsAppValidationStatus();
 
@@ -163,7 +167,13 @@ abstract class LeadRepository {
   });
 
   /// Salesmen (mobile app users) available to assign watchlist businesses to.
+  /// Only approved accounts — unapproved sign-ins cannot be assigned work.
   Future<List<SalesUser>> listSalesmen();
+
+  /// Every mobile account, including ones waiting on approval.
+  Future<List<SalesUser>> listUsers();
+
+  Future<SalesUser> setUserApproved(String id, {required bool approved});
 
   /// Re-scans every watchlisted business now and returns which ones picked
   /// up new reviews since the last scan.
@@ -185,7 +195,7 @@ abstract class LeadRepository {
   /// Picks a stranded `status: 'partial'` archive back up. Returns which
   /// engine picked it up (`'state-city'` or `'multi-country'`) so the
   /// caller knows whether to open [StateScanPage] or [MultiScanPage].
-  Future<String> resumeExcelArchive(String id);
+  Future<String> resumeExcelArchive(String id, {int concurrency = 10});
 
   /// Extracts every business in an archive as [Lead]s for display — these
   /// were never saved to Firestore, so [Lead.dbId] is always null.
@@ -247,4 +257,9 @@ abstract class LeadRepository {
   /// [salesmanId] scopes the dashboard to one salesman; omit for the
   /// full-team rollup.
   Future<SalesStats> getSalesStats({String? salesmanId});
+
+  /// Re-scrapes ongoing (new / in progress) and completed sales for 1-star
+  /// Google reviews in the last [dateRange] days. Optional [salesmanId]
+  /// matches the Sales page filter.
+  Future<List<SaleReviewScanResult>> scanSaleReviews({String dateRange = '30', String? salesmanId});
 }

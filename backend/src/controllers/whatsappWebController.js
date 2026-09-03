@@ -5,7 +5,7 @@ import {
   getJobSnapshot,
   cancelValidationJob,
 } from '../services/whatsappValidationJob.js';
-import { listUnvalidatedLeads } from '../services/firebaseLeadStore.js';
+import { listUnvalidatedLeads, summarizeUnvalidatedLeads } from '../services/firebaseLeadStore.js';
 
 export function getStatus(_req, res) {
   return res.json({ ...whatsappWeb.getStatus(), safety: whatsappSafety.getSafetyStatus() });
@@ -60,17 +60,36 @@ export function startExternalValidation(req, res) {
   }
 }
 
-export async function startAutoValidation(_req, res) {
+export async function startAutoValidation(req, res) {
   try {
-    const leads = await listUnvalidatedLeads({ limit: 100 });
+    const rawStates = req.body?.states;
+    const states = Array.isArray(rawStates)
+      ? rawStates.map((s) => String(s).trim()).filter(Boolean)
+      : undefined;
+    const leads = await listUnvalidatedLeads({ states });
     if (!leads.length) {
-      return res.json({ success: true, message: 'No leads needing validation found.' });
+      return res.json({
+        success: true,
+        message: states?.length
+          ? 'No unvalidated leads found in the selected states.'
+          : 'No leads needing validation found.',
+      });
     }
     const result = startValidationJob({ leads });
-    return res.status(202).json({ ...result, message: `Started validation for ${leads.length} leads.` });
+    const scope = states?.length ? ` in ${states.length} selected state${states.length === 1 ? '' : 's'}` : '';
+    return res.status(202).json({ ...result, message: `Started validation for ${leads.length} leads${scope}.` });
   } catch (err) {
     const status = err.status || 500;
     return res.status(status).json({ error: err.message || 'Failed to start auto validation' });
+  }
+}
+
+export async function getUnvalidatedSummary(_req, res) {
+  try {
+    const summary = await summarizeUnvalidatedLeads();
+    return res.json(summary);
+  } catch (err) {
+    return res.status(err.status || 500).json({ error: err.message || 'Failed to load unvalidated leads' });
   }
 }
 

@@ -272,6 +272,34 @@ async function textOrNull(page, selectors) {
   return null;
 }
 
+/**
+ * Google Maps often puts the real number on `data-item-id="phone:tel:+1…"`
+ * (or the aria-label) while the button's innerText is just "Phone" — which
+ * has no digits, so WhatsApp validation would skip or fail every listing.
+ */
+async function extractPhone(page) {
+  try {
+    const btn = page.locator('button[data-item-id^="phone"]').first();
+    if ((await btn.count()) > 0) {
+      const itemId = await btn.getAttribute('data-item-id');
+      const tel = itemId?.match(/tel:([^,]*)/i);
+      if (tel?.[1]) {
+        const fromTel = decodeURIComponent(tel[1]).trim();
+        if (fromTel.replace(/\D/g, '').length >= 8) return fromTel;
+      }
+      const aria = await btn.getAttribute('aria-label');
+      const fromAria = aria?.match(/[\d+().\-\s]{8,}/)?.[0]?.trim();
+      if (fromAria && fromAria.replace(/\D/g, '').length >= 8) return fromAria;
+    }
+  } catch {
+    // fall through to innerText
+  }
+  return textOrNull(page, [
+    'button[data-item-id^="phone"]',
+    'button[aria-label*="Phone"]',
+  ]);
+}
+
 async function extractBusinessFromPlacePage(page, category, location, country) {
   const name = await textOrNull(page, ['h1.DUwDvf', 'h1']);
   if (!name) return null;
@@ -301,10 +329,7 @@ async function extractBusinessFromPlacePage(page, category, location, country) {
     'button[data-item-id="address"]',
     'button[aria-label*="Address"]',
   ]);
-  const phone = await textOrNull(page, [
-    'button[data-item-id^="phone"]',
-    'button[aria-label*="Phone"]',
-  ]);
+  const phone = await extractPhone(page);
 
   let website = null;
   try {

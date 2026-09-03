@@ -1,46 +1,110 @@
-# LeadFinder — Free Reputation Lead Generation
+# LeadFinder
 
-Find USA businesses with **recent 1-star Google reviews** and a **WhatsApp-available phone** so you can offer reputation management services.
+Find businesses with **recent 1-star Google reviews** (reputation leads) and businesses with **no website** (website leads), then reach them on WhatsApp.
 
-- **No Google Places API**
-- **No paid APIs or scraping services**
-- **Firebase Firestore** — search results stay in memory until you click **Save to Firebase**
-- Playwright browser automation on public maps pages
-- **Nationwide by default** — pick a category; searches all 50 U.S. states + D.C. until ~100 WhatsApp leads
+The live scan engine walks **every U.S. state, city by city** in a real browser. There is no Google Places API and no paid scraping service.
+
+Hosted UI: [https://whatsapplead-a8d9a.web.app](https://whatsapplead-a8d9a.web.app)  
+API (runs on your machine): `http://localhost:3001`
+
+## What it does
+
+| Signal | Saved to | Used for |
+|--------|----------|----------|
+| Recent 1★ Google review | Firestore `leads` | Reputation-management outreach |
+| Business listing with no website | Firestore `websiteLeads` | Web-build / digital-presence outreach |
+| Phone on WhatsApp (optional) | `hasWhatsApp` on the lead | Filter and message from the mobile app |
+
+A scan also writes an **Excel archive** (one workbook per category, one sheet per state) to Firebase Storage as each state finishes, so progress is not lost if the job is paused or the server restarts.
 
 ## Stack
 
 | Layer | Tech |
 |-------|------|
-| Backend | Node.js, Express, Playwright, Cheerio |
-| Frontend | Flutter Web, Bloc, Clean Architecture |
+| Backend | Node.js, Express, Playwright (Google Maps), whatsapp-web.js |
+| Web admin | Flutter Web, Bloc, go_router |
+| Mobile | Flutter iOS/Android, Firebase Auth (Google), Firestore |
+| Desktop launcher | Flutter — starts the local API and opens the hosted UI |
+| Data | Firebase Firestore + Storage (`whatsapplead-a8d9a`) |
 
 ## Project layout
 
 ```
-backend/
-  src/
-    data/             # US states list
-    scraper/          # googleMaps, bing, yelp
-    services/         # filter, export, analyzer, lead orchestration
-    controllers/
-    routes/
-    utils/            # memory store, date helpers
-  exports/            # leads.csv / leads.json written here
-
-frontend/
-  lib/
-    core/
-    domain/
-    data/
-    presentation/     # Bloc + Search/Results pages (web search tool)
-
-mobile/               # Flutter iOS/Android — browse Firebase leads by category
+backend/          Node API, scrapers, WhatsApp Web session, Firestore writes
+frontend/         Flutter web admin (Dashboard, Leads, scans, Sales, …)
+mobile/           Flutter iOS/Android app for salespeople
+launcher/         Desktop helper to start/stop the local backend
+scripts/          build-web.sh — release web build into backend/public
+Dockerfile        Flutter web + Playwright Chromium, one container
+firebase.json     Hosting serves frontend/build/web
+render.yaml       Optional Render Docker deploy
 ```
+
+## Apps
+
+### Web admin (`frontend/`)
+
+Persistent sidebar (or bottom nav on a narrow window):
+
+| Page | URL | Purpose |
+|------|-----|---------|
+| Dashboard | `/` | Totals and recent saved leads |
+| Leads | `/leads` | Review leads from Firestore |
+| Website Leads | `/website-leads` | No-website businesses |
+| WhatsApp Tool | `/whatsapp` | Link WhatsApp Web + format check |
+| Sales | `/sales` | Orders, payouts, assign to a salesman |
+| Settings | `/settings` | Watchlist, verified archive, extras |
+| Excel Scan | `/excel-scan` | Start a US state/city scan |
+| Scan Progress | `/scan-progress` | Live state-by-state / city-by-city status |
+| Excel Archive | `/excel-archive` | Download and resume scan workbooks |
+| WhatsApp Verified | `/whatsapp-verified` | Archives of numbers that passed a real WA check |
+
+The old single-search results page is gone. **Excel Scan is the way to start a scan.** A dormant multi-country dashboard still lives at `/multi-scan` for old archives only.
+
+### Mobile (`mobile/`) — “Lead Outreach”
+
+Google sign-in. Bottom tabs: **WA** (WhatsApp-verified leads), **Leads**, **Sales**, **Profile**. Salespeople can favorite, update status, open Maps / WhatsApp, and see their own sales. They cannot create or delete leads; the backend (Admin SDK) owns writes.
+
+### Launcher (`launcher/`)
+
+Starts `backend` on port 3001 without a terminal, health-checks `/api/health`, and opens the hosted frontend. Default hosted URL is `https://whatsapplead-a8d9a.web.app`.
+
+## How a scan works
+
+1. **Excel Scan** — pick one or more categories, a review date window (7 / 28 / 30 / 90 / 365 days), and worker count (2–8).
+2. For each category (one at a time), every **U.S. state** runs in order.
+3. Inside a state, up to `concurrency` **cities** scrape in parallel. Each city opens Google Maps in Playwright and reads listings (up to ~160 per city).
+4. Two buckets are filled:
+   - **Review leads** — 1-star review inside the date window → Firestore `leads` (and the Excel sheet).
+   - **Website leads** — no website on the listing → Firestore `websiteLeads`.
+5. When a state finishes, that category’s `.xlsx` is checkpointed to Storage. Pause / resume / cancel are supported. Only one scan runs at a time.
+
+Phones are normalized and a `wa.me` link is attached. **Registration on WhatsApp is not assumed** until you connect WhatsApp Web and run validation.
+
+Scans are slow (hours is normal). Keep the backend process running; the UI polls `/api/state-scan/status`.
+
+## WhatsApp
+
+Two different checks:
+
+1. **Format check** (`POST /api/whatsapp/check`) — is this a plausible phone number? Builds a `wa.me` link. Does not prove the number is on WhatsApp.
+2. **Real validation** — connect WhatsApp Web on the WhatsApp Tool page (scan a QR, same as Linked Devices). The backend drives `web.whatsapp.com` in headless Chrome via `whatsapp-web.js`. Use **Validate WhatsApp** on Leads, bulk auto-validate, or validate an Excel list.
+
+This is unofficial and against WhatsApp’s terms. Rate-limit yourself; a linked number can be banned. Session files stay in `backend/.wwebjs_auth/` (gitignored). If connect hangs on “Starting session…”, restart the backend and try again — a stale session is the usual cause.
+
+The hosted Firebase site talks to **localhost:3001**, so WhatsApp Web must run on the same machine as the API. Firebase Hosting cannot open Chrome.
 
 ## Quick start
 
-### 1. Backend
+### 1. Firebase
+
+1. Enable **Firestore** and **Storage** on the Firebase project.
+2. Download a service account key and save it as `backend/firebase-service-account.json` (gitignored).
+3. Or copy `backend/.env.example` → `backend/.env` and set `FIREBASE_PROJECT_ID` / `FIREBASE_SERVICE_ACCOUNT`.
+
+`GET /api/health` should report `"firebase": { "configured": true }`.
+
+### 2. Backend
 
 ```bash
 cd backend
@@ -49,75 +113,19 @@ npx playwright install chromium
 npm run dev
 ```
 
-API: `http://localhost:3001`
+API: [http://localhost:3001](http://localhost:3001)
 
-### 2. Frontend
+`npm run dev` uses Node `--watch`. Run it from `backend/`, not the repo root. If you see `EADDRINUSE`, something else already owns port 3001 — stop that process first.
+
+### 3. Frontend (local debug)
 
 ```bash
 cd frontend
 flutter pub get
-flutter run -d chrome
-```
-
-Optional custom API URL:
-
-```bash
 flutter run -d chrome --dart-define=API_BASE_URL=http://localhost:3001
 ```
 
-## API
-
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/api/search` | Body: `{ category, dateRange, nationwide?, targetLeadCount?, maxResultsPerState?, analyze? }` |
-| GET | `/api/search/status` | Progress / status |
-| GET | `/api/search/results` | In-memory leads |
-| DELETE | `/api/search/results` | Clear session |
-| GET | `/api/export/csv` | Download CSV (+ write `exports/leads.csv`) |
-| GET | `/api/export/json` | Download JSON (+ write `exports/leads.json`) |
-| POST | `/api/db/save` | Persist current session leads to **Firebase Firestore** |
-| GET | `/api/db/leads` | List saved leads from Firestore |
-| GET | `/api/db/searches` | List save batches from Firestore |
-| POST | `/api/search/analyze` | Optional keyword complaint categorization |
-
-`dateRange`: `"7"` \| `"30"` \| `"90"` \| `"365"`
-
-### Nationwide search (default)
-
-Omit `location` or set `nationwide: true`. The backend walks every U.S. state (dense metro per state), keeps recent 1★ leads, verifies WhatsApp, and stops at `targetLeadCount` (default **100**).
-
-```json
-{
-  "category": "Dentist",
-  "dateRange": "30",
-  "nationwide": true,
-  "targetLeadCount": 100
-}
-```
-
-### Single-location search (optional)
-
-```json
-{
-  "location": "Austin, Texas",
-  "category": "Dentist",
-  "dateRange": "30",
-  "nationwide": false
-}
-```
-
-## MVP workflow
-
-1. Choose category + date range on the Search page (no state needed)
-2. Backend scrapes Google Maps across U.S. states
-3. Keeps businesses that have **1-star** reviews inside the date window
-4. Checks each phone for **WhatsApp availability** — only WA numbers are kept
-5. Stops around **100 leads** (or when all states are done)
-6. Results page shows name, rating, review, phone, WhatsApp link, website
-7. Click **Save to Firebase** to write leads to Firestore (`leads` + `searches` collections) — duplicates match on Maps URL
-8. Export CSV / JSON anytime
-
-## Mobile app (browse leads)
+### 4. Mobile
 
 ```bash
 cd mobile
@@ -125,60 +133,76 @@ flutter pub get
 flutter run
 ```
 
-Shows businesses from Firestore by category. Each card opens **Google Maps** or **WhatsApp**.
+Requires `google-services.json` / iOS `GoogleService-Info.plist` for the same Firebase project.
 
-## Firebase setup
+## Build and deploy the web admin
 
-1. Create a project at [Firebase Console](https://console.firebase.google.com/) and enable **Firestore**.
-2. Project settings → **Service accounts** → **Generate new private key**.
-3. Save the JSON as:
+The hosted site is built to call the **local** API:
 
 ```bash
-backend/firebase-service-account.json
+cd frontend
+flutter clean
+flutter pub get
+flutter build web --release --dart-define=API_BASE_URL=http://localhost:3001
+cd ..
+firebase deploy --only hosting
 ```
 
-   (This file is gitignored.) Or copy `backend/.env.example` → `backend/.env` and set `FIREBASE_SERVICE_ACCOUNT` / `FIREBASE_PROJECT_ID`.
-
-4. Restart the backend. `/api/health` should show `"firebase": { "configured": true }`.
-
-On Render: add env var `FIREBASE_SERVICE_ACCOUNT` with the full JSON string, plus `FIREBASE_PROJECT_ID`.
-
-## Notes
-
-- Nationwide runs are **slow** (can take hours) because each listing is opened in a real browser and WhatsApp is checked one by one. Keep the tab open; the UI polls status.
-- Scraping public Google Maps is best-effort; DOM changes or consent walls can reduce yield.
-- Unsaved session leads are in memory only — restarting the server clears them. Saved leads live in Firebase.
-- `ReviewAnalyzer` is heuristic/keyword-based and optional (no paid AI required).
-
-## Go live (one URL for UI + API)
-
-### Local production-style (same machine)
+Same-origin build (UI + API on one Express server, e.g. Docker / `npm start`):
 
 ```bash
 ./scripts/build-web.sh
 cd backend && npm start
 ```
 
-Open **http://localhost:3001** — Flutter UI and `/api/*` on the same origin.
+Open [http://localhost:3001](http://localhost:3001).
 
-### Deploy on Render (public URL)
+### Render (optional, one public URL)
 
-1. Push this repo to GitHub.
-2. In [Render](https://render.com): **New → Blueprint** → connect the repo (uses `render.yaml`).
-3. Wait for the Docker build (Flutter + Playwright). Open the service URL.
+`render.yaml` + root `Dockerfile`: Flutter web (empty `API_BASE_URL`) + Playwright Chromium. Health check: `/api/health`. Set `FIREBASE_SERVICE_ACCOUNT` in the dashboard. WhatsApp Web on a free Render instance is unreliable; keep that on the desktop backend.
 
-Or: **New → Web Service** → Docker → root Dockerfile → health check `/api/health`.
+## Firestore
 
-### Temporary public tunnel (your laptop)
+| Collection | Role |
+|------------|------|
+| `leads` | Review leads. Mobile may update favorite / status / WhatsApp flags / assignee. |
+| `websiteLeads` | No-website businesses. Same mobile update rules. |
+| `searches` | Scan batches. Backend write only. |
+| `excelScans` | Excel archive metadata + Storage download URL. |
+| `whatsappValidatedScans` | Workbooks of numbers that passed a real WA check. |
+| `sales` | Orders. A salesman can read only their own rows. |
+| `users` | Mobile profiles (created on Google sign-in). |
+| `watchlist` | Businesses to re-scan for new 1★ reviews. |
 
-With the server already on port 3001:
+Rules: `firestore.rules`. Indexes: `firestore.indexes.json`.
 
-```bash
-npx localtunnel --port 3001
-```
+## API (grouped)
 
-Use the printed `https://….loca.lt` URL in a browser.
+Base: `http://localhost:3001`
+
+| Area | Prefix | Notes |
+|------|--------|--------|
+| Health | `GET /api/health` | Firebase configured? |
+| State/city scan | `/api/state-scan` | `POST /` start, `GET /status`, pause / resume / cancel |
+| Session search | `/api/search` | Legacy in-memory search (still mounted) |
+| Multi-country | `/api/search/multi` | Dormant orchestrator |
+| Firestore leads | `/api/db` | List / delete leads and website leads, stats, clear |
+| WhatsApp format | `/api/whatsapp/check` | Shape only |
+| WhatsApp Web | `/api/whatsapp-web` | Connect, QR status, bulk validate |
+| Excel archives | `/api/excel-scans` | List, download, resume, delete |
+| WA-validated archives | `/api/whatsapp-validated-scans` | |
+| Watchlist | `/api/watchlist` | CRUD + scan |
+| Sales | `/api/sales` | CRUD + stats |
+| Users | `/api/users` | Salesman list for assign pickers |
+| Export | `/api/export` | CSV / JSON / multi xlsx |
+
+## Notes
+
+- Unsaved session search results live in memory and vanish on restart. Excel Scan checkpoints to Storage and Firestore as it goes.
+- Google Maps DOM changes, consent walls, and rate limits reduce yield. Treat scrapes as best-effort.
+- `whatsapp-web.js` breaks whenever WhatsApp ships a web-client change. Chromium must be able to launch on the API host.
+- Country region files exist under `backend/src/data/` (UK, DE, Gulf, …) for the older multi-country engine. **The live Excel Scan path is U.S. only.**
 
 ## Legal / ethics
 
-Only use public pages for legitimate outreach. Respect site terms, robots guidance, and local laws. Rate-limit yourself; do not abuse targets.
+Use public listings for legitimate outreach only. Respect site terms, robots guidance, and local law. WhatsApp Web automation can get a number banned — keep checks slow. Do not abuse targets.

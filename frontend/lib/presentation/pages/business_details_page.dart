@@ -7,13 +7,32 @@ import '../../domain/entities/lead.dart';
 import '../../domain/repositories/lead_repository.dart';
 import '../utils/date_format.dart';
 
+/// Navigation payload for `/leads/details` — carries which collection
+/// [lead] came from, since the review-lead flow (WhatsApp outreach
+/// included) and the website-lead flow ("no website found") are two
+/// different signals that this shared details page must not treat the
+/// same way.
+class LeadDetailsArgs {
+  const LeadDetailsArgs({required this.lead, this.isWebsiteLead = false});
+
+  final Lead lead;
+  final bool isWebsiteLead;
+}
+
 /// Full details for a single saved business. Pops `true` if the lead's
 /// WhatsApp status was manually changed here, so the list it was opened
 /// from knows to refresh.
 class BusinessDetailsPage extends StatefulWidget {
-  const BusinessDetailsPage({super.key, required this.lead});
+  const BusinessDetailsPage({super.key, required this.lead, this.isWebsiteLead = false});
 
   final Lead lead;
+
+  /// Website leads never carry a real WhatsApp signal (see
+  /// `websiteLeadStore.js` on the backend) — hides the WhatsApp detail row
+  /// and status card entirely instead of showing a permanently "not
+  /// checked" status for a lead type WhatsApp validation was never meant
+  /// to apply to.
+  final bool isWebsiteLead;
 
   @override
   State<BusinessDetailsPage> createState() => _BusinessDetailsPageState();
@@ -254,24 +273,27 @@ class _BusinessDetailsPageState extends State<BusinessDetailsPage> {
                             : () => _open(context, lead.mapsUrl, 'No Google Maps link for this business'),
                       ),
                       _DetailRow(icon: AppIcons.mapPinned, label: 'Location', value: lead.location),
-                      _DetailRow(
-                        icon: AppIcons.chat,
-                        label: 'WhatsApp',
-                        value: _whatsAppUrl,
-                        onTap: _whatsAppUrl == null
-                            ? null
-                            : () => _open(context, _whatsAppUrl, 'No phone number for WhatsApp'),
-                      ),
+                      if (!widget.isWebsiteLead)
+                        _DetailRow(
+                          icon: AppIcons.chat,
+                          label: 'WhatsApp',
+                          value: _whatsAppUrl,
+                          onTap: _whatsAppUrl == null
+                              ? null
+                              : () => _open(context, _whatsAppUrl, 'No phone number for WhatsApp'),
+                        ),
                       _DetailRow(icon: AppIcons.calendar, label: 'Date Added', value: addedOn),
                     ],
                   ),
                 ),
-                const SizedBox(height: 20),
-                _WhatsAppStatusCard(
-                  lead: lead,
-                  updating: _updating,
-                  onMark: _markWhatsApp,
-                ),
+                if (!widget.isWebsiteLead) ...[
+                  const SizedBox(height: 20),
+                  _WhatsAppStatusCard(
+                    lead: lead,
+                    updating: _updating,
+                    onMark: _markWhatsApp,
+                  ),
+                ],
                 if (lead.badReview.text.trim().isNotEmpty) ...[
                   const SizedBox(height: 20),
                   Text('Flagged review', style: Theme.of(context).textTheme.titleLarge),

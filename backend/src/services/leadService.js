@@ -9,8 +9,6 @@ import * as yelp from '../scraper/yelpScraper.js';
 import { filterRecentOneStarLeads, filterNoWebsiteLeads } from './reviewFilter.js';
 import { enrichLeadWithAnalysis } from './reviewAnalyzer.js';
 import { normalizePhone, waMeLink } from './whatsappChecker.js';
-import * as whatsappWebService from './whatsappWebService.js';
-import * as whatsappSafety from './whatsappSafety.js';
 import { locationQuery, shuffleStates } from '../data/usStates.js';
 import { countryMeta, regionsForCountry } from '../data/countries.js';
 import { saveWebsiteLeadsToFirebase } from './websiteLeadStore.js';
@@ -67,6 +65,21 @@ function enrichLeadContacts(leads, country = 'US') {
 }
 
 /**
+ * Same phone normalization as `enrichLeadContacts`, minus the WhatsApp
+ * fields — website leads are a completely different signal ("no website")
+ * from review leads ("bad recent review"), and WhatsApp outreach/validation
+ * isn't part of that flow at all, so they never get a `waLink` or
+ * `hasWhatsApp` in the first place instead of carrying always-unchecked
+ * WhatsApp fields that look like they belong to the review-lead pipeline.
+ */
+function normalizeLeadPhone(leads, country = 'US') {
+  return leads.map((lead) => {
+    const e164 = normalizePhone(lead.phone, country);
+    return { ...lead, phone: e164 ? `+${e164}` : lead.phone || null };
+  });
+}
+
+/**
  * Pulls the no-website businesses out of a just-scraped batch and saves
  * them straight to Firestore's `websiteLeads` collection — a second,
  * independent lead signal alongside the 1-star-review `leads` flow, run
@@ -80,7 +93,7 @@ async function captureWebsiteLeads(businesses, { location, searchLocation, count
   try {
     let websiteLeads = filterNoWebsiteLeads(businesses);
     if (!websiteLeads.length) return [];
-    websiteLeads = enrichLeadContacts(websiteLeads, country);
+    websiteLeads = normalizeLeadPhone(websiteLeads, country);
     websiteLeads = websiteLeads.map((l) => ({ ...l, location: location ?? l.location, searchLocation }));
     websiteLeads = dedupeLeads(websiteLeads);
     await saveWebsiteLeadsToFirebase(websiteLeads, { country });
@@ -92,32 +105,18 @@ async function captureWebsiteLeads(businesses, { location, searchLocation, count
 }
 
 /**
- * Checks each lead's phone against the live WhatsApp Web session the moment
- * it's found, mutating `hasWhatsApp`/`whatsAppCheckedAt` in place — a no-op
- * if WhatsApp Web isn't connected, so scanning behaves exactly as before
- * for anyone who hasn't linked it. Goes through the same safety-guarded
- * choke point (`whatsappSafety.guardedCheck`) as the bulk validation job,
- * so inline checks during a nationwide multi-category scan and any
- * concurrently-running bulk job share one pacing budget instead of each
- * hammering the session independently.
+ * Fires `onLeadReady` for each lead the moment it's filtered — callers use
+ * this to persist to Firestore one business at a time instead of waiting
+ * for the whole city/state to finish. WhatsApp is deliberately not checked
+ * here; that lives on the Excel Archive page so scans stay fast.
  */
-async function inlineValidateWhatsApp(leads, { shouldStop, checkFn = whatsappSafety.guardedCheck } = {}) {
-  const usingRealChecker = checkFn === whatsappSafety.guardedCheck;
-  if (usingRealChecker && !whatsappWebService.isReady()) return;
-
+async function persistReadyLeads(leads, { shouldStop, onLeadReady } = {}) {
   for (const lead of leads) {
     if (shouldStop?.()) break;
-    if (!lead.phone) continue;
-    try {
-      const result = await checkFn(lead.phone);
-      if (result.skipped) break; // cap/circuit hit — rest would skip too
-      if (result.checked) {
-        lead.hasWhatsApp = result.valid;
-        lead.whatsAppCheckedAt = new Date().toISOString();
-      }
-    } catch {
-      // best-effort — leave the lead's WhatsApp fields as "unchecked"
-    }
+    // Callers are responsible for catching their own errors (as
+    // `captureWebsiteLeads` does for the website-lead path) so a
+    // persistence failure for one lead never stops the rest of the batch.
+    await onLeadReady?.(lead);
   }
 }
 
@@ -339,16 +338,17 @@ export async function findLeadsSequential({
  *   `scraper-message` { state, message } - raw messages from the scraper
  *   `businesses-scraped` { delta, total }
  *   `leads-found` { newLeads, total } - newLeads is the actual lead objects,
- *     so callers can mirror them into their own store incrementally. If
- *     WhatsApp Web is connected, each of these leads has already been
- *     checked (`hasWhatsApp`/`whatsAppCheckedAt` set) before this fires —
- *     see `inlineValidateWhatsApp`.
+ *     so callers can mirror them into their own store incrementally.
  *   `state-error` { state, message }
  *   `state-done` { state, statesDone, statesTotal, leadsInState }
  * @param {() => boolean} [opts.shouldStop] - checked between states; a
  *   `true` return ends the scan early (e.g. user cancelled this category).
  * @param {() => Promise<void>} [opts.waitWhilePaused] - awaited between
  *   states so a paused category truly does nothing until resumed.
+ * @param {(lead: object) => Promise<void>} [opts.onLeadReady] - awaited once
+ *   per lead before moving on to the next one — callers use this to persist
+ *   a lead immediately instead of waiting for the whole state/category to
+ *   finish. WhatsApp is not checked during the scan.
  */
 export async function scrapeCategoryNationwide(category, {
   dateRange = '30',
@@ -365,9 +365,7 @@ export async function scrapeCategoryNationwide(category, {
   // real Google Maps. Defaults to the real implementation, so production
   // behavior is unaffected.
   scrapeLocationFn = scrapeLocation,
-  // Test-only seam: lets tests inject a fake WhatsApp checker instead of
-  // hitting the real guarded session. Defaults to the real implementation.
-  checkWhatsAppFn = whatsappSafety.guardedCheck,
+  onLeadReady,
 } = {}) {
   if (!category?.trim()) {
     throw new Error('category is required');
@@ -460,11 +458,7 @@ export async function scrapeCategoryNationwide(category, {
         }));
 
       if (enriched.length) {
-        // Check each new lead's WhatsApp number right as it's found, before
-        // moving on to the next — same guarded/paced checker the bulk
-        // validation job uses, so this only runs (and only slows things
-        // down) when WhatsApp Web is actually connected.
-        await inlineValidateWhatsApp(enriched, { shouldStop, checkFn: checkWhatsAppFn });
+        await persistReadyLeads(enriched, { shouldStop, onLeadReady });
 
         leads = [...leads, ...enriched];
         onProgress?.({ type: 'leads-found', newLeads: enriched, total: leads.length });
@@ -510,6 +504,12 @@ let _citySeq = 0;
  * per-city worker pool, where the caller owns sequencing (which state,
  * which cities, in what order, how many at once) and just wants one
  * location scraped end-to-end.
+ *
+ * Returns `{ leads, businessesScraped, websiteLeadsFound }` — `leads` is
+ * the review-lead count (1-star reviews), `websiteLeadsFound` is the
+ * separate "no website" signal already saved to its own collection by
+ * `captureWebsiteLeads`, reported back here purely so callers can total it
+ * up for live scan-progress stats.
  */
 export async function scrapeOneCity(category, { city, state }, {
   dateRange = '30',
@@ -520,7 +520,10 @@ export async function scrapeOneCity(category, { city, state }, {
   onProgress,
   shouldStop,
   scrapeLocationFn = scrapeLocation,
-  checkWhatsAppFn = whatsappSafety.guardedCheck,
+  // Called one business at a time — the state-city orchestrator uses this
+  // to save each lead to Firestore immediately instead of waiting for the
+  // whole city (or category) to finish. WhatsApp is not checked here.
+  onLeadReady,
 } = {}) {
   const location = locationQuery({ city, state });
 
@@ -532,7 +535,7 @@ export async function scrapeOneCity(category, { city, state }, {
     shouldStop,
   });
 
-  await captureWebsiteLeads(businesses, { location: state, searchLocation: location, country });
+  const websiteLeads = await captureWebsiteLeads(businesses, { location: state, searchLocation: location, country });
 
   let leads = filterRecentOneStarLeads(businesses, { dateRange });
   leads = enrichLeadContacts(leads, country);
@@ -542,10 +545,10 @@ export async function scrapeOneCity(category, { city, state }, {
   leads = dedupeLeads(leads).map((l) => ({ ...l, id: `${l.id || 'lead'}-c${(_citySeq += 1)}` }));
 
   if (leads.length) {
-    await inlineValidateWhatsApp(leads, { shouldStop, checkFn: checkWhatsAppFn });
+    await persistReadyLeads(leads, { shouldStop, onLeadReady });
   }
 
-  return { leads, businessesScraped: businesses.length };
+  return { leads, businessesScraped: businesses.length, websiteLeadsFound: websiteLeads.length };
 }
 
 /**

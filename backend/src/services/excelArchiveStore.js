@@ -32,6 +32,7 @@ function docToRecord(doc) {
     maxResultsPerState: data.maxResultsPerState ?? null,
     targetLeadCount: data.targetLeadCount ?? null,
     analyze: data.analyze ?? null,
+    concurrency: data.concurrency ?? null,
     createdAt: data.createdAt?.toDate?.()?.toISOString() || null,
     updatedAt: data.updatedAt?.toDate?.()?.toISOString() || null,
   };
@@ -74,6 +75,7 @@ export async function uploadExcelArchive({
   maxResultsPerState,
   targetLeadCount,
   analyze,
+  concurrency,
 }) {
   const bucket = getStorageBucket();
   const storagePath = `${STORAGE_PREFIX}/${fileName}`;
@@ -108,6 +110,7 @@ export async function uploadExcelArchive({
       maxResultsPerState: maxResultsPerState ?? null,
       targetLeadCount: targetLeadCount ?? null,
       analyze: analyze ?? null,
+      concurrency: concurrency ?? null,
       createdAt: existing.exists ? existing.data().createdAt : FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     },

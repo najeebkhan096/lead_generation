@@ -37,6 +37,7 @@ class ApiConstants {
   static const String whatsAppWebValidate = '/api/whatsapp-web/validate';
   static const String whatsAppWebValidateList = '/api/whatsapp-web/validate-list';
   static const String whatsAppWebValidateAuto = '/api/whatsapp-web/validate-auto';
+  static const String whatsAppWebUnvalidated = '/api/whatsapp-web/unvalidated';
   static const String whatsAppWebValidateStatus = '/api/whatsapp-web/validate/status';
   static const String whatsAppWebValidateCancel = '/api/whatsapp-web/validate/cancel';
 
@@ -46,6 +47,7 @@ class ApiConstants {
   static String watchlistAssign(String id) => '/api/watchlist/$id/assign';
 
   static const String users = '/api/users';
+  static String userUpdate(String id) => '/api/users/$id';
 
   static const String excelArchives = '/api/excel-scans';
   static String excelArchiveData(String id) => '/api/excel-scans/$id/data';
@@ -60,6 +62,7 @@ class ApiConstants {
 
   static const String sales = '/api/sales';
   static const String salesStats = '/api/sales/stats';
+  static const String salesScanReviews = '/api/sales/scan-reviews';
   static String saleUpdate(String id) => '/api/sales/$id';
   static String saleDelete(String id) => '/api/sales/$id';
 }
