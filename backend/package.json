@@ -7,7 +7,8 @@
   "scripts": {
     "start": "node --max-old-space-size=8192 src/index.js",
     "dev": "node --max-old-space-size=8192 --watch src/index.js",
-    "build:web": "bash ../scripts/build-web.sh"
+    "build:web": "bash ../scripts/build-web.sh",
+    "test:outreach": "node --test src/services/outreach/*.test.js"
   },
   "dependencies": {
     "better-sqlite3": "^13.0.1",
@@ -17,6 +18,7 @@
     "exceljs": "^4.4.0",
     "express": "^4.21.2",
     "firebase-admin": "^14.2.0",
+    "nodemailer": "^7.0.11",
     "playwright": "1.61.1",
     "qrcode": "^1.5.4",
     "whatsapp-web.js": "^1.34.7"

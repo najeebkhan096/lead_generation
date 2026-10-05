@@ -9,6 +9,7 @@ import '../entities/sales_user.dart';
 import '../entities/watchlist_entry.dart';
 import '../entities/whatsapp_check_result.dart';
 import '../entities/whatsapp_web_status.dart';
+import '../entities/outreach.dart';
 
 abstract class LeadRepository {
   /// The most recent multi-category (and/or multi-country) scan as one
@@ -262,4 +263,63 @@ abstract class LeadRepository {
   /// Google reviews in the last [dateRange] days. Optional [salesmanId]
   /// matches the Sales page filter.
   Future<List<SaleReviewScanResult>> scanSaleReviews({String dateRange = '30', String? salesmanId});
+
+  Future<OutreachDashboard> getOutreachDashboard();
+  Future<OutreachAnalytics> getOutreachAnalytics();
+  Future<OutreachSettings> getOutreachSettings();
+  Future<OutreachSettings> updateOutreachSettings({
+    bool? testMode,
+    String? testEmail,
+    String? senderName,
+    String? senderEmail,
+    int? defaultDailyLimit,
+  });
+  Future<List<OutreachRecord>> listOutreachRecords({
+    bool readyForReview = false,
+    String? campaignId,
+    String? outreachStatus,
+    String? sourceCollection,
+  });
+  Future<OutreachRecord> ensureOutreachRecord({
+    required String sourceCollection,
+    required String sourceLeadId,
+    String? campaignId,
+  });
+  Future<(OutreachRecord, List<OutreachEvent>)> getOutreachRecord(String id);
+  Future<OutreachRecord> updateOutreachRecord(
+    String id, {
+    String? generatedSubject,
+    String? generatedBody,
+    String? email,
+    String? website,
+  });
+  Future<OutreachRecord> outreachDiscoverEmail(String id, {bool force = false});
+  Future<OutreachRecord> outreachVerifyEmail(String id, {bool force = false});
+  Future<OutreachRecord> outreachAnalyzeWebsite(String id, {bool force = false});
+  Future<OutreachRecord> outreachGenerateEmail(String id, {bool force = false});
+  Future<OutreachRecord> outreachProcessLead(String id, {bool force = false, bool autoSend = false});
+  Future<OutreachRecord> outreachApprove(String id, {String? subject, String? body});
+  Future<OutreachRecord> outreachReject(String id);
+  Future<OutreachRecord> outreachSetStatus(String id, OutreachStatus status);
+  Future<OutreachJob> startOutreachRun({
+    required String kind,
+    required int from,
+    required int to,
+    String sourceCollection = 'websiteLeads',
+  });
+  Future<OutreachJob> getOutreachJob();
+  Future<OutreachJob> cancelOutreachJob();
+  Future<List<OutreachCampaign>> listOutreachCampaigns();
+  Future<OutreachCampaign> createOutreachCampaign({
+    required String name,
+    String? description,
+    String sourceCollection = 'websiteLeads',
+    int dailyLimit = 30,
+    bool followUpEnabled = true,
+    int followUp1DelayDays = 3,
+    int followUp2DelayDays = 4,
+    Map<String, dynamic>? filters,
+  });
+  Future<OutreachCampaign> updateOutreachCampaign(String id, {String? status, int? dailyLimit, bool? testMode});
+  Future<void> startOutreachCampaign(String id);
 }

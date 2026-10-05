@@ -129,6 +129,9 @@ function docToWebsiteLead(doc) {
     waLink: null,
     badReview: { stars: 1, text: '', date: 'Unknown' },
     savedAt: d.updatedAt?.toDate?.()?.toISOString?.() || null,
+    email: d.email || null,
+    emailOutreachStatus: d.emailOutreachStatus || null,
+    emailSentAt: d.emailSentAt?.toDate?.()?.toISOString?.() || null,
   };
 }
 

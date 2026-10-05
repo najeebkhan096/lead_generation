@@ -1,5 +1,7 @@
 import 'package:equatable/equatable.dart';
 
+import 'outreach.dart';
+
 class BadReview extends Equatable {
   const BadReview({
     required this.stars,
@@ -48,6 +50,8 @@ class Lead extends Equatable {
     this.email,
     this.savedAt,
     this.whatsAppCheckedAt,
+    this.emailOutreachStatus,
+    this.emailSentAt,
   });
 
   final String id;
@@ -79,6 +83,11 @@ class Lead extends Equatable {
   /// means it's never been checked (unverified, not "not on WhatsApp").
   final DateTime? whatsAppCheckedAt;
 
+  /// Email outreach send status mirrored from `outreachRecords`.
+  /// `null` means this lead has never been through outreach — treat as not sent.
+  final OutreachStatus? emailOutreachStatus;
+  final DateTime? emailSentAt;
+
   factory Lead.fromJson(Map<String, dynamic> json) {
     return Lead(
       id: (json['id'] as String?) ?? json['business']?.toString() ?? '',
@@ -100,6 +109,10 @@ class Lead extends Equatable {
       email: json['email'] as String?,
       savedAt: DateTime.tryParse((json['savedAt'] as String?) ?? ''),
       whatsAppCheckedAt: DateTime.tryParse((json['whatsAppCheckedAt'] as String?) ?? ''),
+      emailOutreachStatus: json['emailOutreachStatus'] is String
+          ? OutreachStatus.fromJson(json['emailOutreachStatus'] as String)
+          : null,
+      emailSentAt: DateTime.tryParse((json['emailSentAt'] as String?) ?? ''),
     );
   }
 
@@ -122,6 +135,8 @@ class Lead extends Equatable {
       email: email,
       savedAt: savedAt,
       whatsAppCheckedAt: whatsAppCheckedAt ?? this.whatsAppCheckedAt,
+      emailOutreachStatus: emailOutreachStatus,
+      emailSentAt: emailSentAt,
     );
   }
 
@@ -148,5 +163,5 @@ class Lead extends Equatable {
 
   @override
   List<Object?> get props =>
-      [id, business, category, location, hasWhatsApp, waLink, badReview];
+      [id, business, category, location, hasWhatsApp, waLink, badReview, emailOutreachStatus];
 }

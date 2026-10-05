@@ -9,6 +9,7 @@ import '../../domain/entities/sales_user.dart';
 import '../../domain/entities/watchlist_entry.dart';
 import '../../domain/entities/whatsapp_check_result.dart';
 import '../../domain/entities/whatsapp_web_status.dart';
+import '../../domain/entities/outreach.dart';
 import '../../domain/repositories/lead_repository.dart';
 import '../datasources/lead_remote_datasource.dart';
 
@@ -318,4 +319,162 @@ class LeadRepositoryImpl implements LeadRepository {
   @override
   Future<List<SaleReviewScanResult>> scanSaleReviews({String dateRange = '30', String? salesmanId}) =>
       _remote.scanSaleReviews(dateRange: dateRange, salesmanId: salesmanId);
+
+  @override
+  Future<OutreachDashboard> getOutreachDashboard() => _remote.getOutreachDashboard();
+
+  @override
+  Future<OutreachAnalytics> getOutreachAnalytics() => _remote.getOutreachAnalytics();
+
+  @override
+  Future<OutreachSettings> getOutreachSettings() => _remote.getOutreachSettings();
+
+  @override
+  Future<OutreachSettings> updateOutreachSettings({
+    bool? testMode,
+    String? testEmail,
+    String? senderName,
+    String? senderEmail,
+    int? defaultDailyLimit,
+  }) {
+    return _remote.updateOutreachSettings({
+      if (testMode != null) 'testMode': testMode,
+      if (testEmail != null) 'testEmail': testEmail,
+      if (senderName != null) 'senderName': senderName,
+      if (senderEmail != null) 'senderEmail': senderEmail,
+      if (defaultDailyLimit != null) 'defaultDailyLimit': defaultDailyLimit,
+    });
+  }
+
+  @override
+  Future<List<OutreachRecord>> listOutreachRecords({
+    bool readyForReview = false,
+    String? campaignId,
+    String? outreachStatus,
+    String? sourceCollection,
+  }) =>
+      _remote.listOutreachRecords(
+        readyForReview: readyForReview,
+        campaignId: campaignId,
+        outreachStatus: outreachStatus,
+        sourceCollection: sourceCollection,
+      );
+
+  @override
+  Future<OutreachRecord> ensureOutreachRecord({
+    required String sourceCollection,
+    required String sourceLeadId,
+    String? campaignId,
+  }) =>
+      _remote.ensureOutreachRecord(
+        sourceCollection: sourceCollection,
+        sourceLeadId: sourceLeadId,
+        campaignId: campaignId,
+      );
+
+  @override
+  Future<(OutreachRecord, List<OutreachEvent>)> getOutreachRecord(String id) =>
+      _remote.getOutreachRecord(id);
+
+  @override
+  Future<OutreachRecord> updateOutreachRecord(
+    String id, {
+    String? generatedSubject,
+    String? generatedBody,
+    String? email,
+    String? website,
+  }) =>
+      _remote.updateOutreachRecord(id, {
+        if (generatedSubject != null) 'generatedSubject': generatedSubject,
+        if (generatedBody != null) 'generatedBody': generatedBody,
+        if (email != null) 'email': email,
+        if (website != null) 'website': website,
+      });
+
+  @override
+  Future<OutreachRecord> outreachDiscoverEmail(String id, {bool force = false}) =>
+      _remote.outreachDiscoverEmail(id, force: force);
+
+  @override
+  Future<OutreachRecord> outreachVerifyEmail(String id, {bool force = false}) =>
+      _remote.outreachVerifyEmail(id, force: force);
+
+  @override
+  Future<OutreachRecord> outreachAnalyzeWebsite(String id, {bool force = false}) =>
+      _remote.outreachAnalyzeWebsite(id, force: force);
+
+  @override
+  Future<OutreachRecord> outreachGenerateEmail(String id, {bool force = false}) =>
+      _remote.outreachGenerateEmail(id, force: force);
+
+  @override
+  Future<OutreachRecord> outreachProcessLead(String id, {bool force = false, bool autoSend = false}) =>
+      _remote.outreachProcessLead(id, force: force, autoSend: autoSend);
+
+  @override
+  Future<OutreachRecord> outreachApprove(String id, {String? subject, String? body}) =>
+      _remote.outreachApprove(id, subject: subject, body: body);
+
+  @override
+  Future<OutreachRecord> outreachReject(String id) => _remote.outreachReject(id);
+
+  @override
+  Future<OutreachRecord> outreachSetStatus(String id, OutreachStatus status) =>
+      _remote.outreachSetStatus(id, status.json);
+
+  @override
+  Future<List<OutreachCampaign>> listOutreachCampaigns() => _remote.listOutreachCampaigns();
+
+  @override
+  Future<OutreachCampaign> createOutreachCampaign({
+    required String name,
+    String? description,
+    String sourceCollection = 'websiteLeads',
+    int dailyLimit = 30,
+    bool followUpEnabled = true,
+    int followUp1DelayDays = 3,
+    int followUp2DelayDays = 4,
+    Map<String, dynamic>? filters,
+  }) =>
+      _remote.createOutreachCampaign({
+        'name': name,
+        'description': description,
+        'sourceCollection': sourceCollection,
+        'dailyLimit': dailyLimit,
+        'followUpEnabled': followUpEnabled,
+        'followUp1DelayDays': followUp1DelayDays,
+        'followUp2DelayDays': followUp2DelayDays,
+        if (filters != null) 'filters': filters,
+      });
+
+  @override
+  Future<OutreachCampaign> updateOutreachCampaign(String id, {String? status, int? dailyLimit, bool? testMode}) =>
+      _remote.updateOutreachCampaign(id, {
+        if (status != null) 'status': status,
+        if (dailyLimit != null) 'dailyLimit': dailyLimit,
+        if (testMode != null) 'testMode': testMode,
+      });
+
+  @override
+  Future<void> startOutreachCampaign(String id) => _remote.startOutreachCampaign(id);
+
+  @override
+  Future<OutreachJob> startOutreachRun({
+    required String kind,
+    required int from,
+    required int to,
+    String sourceCollection = 'websiteLeads',
+  }) =>
+      _remote.startOutreachRun(
+        kind: kind,
+        from: from,
+        to: to,
+        sourceCollection: sourceCollection,
+      );
+
+  @override
+  Future<OutreachJob> getOutreachJob() => _remote.getOutreachJob();
+
+  @override
+  Future<OutreachJob> cancelOutreachJob() => _remote.cancelOutreachJob();
 }

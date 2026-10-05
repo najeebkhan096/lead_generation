@@ -11,6 +11,7 @@ void main() {
 
     expect(find.text('Dashboard'), findsWidgets);
     expect(find.text('Leads'), findsWidgets);
+    expect(find.text('Outreach'), findsWidgets);
     expect(find.text('WhatsApp Tool'), findsOneWidget);
   });
 }

@@ -101,6 +101,27 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Website-dev outreach is admin-backend only (Admin SDK). Mobile
+    // never sends campaign mail; keep these collections client-denied.
+    match /outreachRecords/{id} {
+      allow read, write: if false;
+    }
+    match /outreachCampaigns/{id} {
+      allow read, write: if false;
+    }
+    match /outreachQueue/{id} {
+      allow read, write: if false;
+    }
+    match /outreachEvents/{id} {
+      allow read, write: if false;
+    }
+    match /outreachUnsubscribes/{id} {
+      allow read, write: if false;
+    }
+    match /outreachSettings/{id} {
+      allow read, write: if false;
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

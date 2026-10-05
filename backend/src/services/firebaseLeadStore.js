@@ -219,6 +219,9 @@ function docToLead(doc) {
     searchId: d.searchId,
     savedAt: d.updatedAt?.toDate?.()?.toISOString?.() || null,
     whatsAppCheckedAt: d.whatsAppCheckedAt?.toDate?.()?.toISOString?.() || null,
+    email: d.email || null,
+    emailOutreachStatus: d.emailOutreachStatus || null,
+    emailSentAt: d.emailSentAt?.toDate?.()?.toISOString?.() || null,
   };
 }
 

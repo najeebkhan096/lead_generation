@@ -7,6 +7,7 @@ import '../../presentation/pages/excel_archive_page.dart';
 import '../../presentation/pages/excel_scan_page.dart';
 import '../../presentation/pages/multi_scan_page.dart';
 import '../../presentation/pages/sales_page.dart';
+import '../../presentation/pages/outreach_page.dart';
 import '../../presentation/pages/saved_businesses_page.dart';
 import '../../presentation/pages/settings_page.dart';
 import '../../presentation/pages/users_page.dart';
@@ -49,6 +50,9 @@ final GoRouter appRouter = GoRouter(
         ]),
         StatefulShellBranch(routes: [
           GoRoute(path: '/sales', builder: (context, state) => const SalesPage()),
+        ]),
+        StatefulShellBranch(routes: [
+          GoRoute(path: '/outreach', builder: (context, state) => const OutreachPage()),
         ]),
         StatefulShellBranch(routes: [
           GoRoute(path: '/settings', builder: (context, state) => const SettingsPage()),

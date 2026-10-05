@@ -16,7 +16,9 @@ import whatsappValidatedRoutes from './routes/whatsappValidatedRoutes.js';
 import userRoutes from './routes/userRoutes.js';
 import saleRoutes from './routes/saleRoutes.js';
 import stateCityScanRoutes from './routes/stateCityScanRoutes.js';
+import outreachRoutes from './routes/outreachRoutes.js';
 import { initFirebase, getFirebaseStatus } from './firebase/admin.js';
+import { startQueueWorker } from './services/outreach/outreachOrchestrator.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -68,6 +70,7 @@ app.use('/api/whatsapp-validated-scans', whatsappValidatedRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/sales', saleRoutes);
 app.use('/api/state-scan', stateCityScanRoutes);
+app.use('/api/outreach', outreachRoutes);
 
 if (fs.existsSync(path.join(webRoot, 'index.html'))) {
   app.use(express.static(webRoot, { index: false }));
@@ -92,5 +95,10 @@ app.listen(PORT, '0.0.0.0', () => {
   );
   if (fs.existsSync(path.join(webRoot, 'index.html'))) {
     console.log(`Serving Flutter web from ${webRoot}`);
+  }
+  try {
+    if (getFirebaseStatus().configured) startQueueWorker();
+  } catch (err) {
+    console.warn('Outreach queue worker not started:', err.message || err);
   }
 });

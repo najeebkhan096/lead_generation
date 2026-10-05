@@ -13,6 +13,7 @@ import '../../domain/entities/sales_user.dart';
 import '../../domain/entities/watchlist_entry.dart';
 import '../../domain/entities/whatsapp_check_result.dart';
 import '../../domain/entities/whatsapp_web_status.dart';
+import '../../domain/entities/outreach.dart';
 
 class LeadRemoteDataSource {
   LeadRemoteDataSource({http.Client? client})
@@ -830,6 +831,252 @@ class LeadRemoteDataSource {
     }
     final resultsJson = (body['results'] as List<dynamic>? ?? []);
     return resultsJson.map((e) => SaleReviewScanResult.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  Future<OutreachDashboard> getOutreachDashboard() async {
+    final response = await _client.get(_uri(ApiConstants.outreachDashboard));
+    final body = _tryDecode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['error'] ?? 'Failed to load outreach dashboard');
+    }
+    return OutreachDashboard.fromJson(body);
+  }
+
+  Future<OutreachAnalytics> getOutreachAnalytics() async {
+    final response = await _client.get(_uri(ApiConstants.outreachAnalytics));
+    final body = _tryDecode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['error'] ?? 'Failed to load outreach analytics');
+    }
+    return OutreachAnalytics.fromJson(body);
+  }
+
+  Future<OutreachSettings> getOutreachSettings() async {
+    final response = await _client.get(_uri(ApiConstants.outreachSettings));
+    final body = _tryDecode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['error'] ?? 'Failed to load outreach settings');
+    }
+    return OutreachSettings.fromJson(body['settings'] as Map<String, dynamic>?);
+  }
+
+  Future<OutreachSettings> updateOutreachSettings(Map<String, dynamic> payload) async {
+    final response = await _client.patch(
+      _uri(ApiConstants.outreachSettings),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(payload),
+    );
+    final body = _tryDecode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['error'] ?? 'Failed to save outreach settings');
+    }
+    return OutreachSettings.fromJson(body['settings'] as Map<String, dynamic>?);
+  }
+
+  Future<List<OutreachRecord>> listOutreachRecords({
+    bool readyForReview = false,
+    String? campaignId,
+    String? outreachStatus,
+    String? sourceCollection,
+  }) async {
+    final params = <String, String>{
+      if (readyForReview) 'readyForReview': 'true',
+      'campaignId': ?campaignId,
+      'outreachStatus': ?outreachStatus,
+      'sourceCollection': ?sourceCollection,
+      'limit': '200',
+    };
+    final response = await _client.get(_uri(ApiConstants.outreachRecords).replace(queryParameters: params));
+    final body = _tryDecode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['error'] ?? 'Failed to load outreach records');
+    }
+    return (body['records'] as List<dynamic>? ?? [])
+        .whereType<Map>()
+        .map((e) => OutreachRecord.fromJson(Map<String, dynamic>.from(e)))
+        .toList();
+  }
+
+  Future<OutreachRecord> ensureOutreachRecord({
+    required String sourceCollection,
+    required String sourceLeadId,
+    String? campaignId,
+  }) async {
+    final response = await _client.post(
+      _uri(ApiConstants.outreachRecords),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'sourceCollection': sourceCollection,
+        'sourceLeadId': sourceLeadId,
+        'campaignId': ?campaignId,
+      }),
+    );
+    final body = _tryDecode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['error'] ?? 'Failed to open outreach record');
+    }
+    return OutreachRecord.fromJson(body['record'] as Map<String, dynamic>);
+  }
+
+  Future<(OutreachRecord, List<OutreachEvent>)> getOutreachRecord(String id) async {
+    final response = await _client.get(_uri(ApiConstants.outreachRecord(id)));
+    final body = _tryDecode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['error'] ?? 'Failed to load outreach record');
+    }
+    final record = OutreachRecord.fromJson(body['record'] as Map<String, dynamic>);
+    final events = (body['events'] as List<dynamic>? ?? [])
+        .whereType<Map>()
+        .map((e) => OutreachEvent.fromJson(Map<String, dynamic>.from(e)))
+        .toList();
+    return (record, events);
+  }
+
+  Future<OutreachRecord> _postRecord(String path, {Map<String, dynamic>? payload}) async {
+    final response = await _client
+        .post(
+          _uri(path),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode(payload ?? const {}),
+        )
+        .timeout(const Duration(minutes: 2));
+    final body = _tryDecode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['error'] ?? 'Outreach request failed');
+    }
+    final recordJson = body['record'] as Map<String, dynamic>? ?? body;
+    return OutreachRecord.fromJson(recordJson);
+  }
+
+  Future<OutreachRecord> updateOutreachRecord(String id, Map<String, dynamic> payload) async {
+    final response = await _client.patch(
+      _uri(ApiConstants.outreachRecord(id)),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(payload),
+    );
+    final body = _tryDecode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['error'] ?? 'Failed to update outreach record');
+    }
+    return OutreachRecord.fromJson(body['record'] as Map<String, dynamic>);
+  }
+
+  Future<OutreachRecord> outreachDiscoverEmail(String id, {bool force = false}) =>
+      _postRecord(ApiConstants.outreachRecordDiscover(id), payload: {'force': force});
+
+  Future<OutreachRecord> outreachVerifyEmail(String id, {bool force = false}) =>
+      _postRecord(ApiConstants.outreachRecordVerify(id), payload: {'force': force});
+
+  Future<OutreachRecord> outreachAnalyzeWebsite(String id, {bool force = false}) =>
+      _postRecord(ApiConstants.outreachRecordAnalyze(id), payload: {'force': force});
+
+  Future<OutreachRecord> outreachGenerateEmail(String id, {bool force = false}) =>
+      _postRecord(ApiConstants.outreachRecordGenerate(id), payload: {'force': force});
+
+  Future<OutreachRecord> outreachProcessLead(String id, {bool force = false, bool autoSend = false}) =>
+      _postRecord(ApiConstants.outreachRecordProcess(id), payload: {'force': force, 'autoSend': autoSend});
+
+  Future<OutreachRecord> outreachApprove(String id, {String? subject, String? body}) =>
+      _postRecord(ApiConstants.outreachRecordApprove(id), payload: {
+        'subject': ?subject,
+        'body': ?body,
+      });
+
+  Future<OutreachRecord> outreachReject(String id) =>
+      _postRecord(ApiConstants.outreachRecordReject(id));
+
+  Future<OutreachRecord> outreachSetStatus(String id, String status) =>
+      _postRecord(ApiConstants.outreachRecordStatus(id), payload: {'outreachStatus': status});
+
+  Future<List<OutreachCampaign>> listOutreachCampaigns() async {
+    final response = await _client.get(_uri(ApiConstants.outreachCampaigns));
+    final body = _tryDecode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['error'] ?? 'Failed to load campaigns');
+    }
+    return (body['campaigns'] as List<dynamic>? ?? [])
+        .whereType<Map>()
+        .map((e) => OutreachCampaign.fromJson(Map<String, dynamic>.from(e)))
+        .toList();
+  }
+
+  Future<OutreachCampaign> createOutreachCampaign(Map<String, dynamic> payload) async {
+    final response = await _client.post(
+      _uri(ApiConstants.outreachCampaigns),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(payload),
+    );
+    final body = _tryDecode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['error'] ?? 'Failed to create campaign');
+    }
+    return OutreachCampaign.fromJson(body['campaign'] as Map<String, dynamic>);
+  }
+
+  Future<OutreachCampaign> updateOutreachCampaign(String id, Map<String, dynamic> payload) async {
+    final response = await _client.patch(
+      _uri(ApiConstants.outreachCampaign(id)),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(payload),
+    );
+    final body = _tryDecode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['error'] ?? 'Failed to update campaign');
+    }
+    return OutreachCampaign.fromJson(body['campaign'] as Map<String, dynamic>);
+  }
+
+  Future<void> startOutreachCampaign(String id) async {
+    final response = await _client.post(
+      _uri(ApiConstants.outreachCampaignStart(id)),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({}),
+    );
+    final body = _tryDecode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['error'] ?? 'Failed to start campaign');
+    }
+  }
+
+  Future<OutreachJob> startOutreachRun({
+    required String kind,
+    required int from,
+    required int to,
+    String sourceCollection = 'websiteLeads',
+  }) async {
+    final response = await _client.post(
+      _uri(ApiConstants.outreachRun),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'kind': kind,
+        'from': from,
+        'to': to,
+        'sourceCollection': sourceCollection,
+      }),
+    );
+    final body = _tryDecode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['error'] ?? 'Failed to start outreach');
+    }
+    return OutreachJob.fromJson(body['job'] as Map<String, dynamic>?);
+  }
+
+  Future<OutreachJob> getOutreachJob() async {
+    final response = await _client.get(_uri(ApiConstants.outreachJob));
+    final body = _tryDecode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['error'] ?? 'Failed to load outreach job');
+    }
+    return OutreachJob.fromJson(body['job'] as Map<String, dynamic>?);
+  }
+
+  Future<OutreachJob> cancelOutreachJob() async {
+    final response = await _client.post(_uri(ApiConstants.outreachJobCancel));
+    final body = _tryDecode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['error'] ?? 'Failed to cancel outreach job');
+    }
+    return OutreachJob.fromJson(body['job'] as Map<String, dynamic>?);
   }
 
   Map<String, dynamic> _tryDecode(String body) {

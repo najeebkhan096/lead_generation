@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../domain/entities/lead.dart';
+import '../../domain/entities/outreach.dart';
 import '../utils/date_format.dart';
 
 /// Compact summary card for a single saved business, used in the
@@ -124,53 +125,61 @@ class SavedBusinessCard extends StatelessWidget {
               const SizedBox(height: 10),
               Row(
                 children: [
-                  if (verified)
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                      decoration: BoxDecoration(
-                        color: AppTheme.sage500,
-                        borderRadius: BorderRadius.circular(AppTheme.radiusPill),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(AppIcons.checkCircle, size: 12, color: AppTheme.surface),
-                          const SizedBox(width: 4),
-                          const Text(
-                            'Verified',
-                            style: TextStyle(
-                              color: AppTheme.surface,
-                              fontWeight: FontWeight.w700,
-                              fontSize: 11,
+                  Expanded(
+                    child: Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        _EmailSendChip(status: lead.emailOutreachStatus),
+                        if (verified)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                            decoration: BoxDecoration(
+                              color: AppTheme.sage500,
+                              borderRadius: BorderRadius.circular(AppTheme.radiusPill),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(AppIcons.checkCircle, size: 12, color: AppTheme.surface),
+                                SizedBox(width: 4),
+                                Text(
+                                  'Verified',
+                                  style: TextStyle(
+                                    color: AppTheme.surface,
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 11,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )
+                        else if (maybeWhatsApp)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                            decoration: BoxDecoration(
+                              color: AppTheme.sage100,
+                              borderRadius: BorderRadius.circular(AppTheme.radiusPill),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(AppIcons.chat, size: 12, color: AppTheme.sage700),
+                                SizedBox(width: 4),
+                                Text(
+                                  'WhatsApp',
+                                  style: TextStyle(
+                                    color: AppTheme.sage700,
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 11,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                        ],
-                      ),
-                    )
-                  else if (maybeWhatsApp)
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                      decoration: BoxDecoration(
-                        color: AppTheme.sage100,
-                        borderRadius: BorderRadius.circular(AppTheme.radiusPill),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(AppIcons.chat, size: 12, color: AppTheme.sage700),
-                          const SizedBox(width: 4),
-                          const Text(
-                            'WhatsApp',
-                            style: TextStyle(
-                              color: AppTheme.sage700,
-                              fontWeight: FontWeight.w700,
-                              fontSize: 11,
-                            ),
-                          ),
-                        ],
-                      ),
+                      ],
                     ),
-                  const Spacer(),
+                  ),
                   if (addedOn != null)
                     Text(
                       addedOn,
@@ -181,6 +190,42 @@ class SavedBusinessCard extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _EmailSendChip extends StatelessWidget {
+  const _EmailSendChip({required this.status});
+  final OutreachStatus? status;
+
+  @override
+  Widget build(BuildContext context) {
+    final value = status ?? OutreachStatus.notProcessed;
+    final sent = value.wasSent;
+    final failed = value == OutreachStatus.failed || value == OutreachStatus.bounced || value == OutreachStatus.emailInvalid;
+    final sending = value == OutreachStatus.queued;
+    final bg = sent
+        ? AppTheme.sage100
+        : failed
+            ? AppTheme.accent100
+            : sending
+                ? AppTheme.neutral200
+                : AppTheme.neutral100;
+    final fg = sent
+        ? AppTheme.sage800
+        : failed
+            ? AppTheme.accent800
+            : AppTheme.neutral700;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(AppTheme.radiusPill),
+      ),
+      child: Text(
+        value.sendLabel,
+        style: TextStyle(color: fg, fontWeight: FontWeight.w700, fontSize: 11),
       ),
     );
   }

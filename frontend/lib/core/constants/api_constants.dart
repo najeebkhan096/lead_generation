@@ -65,4 +65,26 @@ class ApiConstants {
   static const String salesScanReviews = '/api/sales/scan-reviews';
   static String saleUpdate(String id) => '/api/sales/$id';
   static String saleDelete(String id) => '/api/sales/$id';
+
+  static const String outreachDashboard = '/api/outreach/dashboard';
+  static const String outreachAnalytics = '/api/outreach/analytics';
+  static const String outreachSettings = '/api/outreach/settings';
+  static const String outreachRecords = '/api/outreach/records';
+  static const String outreachCampaigns = '/api/outreach/campaigns';
+  static const String outreachJob = '/api/outreach/job';
+  static const String outreachJobCancel = '/api/outreach/job/cancel';
+  static const String outreachRun = '/api/outreach/run';
+  static const String outreachQueueDrain = '/api/outreach/queue/drain';
+  static String outreachRecord(String id) => '/api/outreach/records/$id';
+  static String outreachRecordDiscover(String id) => '/api/outreach/records/$id/discover-email';
+  static String outreachRecordVerify(String id) => '/api/outreach/records/$id/verify-email';
+  static String outreachRecordAnalyze(String id) => '/api/outreach/records/$id/analyze-website';
+  static String outreachRecordGenerate(String id) => '/api/outreach/records/$id/generate-email';
+  static String outreachRecordProcess(String id) => '/api/outreach/records/$id/process';
+  static String outreachRecordApprove(String id) => '/api/outreach/records/$id/approve';
+  static String outreachRecordReject(String id) => '/api/outreach/records/$id/reject';
+  static String outreachRecordStatus(String id) => '/api/outreach/records/$id/status';
+  static String outreachCampaign(String id) => '/api/outreach/campaigns/$id';
+  static String outreachCampaignEnroll(String id) => '/api/outreach/campaigns/$id/enroll';
+  static String outreachCampaignStart(String id) => '/api/outreach/campaigns/$id/start';
 }

@@ -35,6 +35,7 @@ class AdminShell extends StatelessWidget {
     (icon: AppIcons.globe, label: 'Website Leads'),
     (icon: AppIcons.chat, label: 'WhatsApp Tool'),
     (icon: AppIcons.tag, label: 'Sales'),
+    (icon: AppIcons.mail, label: 'Outreach'),
     (icon: AppIcons.settings, label: 'Settings'),
   ];
 
