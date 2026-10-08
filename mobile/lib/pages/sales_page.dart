@@ -2,12 +2,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../models/sale.dart';
-import '../services/open_links.dart';
 import '../services/sale_repository.dart';
 import '../theme/app_theme.dart';
-import '../utils/date_format.dart';
 import '../widgets/page_header.dart';
-import '../widgets/search_field.dart';
 import 'saved_businesses_page.dart' show StateBadge;
 
 /// A salesman's own orders — mirrors the web admin's Sales dashboard, but
@@ -24,8 +21,6 @@ class SalesPage extends StatefulWidget {
 
 class _SalesPageState extends State<SalesPage> {
   final _repo = SaleRepository();
-  String _searchQuery = '';
-  final _searchController = TextEditingController();
   Stream<List<Sale>>? _salesStream;
 
   @override
@@ -33,12 +28,6 @@ class _SalesPageState extends State<SalesPage> {
     super.initState();
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid != null) _salesStream = _repo.getSalesStream(uid);
-  }
-
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
   }
 
   @override
@@ -67,19 +56,12 @@ class _SalesPageState extends State<SalesPage> {
 
               final allSales = snapshot.data ?? const <Sale>[];
 
-              var ongoing = allSales
+              final ongoing = allSales
                   .where((s) => s.status == SaleStatus.newSale || s.status == SaleStatus.inProgress)
                   .toList();
-              var completed = allSales
+              final completed = allSales
                   .where((s) => s.status == SaleStatus.completed || s.status == SaleStatus.cancelled)
                   .toList();
-
-              if (_searchQuery.isNotEmpty) {
-                final query = _searchQuery.toLowerCase();
-                bool matches(Sale s) => s.businessName.toLowerCase().contains(query);
-                ongoing = ongoing.where(matches).toList();
-                completed = completed.where(matches).toList();
-              }
 
               final totalEarned = allSales
                   .where((s) => s.employeePaymentStatus == EmployeePaymentStatus.paid)
@@ -96,16 +78,6 @@ class _SalesPageState extends State<SalesPage> {
                     subtitle: allSales.isEmpty ? 'Orders assigned to you will show up here' : '${allSales.length} total ${allSales.length == 1 ? 'order' : 'orders'}',
                     trailing: HeaderBadge(icon: AppIcons.wallet, background: t.sageTint, foreground: t.sageDeep),
                   ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: SearchField(
-                      controller: _searchController,
-                      value: _searchQuery,
-                      hintText: 'Search orders...',
-                      onChanged: (value) => setState(() => _searchQuery = value),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 20),
                     child: Row(
@@ -261,7 +233,6 @@ class _SaleCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = context.tokens;
-    final date = formatDate(sale.updatedAt ?? sale.createdAt);
     final (statusLabel, statusBg, statusFg) = switch (sale.status) {
       SaleStatus.newSale => ('NEW', t.neutralTint, t.subtle),
       SaleStatus.inProgress => ('IN PROGRESS', t.accentTint, t.accentTextStrong),
@@ -295,10 +266,6 @@ class _SaleCard extends StatelessWidget {
               ),
             ],
           ),
-          if (date != null) ...[
-            const SizedBox(height: 4),
-            Text(date, style: Theme.of(context).textTheme.bodySmall),
-          ],
           const SizedBox(height: 12),
           Row(
             children: [
@@ -320,35 +287,9 @@ class _SaleCard extends StatelessWidget {
                   style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: paid ? t.sageTextStrong : t.accentTextStrong),
                 ),
               ),
-              const Spacer(),
-              if (sale.reviewLink != null && sale.reviewLink!.trim().isNotEmpty)
-                _RoundIconButton(onTap: () => openExternalUrl(sale.reviewLink!)),
             ],
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _RoundIconButton extends StatelessWidget {
-  const _RoundIconButton({required this.onTap});
-
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = context.tokens;
-    return Material(
-      color: t.neutralTint,
-      shape: const CircleBorder(),
-      child: InkWell(
-        onTap: onTap,
-        customBorder: const CircleBorder(),
-        child: Padding(
-          padding: const EdgeInsets.all(8),
-          child: Icon(AppIcons.externalLink, size: 16, color: t.subtle),
-        ),
       ),
     );
   }

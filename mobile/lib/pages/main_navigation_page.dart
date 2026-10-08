@@ -3,6 +3,7 @@ import '../theme/app_theme.dart';
 import 'leads_page.dart';
 import 'whatsapp_verified_leads_page.dart';
 import 'sales_page.dart';
+import '../features/twilio_outreach/twilio_outreach_page.dart';
 import 'profile_page.dart';
 
 class MainNavigationPage extends StatefulWidget {
@@ -18,6 +19,7 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
   static const List<Widget> _pages = [
     WhatsAppVerifiedLeadsPage(),
     LeadsPage(),
+    TwilioOutreachPage(embedded: true),
     SalesPage(),
     ProfilePage(),
   ];
@@ -41,6 +43,10 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
           NavigationDestination(
             icon: Icon(AppIcons.compass),
             label: 'Leads',
+          ),
+          NavigationDestination(
+            icon: Icon(AppIcons.send),
+            label: 'Outreach',
           ),
           NavigationDestination(
             icon: Icon(AppIcons.wallet),

@@ -2,6 +2,12 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>NSCameraUsageDescription</key>
+	<string>Take a photo to use as the WhatsApp template header image.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Record voice notes to send to leads on WhatsApp.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Choose a photo to use as the WhatsApp template header image.</string>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>

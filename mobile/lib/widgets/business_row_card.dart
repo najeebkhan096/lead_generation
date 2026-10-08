@@ -20,6 +20,8 @@ class BusinessRowCard extends StatelessWidget {
     this.footerLabel,
     this.connected = false,
     this.onWhatsAppPressed,
+    this.showWhatsApp = true,
+    this.onTap,
   });
 
   final Map<String, dynamic> row;
@@ -43,6 +45,12 @@ class BusinessRowCard extends StatelessWidget {
   /// lead was already claimed by someone else).
   final Future<bool> Function()? onWhatsAppPressed;
 
+  /// False when WhatsApp is reached through the detail page instead.
+  final bool showWhatsApp;
+
+  /// Tap on the card body (opens the lead detail page).
+  final VoidCallback? onTap;
+
   @override
   Widget build(BuildContext context) {
     final t = context.tokens;
@@ -52,9 +60,9 @@ class BusinessRowCard extends StatelessWidget {
     final address = (row['Address'] ?? '').toString();
     final review = (row['Review'] ?? '').toString();
     final mapsUrl = (row['Maps URL'] ?? '').toString();
-    final waUrl = whatsAppUrlFor(row, phone);
+    final waUrl = showWhatsApp ? whatsAppUrlFor(row, phone) : null;
 
-    return Container(
+    final card = Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -169,5 +177,7 @@ class BusinessRowCard extends StatelessWidget {
         ],
       ),
     );
+    if (onTap == null) return card;
+    return GestureDetector(behavior: HitTestBehavior.opaque, onTap: onTap, child: card);
   }
 }

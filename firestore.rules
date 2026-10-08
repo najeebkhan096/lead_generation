@@ -122,6 +122,32 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // WhatsApp (Twilio) outreach inbox. Cloud Functions (Admin SDK) create and
+    // update leads, conversations and messages; the app only reads its own,
+    // renames a lead / clears its unread badge, and hides a message locally.
+    match /outreachLeads/{leadId} {
+      allow read: if isApproved() && resource.data.ownerId == request.auth.uid;
+      allow update: if isApproved()
+                    && resource.data.ownerId == request.auth.uid
+                    && request.resource.data.diff(resource.data).affectedKeys()
+                       .hasOnly(['name', 'businessName', 'unreadCount'])
+                    && request.resource.data.unreadCount == 0;
+      allow create, delete: if false;
+    }
+    match /outreachConversations/{convId} {
+      allow read: if isApproved() && resource.data.ownerId == request.auth.uid;
+      allow write: if false;
+
+      match /messages/{messageId} {
+        allow read: if isApproved()
+                    && get(/databases/$(database)/documents/outreachConversations/$(convId)).data.ownerId == request.auth.uid;
+        allow update: if isApproved()
+                      && get(/databases/$(database)/documents/outreachConversations/$(convId)).data.ownerId == request.auth.uid
+                      && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['deletedAt']);
+        allow create, delete: if false;
+      }
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

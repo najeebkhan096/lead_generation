@@ -11,6 +11,7 @@ import '../widgets/business_row_card.dart';
 import '../widgets/page_header.dart';
 import '../widgets/search_field.dart';
 import 'saved_businesses_page.dart' show StateBadge;
+import 'lead_detail_page.dart';
 import 'whatsapp_validated_archive_page.dart';
 
 const _allCategories = 'All categories';
@@ -63,6 +64,7 @@ class _WhatsAppVerifiedLeadsPageState extends State<WhatsAppVerifiedLeadsPage> w
   bool _loading = true;
   String? _error;
   String _category = _allCategories;
+  int _tab = 0; // 0 = New Lead, 1 = Contacted
   String _searchQuery = '';
   final _searchController = TextEditingController();
 
@@ -171,10 +173,16 @@ class _WhatsAppVerifiedLeadsPageState extends State<WhatsAppVerifiedLeadsPage> w
     return raw.replaceFirst('Exception: ', '');
   }
 
-  List<String> get _categories {
+  /// Rows other salesmen haven't claimed, split by whether this user has
+  /// already opened them on WhatsApp (a claim) — see [WhatsAppClaimsMixin].
+  List<_BusinessRow> get _visibleRows => _rows.where((r) => claimVisible(r.row)).toList();
+
+  List<_BusinessRow> _forTab(List<_BusinessRow> visible, int tab) =>
+      visible.where((r) => claimIsMine(r.row) == (tab == 1)).toList();
+
+  List<String> _categoriesOf(List<_BusinessRow> rows) {
     final present = <String>{};
-    for (final r in _rows) {
-      if (!claimVisible(r.row)) continue;
+    for (final r in rows) {
       if (r.category.isNotEmpty) present.add(r.category);
     }
     final sorted = present.toList()..sort();
@@ -184,8 +192,11 @@ class _WhatsAppVerifiedLeadsPageState extends State<WhatsAppVerifiedLeadsPage> w
   @override
   Widget build(BuildContext context) {
     final t = context.tokens;
-    final available = _rows.where((r) => claimVisible(r.row)).toList();
-    final categories = _categories;
+    final visible = _visibleRows;
+    final newCount = _forTab(visible, 0).length;
+    final contactedCount = visible.length - newCount;
+    final available = _forTab(visible, _tab);
+    final categories = _categoriesOf(available);
     final categoryValue = categories.contains(_category) ? _category : _allCategories;
     var filtered = categoryValue == _allCategories ? available : available.where((r) => r.category == categoryValue).toList();
     if (_searchQuery.isNotEmpty) {
@@ -206,9 +217,29 @@ class _WhatsAppVerifiedLeadsPageState extends State<WhatsAppVerifiedLeadsPage> w
             PageHeader(
               title: 'WhatsApp Verified Leads',
               subtitle: available.isEmpty
-                  ? 'Verified businesses from every upload will show up here'
+                  ? (_tab == 0
+                      ? 'Verified businesses from every upload will show up here'
+                      : 'Leads you open on WhatsApp will show up here')
                   : '${filtered.length} of ${available.length} businesses shown',
               trailing: HeaderBadge(icon: AppIcons.shieldCheck, background: t.sageTint, foreground: t.sageDeep),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+              child: SizedBox(
+                width: double.infinity,
+                child: SegmentedButton<int>(
+                  showSelectedIcon: false,
+                  segments: [
+                    ButtonSegment(value: 0, label: Text('New Lead ($newCount)')),
+                    ButtonSegment(value: 1, label: Text('Contacted ($contactedCount)')),
+                  ],
+                  selected: {_tab},
+                  onSelectionChanged: (v) => setState(() {
+                    _tab = v.first;
+                    _category = _allCategories;
+                  }),
+                ),
+              ),
             ),
             if (available.isNotEmpty)
               Padding(
@@ -296,13 +327,17 @@ class _WhatsAppVerifiedLeadsPageState extends State<WhatsAppVerifiedLeadsPage> w
                                   StateBadge(icon: AppIcons.shieldCheck, background: t.sageTint, foreground: t.sageDeep),
                                   const SizedBox(height: 20),
                                   Text(
-                                    available.isEmpty ? 'No verified businesses yet' : 'No businesses in this category',
+                                    available.isEmpty
+                                        ? (_tab == 0 ? 'No new leads' : 'No contacted leads yet')
+                                        : 'No businesses in this category',
                                     style: Theme.of(context).textTheme.headlineSmall,
                                   ),
                                   const SizedBox(height: 8),
                                   Text(
                                     available.isEmpty
-                                        ? 'Validate WhatsApp numbers and upload them from the web app — they show up here.'
+                                        ? (_tab == 0
+                                            ? 'Validate WhatsApp numbers and upload them from the web app — they show up here.'
+                                            : 'Tap WhatsApp on a new lead and it moves here.')
                                         : 'Try a different category.',
                                     textAlign: TextAlign.center,
                                     style: Theme.of(context).textTheme.bodyLarge,
@@ -316,7 +351,13 @@ class _WhatsAppVerifiedLeadsPageState extends State<WhatsAppVerifiedLeadsPage> w
                               itemBuilder: (context, i) => _BusinessCard(
                                 business: filtered[i],
                                 connected: claimIsMine(filtered[i].row),
-                                onWhatsAppPressed: () => claimAndOpen(filtered[i].row),
+                                onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                                  builder: (_) => LeadDetailPage(
+                                    row: filtered[i].row,
+                                    category: filtered[i].category,
+                                    onMessage: () => claimAndOpen(filtered[i].row),
+                                  ),
+                                )),
                               ),
                             ),
             ),
@@ -352,12 +393,12 @@ class _BusinessCard extends StatelessWidget {
   const _BusinessCard({
     required this.business,
     required this.connected,
-    required this.onWhatsAppPressed,
+    required this.onTap,
   });
 
   final _BusinessRow business;
   final bool connected;
-  final Future<bool> Function() onWhatsAppPressed;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -367,7 +408,8 @@ class _BusinessCard extends StatelessWidget {
       categoryLabel: business.category,
       footerLabel: business.archiveFileName,
       connected: connected,
-      onWhatsAppPressed: onWhatsAppPressed,
+      showWhatsApp: false,
+      onTap: onTap,
     );
   }
 }
