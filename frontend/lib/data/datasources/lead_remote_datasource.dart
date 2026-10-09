@@ -814,7 +814,7 @@ class LeadRemoteDataSource {
 
   /// Re-scrapes ongoing and completed sales for 1-star reviews in the last
   /// [dateRange] days. Generous timeout — each business is a real Maps load.
-  Future<List<SaleReviewScanResult>> scanSaleReviews({String dateRange = '30', String? salesmanId}) async {
+  Future<List<SaleReviewScanResult>> scanSaleReviews({String dateRange = '30', String? salesmanId, bool dedupe = false}) async {
     final response = await _client
         .post(
           _uri(ApiConstants.salesScanReviews),
@@ -822,6 +822,7 @@ class LeadRemoteDataSource {
           body: jsonEncode({
             'dateRange': dateRange,
             'salesmanId': ?salesmanId,
+            if (dedupe) 'dedupe': true,
           }),
         )
         .timeout(const Duration(minutes: 20));

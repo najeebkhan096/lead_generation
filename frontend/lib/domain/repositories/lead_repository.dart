@@ -262,7 +262,7 @@ abstract class LeadRepository {
   /// Re-scrapes ongoing (new / in progress) and completed sales for 1-star
   /// Google reviews in the last [dateRange] days. Optional [salesmanId]
   /// matches the Sales page filter.
-  Future<List<SaleReviewScanResult>> scanSaleReviews({String dateRange = '30', String? salesmanId});
+  Future<List<SaleReviewScanResult>> scanSaleReviews({String dateRange = '30', String? salesmanId, bool dedupe = false});
 
   Future<OutreachDashboard> getOutreachDashboard();
   Future<OutreachAnalytics> getOutreachAnalytics();

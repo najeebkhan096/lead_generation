@@ -50,7 +50,7 @@ class _LeadListPageState extends State<LeadListPage> {
     setState(() => _sendingTemplate.add(lead.id));
     final c = ChatController(leadId: lead.id);
     try {
-      final url = await pickAndUploadTemplateImage(context);
+      final url = await pickAndUploadTemplateImage(context, recipient: lead.displayName);
       if (url == null) return;
       c.sendTemplate(url);
       final err = await c.settle();

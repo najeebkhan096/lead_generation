@@ -4,6 +4,24 @@ import { listSales, recordSaleReviewScan } from './saleStore.js';
 
 const SCAN_STATUSES = ['new', 'in_progress', 'completed'];
 
+function businessKey(name) {
+  return String(name || '').toLowerCase().replace(/['’`]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+/** One sale per business (same name ignoring case/punctuation), preferring one that has a review link. */
+export function uniqueByBusiness(sales) {
+  const byKey = new Map();
+  for (const s of sales) {
+    const key = businessKey(s.businessName);
+    if (!key) continue;
+    const prev = byKey.get(key);
+    const hasLink = typeof s.reviewLink === 'string' && s.reviewLink.trim() !== '';
+    const prevHasLink = prev && typeof prev.reviewLink === 'string' && prev.reviewLink.trim() !== '';
+    if (!prev || (hasLink && !prevHasLink)) byKey.set(key, s);
+  }
+  return [...byKey.values()];
+}
+
 /**
  * Re-scrapes every ongoing (new / in_progress) and completed sale that has
  * a Google Maps review link, looking for 1-star reviews inside `dateRange`
@@ -13,9 +31,10 @@ const SCAN_STATUSES = ['new', 'in_progress', 'completed'];
  * Sales without a review link are reported as skipped rather than failing
  * the whole run — those still need a Maps URL filled in on Manage.
  */
-export async function scanSaleReviews({ dateRange = '30', salesmanId } = {}) {
+export async function scanSaleReviews({ dateRange = '30', salesmanId, dedupe = false } = {}) {
   const sales = await listSales({ salesmanId });
-  const targets = sales.filter((s) => SCAN_STATUSES.includes(s.leadStatus));
+  const eligible = sales.filter((s) => SCAN_STATUSES.includes(s.leadStatus));
+  const targets = dedupe ? uniqueByBusiness(eligible) : eligible;
   const results = [];
 
   for (const sale of targets) {

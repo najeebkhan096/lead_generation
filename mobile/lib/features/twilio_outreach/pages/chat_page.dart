@@ -67,7 +67,7 @@ class _ChatPageState extends State<ChatPage> {
     if (_sendingTemplate) return;
     setState(() => _sendingTemplate = true);
     try {
-      final url = await pickAndUploadTemplateImage(context);
+      final url = await pickAndUploadTemplateImage(context, recipient: widget.lead.displayName);
       if (url == null) return;
       _c.sendTemplate(url);
     } catch (e) {

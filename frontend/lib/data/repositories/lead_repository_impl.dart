@@ -317,8 +317,8 @@ class LeadRepositoryImpl implements LeadRepository {
   Future<SalesStats> getSalesStats({String? salesmanId}) => _remote.getSalesStats(salesmanId: salesmanId);
 
   @override
-  Future<List<SaleReviewScanResult>> scanSaleReviews({String dateRange = '30', String? salesmanId}) =>
-      _remote.scanSaleReviews(dateRange: dateRange, salesmanId: salesmanId);
+  Future<List<SaleReviewScanResult>> scanSaleReviews({String dateRange = '30', String? salesmanId, bool dedupe = false}) =>
+      _remote.scanSaleReviews(dateRange: dateRange, salesmanId: salesmanId, dedupe: dedupe);
 
   @override
   Future<OutreachDashboard> getOutreachDashboard() => _remote.getOutreachDashboard();

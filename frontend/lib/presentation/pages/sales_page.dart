@@ -7,6 +7,7 @@ import '../../domain/entities/sale.dart';
 import '../../domain/entities/sales_user.dart';
 import '../../domain/entities/watchlist_entry.dart';
 import '../../domain/repositories/lead_repository.dart';
+import 'client_review_scan_page.dart';
 
 const _allSalesmen = 'All salesmen';
 
@@ -76,7 +77,7 @@ class SalesPage extends StatefulWidget {
 }
 
 class _SalesPageState extends State<SalesPage> with SingleTickerProviderStateMixin {
-  late final TabController _tabController = TabController(length: 3, vsync: this);
+  late final TabController _tabController = TabController(length: 4, vsync: this);
   List<SalesUser> _salesmen = [];
   bool _loadingSalesmen = true;
   String? _salesmenError;
@@ -194,6 +195,7 @@ class _SalesPageState extends State<SalesPage> with SingleTickerProviderStateMix
           tabs: const [
             Tab(text: 'Ongoing'),
             Tab(text: 'Completed'),
+            Tab(text: 'Clients'),
             Tab(text: 'Team'),
           ],
         ),
@@ -215,6 +217,7 @@ class _SalesPageState extends State<SalesPage> with SingleTickerProviderStateMix
             scanning: _scanningReviews,
             scanById: scanById,
           ),
+          const _ClientsTab(),
           _TeamTab(
             salesmen: _salesmen,
             loading: _loadingSalesmen,
@@ -223,6 +226,165 @@ class _SalesPageState extends State<SalesPage> with SingleTickerProviderStateMix
           ),
         ],
       ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Clients: every business we have sold to, once
+// ---------------------------------------------------------------------------
+
+/// One client business, merged from all of its sales.
+class ClientBusiness {
+  const ClientBusiness({required this.name, required this.mapsUrl, required this.dealCount});
+
+  final String name;
+
+  /// Google Maps / review link from any of its sales; null when none has one.
+  final String? mapsUrl;
+  final int dealCount;
+
+  /// Opens the saved link, or falls back to a Google Maps search by name.
+  Uri get uri => Uri.parse(
+        mapsUrl ?? 'https://www.google.com/maps/search/?api=1&query=${Uri.encodeQueryComponent(name)}',
+      );
+}
+
+String _clientKey(String name) => name
+    .toLowerCase()
+    .replaceAll(RegExp(r"['’`]"), '') // "Joe's" == "Joes"
+    .replaceAll(RegExp(r'[^a-z0-9]+'), ' ')
+    .trim();
+
+/// Collapses sales into unique clients (same business name, ignoring case and
+/// punctuation), sorted by name.
+List<ClientBusiness> uniqueClients(List<Sale> sales) {
+  final byKey = <String, ({String name, String? url, int count})>{};
+  for (final s in sales) {
+    final name = s.businessName.trim();
+    final key = _clientKey(name);
+    if (key.isEmpty) continue;
+    final link = s.reviewLink?.trim();
+    final prev = byKey[key];
+    byKey[key] = (
+      name: prev?.name ?? name,
+      url: prev?.url ?? ((link != null && link.isNotEmpty) ? link : null),
+      count: (prev?.count ?? 0) + 1,
+    );
+  }
+  return [
+    for (final e in byKey.values) ClientBusiness(name: e.name, mapsUrl: e.url, dealCount: e.count),
+  ]..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+}
+
+class _ClientsTab extends StatefulWidget {
+  const _ClientsTab();
+
+  @override
+  State<_ClientsTab> createState() => _ClientsTabState();
+}
+
+class _ClientsTabState extends State<_ClientsTab> with AutomaticKeepAliveClientMixin {
+  List<ClientBusiness> _clients = [];
+  bool _loading = true;
+  String? _error;
+  String _query = '';
+
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() => _loading = true);
+    try {
+      final sales = await context.read<LeadRepository>().listSales();
+      if (!mounted) return;
+      setState(() {
+        _clients = uniqueClients(sales);
+        _loading = false;
+        _error = null;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = e.toString().replaceFirst('Exception: ', '');
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    if (_loading) return const Center(child: CircularProgressIndicator());
+    if (_error != null) {
+      return Center(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Text(_error!, style: const TextStyle(color: AppTheme.danger)),
+          const SizedBox(height: 12),
+          OutlinedButton(onPressed: _load, child: const Text('Retry')),
+        ]),
+      );
+    }
+    final q = _query.trim().toLowerCase();
+    final shown = q.isEmpty ? _clients : _clients.where((c) => c.name.toLowerCase().contains(q)).toList();
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+          child: Row(children: [
+            Expanded(
+              child: TextField(
+                decoration: InputDecoration(
+                  prefixIcon: const Icon(AppIcons.search, size: 18),
+                  hintText: 'Search ${_clients.length} clients',
+                ),
+                onChanged: (v) => setState(() => _query = v),
+              ),
+            ),
+            const SizedBox(width: 12),
+            FilledButton.icon(
+              onPressed: _clients.isEmpty
+                  ? null
+                  : () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ClientReviewScanPage())),
+              icon: const Icon(AppIcons.star, size: 18),
+              label: const Text('Scan 1★'),
+            ),
+          ]),
+        ),
+        Expanded(
+          child: shown.isEmpty
+              ? Center(child: Text(_clients.isEmpty ? 'No clients yet' : 'No clients match your search'))
+              : RefreshIndicator(
+                  onRefresh: _load,
+                  child: ListView.separated(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                    itemCount: shown.length,
+                    separatorBuilder: (_, _) => const SizedBox(height: 8),
+                    itemBuilder: (context, i) {
+                      final c = shown[i];
+                      return Card(
+                        margin: EdgeInsets.zero,
+                        child: ListTile(
+                          onTap: () => launchUrl(c.uri, mode: LaunchMode.externalApplication),
+                          title: Text(c.name, style: const TextStyle(fontWeight: FontWeight.w700)),
+                          subtitle: Text(
+                            '${c.dealCount} ${c.dealCount == 1 ? 'sale' : 'sales'}'
+                            '${c.mapsUrl == null ? ' · opens a Maps search' : ''}',
+                          ),
+                          trailing: const Icon(AppIcons.mapPin, size: 20, color: AppTheme.accent700),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+        ),
+      ],
     );
   }
 }
@@ -934,6 +1096,16 @@ class _SaleFormDialogState extends State<_SaleFormDialog> {
       setState(() => _error = 'Business name is required');
       return;
     }
+    final link = _linkController.text.trim();
+    if (link.isNotEmpty && !(Uri.tryParse(link)?.hasScheme ?? false)) {
+      setState(() => _error = 'Enter the full Google Maps link (starting with https://)');
+      return;
+    }
+    final priceText = _priceController.text.trim();
+    if (priceText.isNotEmpty && (double.tryParse(priceText) ?? -1) < 0) {
+      setState(() => _error = 'Enter a valid price');
+      return;
+    }
     final price = double.tryParse(_priceController.text.trim()) ?? 0;
     final employeeAmount = double.tryParse(_employeeAmountController.text.trim()) ?? 0;
     final salesman = widget.salesmen.where((s) => s.id == _salesmanId).firstOrNull;
@@ -995,12 +1167,14 @@ class _SaleFormDialogState extends State<_SaleFormDialog> {
               TextField(
                 controller: _businessController,
                 decoration: const InputDecoration(labelText: 'Business name'),
+                textCapitalization: TextCapitalization.words,
                 enabled: !_saving,
               ),
               const SizedBox(height: 12),
               TextField(
                 controller: _linkController,
-                decoration: const InputDecoration(labelText: 'Review link (optional)', hintText: 'https://...'),
+                decoration: const InputDecoration(labelText: 'Google Maps link', hintText: 'https://maps.app.goo.gl/...'),
+                keyboardType: TextInputType.url,
                 enabled: !_saving,
               ),
               const SizedBox(height: 12),
@@ -1019,19 +1193,6 @@ class _SaleFormDialogState extends State<_SaleFormDialog> {
                   ),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: DropdownButtonFormField<LeadStatus>(
-                      initialValue: _leadStatus,
-                      decoration: const InputDecoration(labelText: 'Status'),
-                      items: [for (final s in LeadStatus.values) DropdownMenuItem(value: s, child: Text(s.label))],
-                      onChanged: _saving ? null : (v) => setState(() => _leadStatus = v ?? _leadStatus),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
                     child: TextField(
                       controller: _priceController,
                       decoration: const InputDecoration(labelText: 'Client pays', prefixText: '\$'),
@@ -1039,39 +1200,47 @@ class _SaleFormDialogState extends State<_SaleFormDialog> {
                       enabled: !_saving,
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: DropdownButtonFormField<ClientPaymentStatus>(
-                      initialValue: _clientPaymentStatus,
-                      decoration: const InputDecoration(labelText: 'Client payment'),
-                      items: [for (final s in ClientPaymentStatus.values) DropdownMenuItem(value: s, child: Text(s.label))],
-                      onChanged: _saving ? null : (v) => setState(() => _clientPaymentStatus = v ?? _clientPaymentStatus),
-                    ),
-                  ),
                 ],
               ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _employeeAmountController,
-                      decoration: const InputDecoration(labelText: 'Salesman gets', prefixText: 'PKR '),
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      enabled: !_saving,
+              // Status and payment tracking only matter once the sale exists.
+              if (widget.sale != null) ...[
+                const SizedBox(height: 12),
+                DropdownButtonFormField<LeadStatus>(
+                  initialValue: _leadStatus,
+                  decoration: const InputDecoration(labelText: 'Status'),
+                  items: [for (final s in LeadStatus.values) DropdownMenuItem(value: s, child: Text(s.label))],
+                  onChanged: _saving ? null : (v) => setState(() => _leadStatus = v ?? _leadStatus),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<ClientPaymentStatus>(
+                  initialValue: _clientPaymentStatus,
+                  decoration: const InputDecoration(labelText: 'Client payment'),
+                  items: [for (final s in ClientPaymentStatus.values) DropdownMenuItem(value: s, child: Text(s.label))],
+                  onChanged: _saving ? null : (v) => setState(() => _clientPaymentStatus = v ?? _clientPaymentStatus),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _employeeAmountController,
+                        decoration: const InputDecoration(labelText: 'Salesman gets', prefixText: 'PKR '),
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        enabled: !_saving,
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: DropdownButtonFormField<EmployeePaymentStatus>(
-                      initialValue: _employeePaymentStatus,
-                      decoration: const InputDecoration(labelText: 'Salesman payment'),
-                      items: [for (final s in EmployeePaymentStatus.values) DropdownMenuItem(value: s, child: Text(s.label))],
-                      onChanged: _saving ? null : (v) => setState(() => _employeePaymentStatus = v ?? _employeePaymentStatus),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: DropdownButtonFormField<EmployeePaymentStatus>(
+                        initialValue: _employeePaymentStatus,
+                        decoration: const InputDecoration(labelText: 'Salesman payment'),
+                        items: [for (final s in EmployeePaymentStatus.values) DropdownMenuItem(value: s, child: Text(s.label))],
+                        onChanged: _saving ? null : (v) => setState(() => _employeePaymentStatus = v ?? _employeePaymentStatus),
+                      ),
                     ),
-                  ),
-                ],
-              ),
+                  ],
+                ),
+              ],
               if (_error != null) ...[
                 const SizedBox(height: 12),
                 Text(_error!, style: const TextStyle(color: AppTheme.danger, fontSize: 12.5)),

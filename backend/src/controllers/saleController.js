@@ -67,10 +67,11 @@ export async function scanReviews(req, res) {
   }
   scanningReviews = true;
   try {
-    const { dateRange, salesmanId } = req.body || {};
+    const { dateRange, salesmanId, dedupe } = req.body || {};
     const results = await scanSaleReviews({
       dateRange: dateRange ? String(dateRange) : '30',
       salesmanId: salesmanId ? String(salesmanId) : undefined,
+      dedupe: dedupe === true,
     });
     return res.json({ results, scannedAt: new Date().toISOString() });
   } catch (err) {
