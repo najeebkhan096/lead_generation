@@ -20,6 +20,8 @@ before(async () => {
     await setDoc(doc(db, 'outreachLeads', 'alice_971501234567'), { ownerId: 'alice', name: 'A', phoneNumber: '+971501234567', unreadCount: 3 });
     await setDoc(doc(db, 'outreachConversations', 'alice_971501234567'), { ownerId: 'alice' });
     await setDoc(doc(db, 'outreachConversations/alice_971501234567/messages/m1'), { body: 'hi', status: 'sent', ownerless: true });
+    await setDoc(doc(db, 'whatsappLeads', 'w1'), { business: 'Verified Cafe', phone: '+15125550001', sourceType: 'review' });
+    await setDoc(doc(db, 'emailLeads', 'e1'), { business: 'Verified Cafe', email: 'info@cafe.example', sourceType: 'website' });
   });
 });
 after(() => env?.cleanup());
@@ -78,6 +80,25 @@ test('messages: only deletedAt may be changed by the owner; no status forging', 
 
 const png = new Uint8Array([1, 2, 3, 4]);
 const P = (uid, f = 'a.png') => `outreach_media/${uid}/conv1/msg1/${f}`;
+
+// Verified leads (validator output): approved salespeople read, nobody writes.
+for (const name of ['whatsappLeads', 'emailLeads']) {
+  const id = name === 'whatsappLeads' ? 'w1' : 'e1';
+
+  test(`${name}: approved users read; unapproved and signed-out cannot`, async () => {
+    await assertSucceeds(getDoc(doc(env.authenticatedContext('alice').firestore(), `${name}/${id}`)));
+    await assertSucceeds(getDocs(collection(env.authenticatedContext('alice').firestore(), name)));
+    await assertFails(getDoc(doc(env.authenticatedContext('eve').firestore(), `${name}/${id}`)));
+    await assertFails(getDoc(doc(env.unauthenticatedContext().firestore(), `${name}/${id}`)));
+  });
+
+  test(`${name}: clients can never create, update or delete`, async () => {
+    const alice = env.authenticatedContext('alice').firestore();
+    await assertFails(setDoc(doc(alice, `${name}/forged`), { business: 'x', phone: '+1' }));
+    await assertFails(updateDoc(doc(alice, `${name}/${id}`), { business: 'renamed' }));
+    await assertFails(deleteDoc(doc(alice, `${name}/${id}`)));
+  });
+}
 
 test('storage: owner uploads/reads own media, others cannot', async () => {
   const alice = env.authenticatedContext('alice').storage();

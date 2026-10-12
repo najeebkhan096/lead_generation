@@ -28,27 +28,56 @@ lead_generation/
 ```
 
 ### Backend (`backend/`)
-- **Entry point:** `src/index.js`. It serves the API under `/api/*` and also serves the built web app from `backend/public`.
-- **Scrapers** (`src/scraper/`): Google Maps (main), Yelp and Bing.
-- **Orchestrators:**
-  - `stateCityOrchestrator` walks states and cities. Several cities run in parallel (2–8 workers).
-  - `multiCategoryOrchestrator` runs one category after another.
-- **Review logic:** `reviewAnalyzer` and `reviewFilter` pick out 1-star reviews inside a date window (7, 28, 30, 90 or 365 days).
-- **WhatsApp:**
-  - `whatsappChecker` is a format check only.
-  - `whatsappWebService` and `whatsappValidationJob` use `whatsapp-web.js` with a QR-linked session to really validate numbers. They run one at a time, with rate limits.
-- **Outreach** (`src/services/outreach/`): email discovery, email verification, website analysis, AI or template email generation, sending (SMTP or Resend), campaigns and logging.
-- **Storage services:** the `*Store.js` files read and write leads, website leads, sales, users, the watchlist, Excel archives and outreach records. They currently use Firebase Firestore and Storage.
-- **Local DB:** `better-sqlite3` in `src/db/database.js`.
-- **Export:** CSV, JSON and multi-sheet Excel (ExcelJS).
+Node.js + Express. Entry point `src/index.js` mounts every module's router under `/api/*` and serves the built web app from `backend/public`.
+
+Code is organized **by feature module**, each folder holding its own routes, controllers and services:
+
+```
+src/
+├── index.js              mounts the routers
+├── firebase/admin.js     Firestore + Storage (Admin SDK)
+├── lib/                  leadIdentity.js (one doc-id scheme for every lead
+│                         collection), paths.js (runtime-state locations),
+│                         memoryStore.js, asyncMutex.js, dateUtils.js
+├── scraper/              Google Maps (main), Bing and Yelp fallbacks
+├── data/                 country / state / city lists
+├── middleware/           firebaseAuth.js
+└── modules/
+    ├── scan/             scan engines (state-city = live; single and
+    │                     multi-category = legacy), review filtering
+    ├── leads/            saved review + no-website leads (`leads`,
+    │                     `websiteLeads`), the /api/db routes, leadSources.js
+    ├── validation/
+    │   ├── whatsapp/     real WhatsApp Web check, safety limits, job,
+    │   │                 `whatsappLeads` store, verified archives
+    │   └── email/        site crawl + web-search discovery, MX
+    │                     verification, job, `emailLeads` store, archives
+    ├── archive/          Excel scan archives + CSV/JSON/XLSX export
+    ├── outreach/         email campaigns, drafts and sending
+    ├── sales/  watchlist/  users/
+    └── twilio-chat/      optional Express copy of the chat service —
+                          NOT mounted; the live implementation is in
+                          `functions/`. Needs `ffmpeg-static` to run.
+```
+
+**Runtime state** (`.wwebjs_auth`, `data/`, `exports/`) is anchored to the backend root by `src/lib/paths.js`, never to a module's own folder, so reorganizing `src/` cannot orphan the linked WhatsApp session.
 
 ### Web admin (`frontend/`)
-Pages: Dashboard, Leads, Website Leads, WhatsApp Tool, Sales, Settings, Excel Scan, Scan Progress, Excel Archive and WhatsApp Verified. It is built with `--dart-define=API_BASE_URL=` (empty) so the UI and API share one origin.
+Flutter web (Bloc + go_router). The navigation follows the work, in order:
+
+| Item | What it is |
+|------|-----------|
+| Dashboard | Overview |
+| **Scan** | Start a scan; watch it at `/scan-progress` |
+| **Archive** | Finished scans as Excel workbooks — validate from here |
+| **Leads** | `1-star review leads` / `No-website leads`, each with a **WhatsApp + Email** validation bar |
+| **Verified** | `WhatsApp` / `Email` — the output of each validator |
+| More | WhatsApp connection (QR), email outreach, sales, watchlist, users, verified archives |
+
+Old URLs (`/excel-scan`, `/excel-archive`, `/website-leads`, `/email-leads`, `/settings`) redirect to their new homes.
 
 ### Mobile app (`mobile/`)
-- Google sign-in through Firebase Auth.
-- Tabs: WA (WhatsApp-verified leads), Leads, Sales and Profile.
-- Salespeople can favorite leads, set status, open Maps or WhatsApp, and see their own sales. They cannot create or delete leads.
+Flutter (iOS/Android), Google sign-in via Firebase Auth. Four tabs: **Leads** (scans / 1-star / no website), **WhatsApp** and **Email** (read live from `whatsappLeads` / `emailLeads`), and **More** (account, outreach chat, sales, search history, settings). Salespeople can favorite leads, set status, and open WhatsApp, email, phone or Maps. They cannot create or delete leads.
 
 ### Launcher (`launcher/`)
 A desktop app. It starts the backend on port 3001, health-checks `/api/health`, and opens the UI.
@@ -62,42 +91,57 @@ A desktop app. It starts the backend on port 3001, health-checks `/api/health`, 
 5. Pause, resume and cancel are supported. Only one scan runs at a time. Scans take hours.
 6. Phones are normalized and given a `wa.me` link. WhatsApp registration is not assumed until validation runs.
 
-## 4. Data model (current: Firebase)
+## 4. Data model (Firebase)
 
-| Collection | Purpose |
-|-----------|---------|
-| `leads` | Review leads |
-| `websiteLeads` | No-website businesses |
-| `searches` | Scan batches |
-| `excelScans` | Excel archive metadata and download URL |
-| `whatsappValidatedScans` | Workbooks of validated numbers |
-| `sales` | Orders and payouts |
-| `users` | Salesperson profiles |
-| `watchlist` | Businesses re-scanned for new 1-star reviews |
-| outreach collections | Campaigns, records and email logs |
+| Collection | Holds | Written by |
+|-----------|-------|-----------|
+| `leads` | **Review leads** — a recent 1-star review | scan |
+| `websiteLeads` | **No-website leads** | scan |
+| `whatsappLeads` | Leads whose number a real WhatsApp check confirmed | WhatsApp validator |
+| `emailLeads` | Leads whose contact email was found and verified | email validator |
+| `searches` | Scan batches | scan |
+| `excelScans` | Excel archive metadata (file in Storage) | scan |
+| `whatsappValidatedScans`, `emailValidatedScans` | Verified-archive workbooks (metadata; file in Storage) | validators, from an archive |
+| `sales`, `users`, `watchlist` | Sales, salesperson profiles, re-scan list | their modules |
+| `outreach*` | Campaigns, records, queue, events | outreach |
+
+**One identity across collections.** `lib/leadIdentity.js` derives the document id from the Maps URL (else phone, else name+address), so the same business has the *same id* in `leads`, `websiteLeads`, `whatsappLeads` and `emailLeads`.
+
+**Validating copies, it never moves.** Both validators work on either lead type. A verified lead is *copied* into `whatsappLeads` / `emailLeads` (with `sourceType: review | website`, and for email the page it came from), and the verdict is also written onto the source lead (`hasWhatsApp`, `email`). Source leads are never deleted or re-keyed.
+
+## 4a. Validation
+
+| | WhatsApp | Email |
+|---|---|---|
+| Check | Number registered on WhatsApp (linked WhatsApp Web session) | Contact email found on the lead's website, or — with no website — by web search; then syntax, disposable-domain and MX checks |
+| Pacing | Strictly sequential, randomized delay, daily cap, circuit breaker (account-ban protection) | 3–4 in parallel; web search is paced and stops if the search engine pushes back |
+| Run over | Saved leads (`/validate-saved`), an Excel archive (`/validate-list`) | Saved leads (`/validate-saved`), an Excel archive (`/validate-list`) |
+| Output | `whatsappLeads` (+ optional archive workbook) | `emailLeads` (+ optional archive workbook) |
+
+Web-search emails are deliberately conservative: an address is kept only if it appears on a page that also shows the business's phone number (or its full name and city), and directory/social sites are never a source. Expect partial coverage — a miss beats a wrong address.
 
 ## 5. API summary
 
-| Area | Prefix |
-|------|--------|
-| Health | `GET /api/health` |
-| State/city scan | `/api/state-scan` |
-| Leads DB | `/api/db` |
-| WhatsApp format check | `/api/whatsapp/check` |
-| WhatsApp Web | `/api/whatsapp-web` |
-| Excel archives | `/api/excel-scans` |
-| WhatsApp-validated archives | `/api/whatsapp-validated-scans` |
-| Watchlist | `/api/watchlist` |
-| Sales | `/api/sales` |
-| Users | `/api/users` |
-| Outreach | `/api/outreach` |
-| Export | `/api/export` |
-| Legacy and dormant | `/api/search`, `/api/search/multi` |
+| Area | Prefix | Notes |
+|------|--------|-------|
+| Health | `GET /api/health` | |
+| Scan | `/api/state-scan` | live engine |
+| Saved leads | `/api/db` | `leads`, `website-leads`, **`whatsapp-leads`**, `email-leads`, stats, clear |
+| WhatsApp validation | `/api/whatsapp-web` | `connect`, `validate-saved`, `validate-list`, `validate/status`, `validate/cancel`, `safety` |
+| Email validation | `/api/email-validation` | `validate-saved`, `validate-list`, `status`, `cancel` |
+| Excel archives | `/api/excel-scans` | |
+| Verified archives | `/api/whatsapp-validated-scans`, `/api/email-validated-scans` | |
+| Watchlist / Sales / Users | `/api/watchlist`, `/api/sales`, `/api/users` | |
+| Outreach | `/api/outreach` | |
+| Export | `/api/export` | |
+| Legacy | `/api/search`, `/api/search/multi`, `/api/whatsapp/check` | dormant |
+
+`validate-saved` takes `{ "collection": "leads" | "websiteLeads", "ids": [...] }` (Firestore ids). Fields are read from Firestore by id, not trusted from the client.
 
 ## 6. Resource requirements
 
 - **Two headless Chromium instances:** one for Playwright scraping and one for WhatsApp Web. Plan for 2 GB of RAM or more (`npm start` allows an 8 GB heap).
-- **Persistent disk:** needed for the WhatsApp session in `.wwebjs_auth` (about 146 MB) and the SQLite data.
+- **Persistent disk:** needed for the WhatsApp session in `.wwebjs_auth` (about 146 MB) and `data/` (WhatsApp safety counters).
 - **Always-on process:** scans run for hours.
 - **Not suited to:** Render free (512 MB, sleeps, no disk) and serverless platforms.
 
@@ -107,7 +151,7 @@ A desktop app. It starts the backend on port 3001, health-checks `/api/health`, 
 - Scraping Google Maps may breach its terms of service, and selectors can break when the page changes.
 - Outreach email needs consent and opt-out handling. Check anti-spam laws such as CAN-SPAM.
 - `backend/firebase-service-account.json` is a secret. Never commit it, and rotate it if it has been exposed.
-- Check that the API is authenticated before exposing it publicly.
+- **The API has no authentication.** Every endpoint — including `POST /api/db/clear` — is open and the server binds `0.0.0.0` with CORS `*`. Keep it on localhost or behind a firewall until auth is added (the `middleware/firebaseAuth.js` helper exists but is not applied).
 
 ## 8. Deployment plan: free and independent
 

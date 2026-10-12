@@ -52,6 +52,19 @@ service cloud.firestore {
       allow create, delete: if false;
     }
 
+    // Verified leads — the output of the two validators, written only by
+    // the backend (Admin SDK bypasses these rules). Signed-in, approved
+    // salespeople can read them; nothing is writable from a client.
+    match /whatsappLeads/{leadId} {
+      allow read: if isApproved();
+      allow write: if false;
+    }
+
+    match /emailLeads/{leadId} {
+      allow read: if isApproved();
+      allow write: if false;
+    }
+
     // Mobile app users (salesmen) — each user creates/updates only their
     // own profile doc on sign-in; the web app's Admin SDK reads the full
     // list to populate "assign to salesman" pickers (Admin SDK bypasses

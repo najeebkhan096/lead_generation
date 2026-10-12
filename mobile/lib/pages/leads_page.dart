@@ -5,11 +5,11 @@ import 'excel_leads_page.dart';
 import 'saved_businesses_page.dart';
 import 'website_leads_page.dart';
 
-/// The "Leads" bottom tab — three sources of businesses side by side: the
-/// ones extracted from archived Excel scans, the ones saved straight to
-/// Firestore's `leads` collection (bad reviews), and the ones saved to
-/// `websiteLeads` (no website at all). Each sub-tab keeps its own page
-/// (title, search, filters) intact; this just switches between them.
+/// The "Leads" bottom tab — what a scan found, in three views: the
+/// businesses in archived Excel scans ("Scans"), the saved 1-star review
+/// leads ("1-star", Firestore `leads`) and the saved no-website leads
+/// ("No website", `websiteLeads`). Each sub-tab keeps its own page (title,
+/// search, filters) intact; this just switches between them.
 class LeadsPage extends StatelessWidget {
   const LeadsPage({super.key});
 
@@ -39,9 +39,9 @@ class LeadsPage extends StatelessWidget {
                   unselectedLabelColor: t.subtle,
                   splashBorderRadius: BorderRadius.circular(AppTheme.radiusPill),
                   tabs: const [
-                    Tab(height: 40, text: 'Excel Sheet'),
-                    Tab(height: 40, text: 'Direct'),
-                    Tab(height: 40, text: 'Website'),
+                    Tab(height: 40, text: 'Scans'),
+                    Tab(height: 40, text: '1-star'),
+                    Tab(height: 40, text: 'No website'),
                   ],
                 ),
               ),

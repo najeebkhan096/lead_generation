@@ -15,36 +15,40 @@ void main() {
     await Firebase.initializeApp();
   });
 
-  testWidgets('MainNavigationPage has 6 tabs and switches content', (WidgetTester tester) async {
+  testWidgets('MainNavigationPage follows the core flow: Leads, WhatsApp, Email, More', (tester) async {
     await tester.pumpWidget(MaterialApp(
       theme: AppTheme.light(),
       home: const MainNavigationPage(),
     ));
 
-    // Verify all six destinations are present (Leads, WhatsApp, Favorites,
-    // Deals, Excel, Profile — in that order, see main_navigation_page.dart).
-    expect(find.text('Leads'), findsOneWidget);
-    expect(find.text('WhatsApp'), findsOneWidget);
-    expect(find.text('Favorites'), findsOneWidget);
-    expect(find.text('Deals'), findsOneWidget);
-    expect(find.text('Excel'), findsOneWidget);
-    expect(find.text('Profile'), findsOneWidget);
+    // Four destinations, in flow order (see main_navigation_page.dart).
+    // `findsWidgets` for 'Leads': the tab label and the page's own tab bar.
+    expect(find.text('Leads'), findsWidgets);
+    expect(find.text('WhatsApp'), findsWidgets);
+    expect(find.text('Email'), findsWidgets);
+    expect(find.text('More'), findsWidgets);
+
+    // The extras are no longer in the main bar.
+    expect(find.text('Outreach'), findsNothing);
+    expect(find.text('Sales'), findsNothing);
+    expect(find.text('Profile'), findsNothing);
 
     NavigationBar navBar() => tester.widget<NavigationBar>(find.byType(NavigationBar));
+    expect(navBar().destinations, hasLength(4));
     expect(navBar().selectedIndex, 0);
 
     // Tap through the tabs and verify selection follows. Plain pump():
     // pumpAndSettle never settles while stream spinners are animating.
-    await tester.tap(find.byIcon(AppIcons.heart));
+    await tester.tap(find.byIcon(AppIcons.chat));
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(navBar().selectedIndex, 1);
+
+    await tester.tap(find.byIcon(AppIcons.mail));
     await tester.pump(const Duration(milliseconds: 400));
     expect(navBar().selectedIndex, 2);
 
-    await tester.tap(find.byIcon(AppIcons.handshake));
+    await tester.tap(find.byIcon(AppIcons.more));
     await tester.pump(const Duration(milliseconds: 400));
     expect(navBar().selectedIndex, 3);
-
-    await tester.tap(find.byIcon(AppIcons.user));
-    await tester.pump(const Duration(milliseconds: 400));
-    expect(navBar().selectedIndex, 5);
   });
 }

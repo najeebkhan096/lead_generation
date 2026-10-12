@@ -15,7 +15,7 @@
   The app calls the `outreachApi` callable; Firebase Auth identifies the user and the function checks `users/{uid}.approved`.
 * **No polling.** Incoming messages and status changes arrive via the two webhook functions → Firestore → the app's listeners.
 * A Twilio `201` is **not** "delivered": a message stays `sending` until Twilio's status callback says otherwise.
-* `backend/src/services/twilioChat` (Express) is the original implementation of the same logic and is no longer used by
+* `backend/src/modules/twilio-chat` (Express) is the original implementation of the same logic and is no longer used by
   the app; `functions/src/twilioChat` is a copy adapted for Functions (token download URLs instead of IAM-signed URLs;
   media is copied before the webhook responds because Functions throttle CPU after the response).
 
@@ -42,7 +42,7 @@ table in §2; errors come back as Firebase `HttpsError` with the app-level code 
 | Data | `services/outreach_repository.dart` (Firestore + legacy migration), `services/outreach_api.dart` (backend client), `services/media_service.dart` (pick / validate / upload), `services/template_image.dart` (template header image) |
 | Models | `models/outreach_lead.dart`, `models/outreach_message.dart` |
 | Widgets | `widgets/message_bubble.dart`, `composer.dart`, `media_content.dart`, `media_viewers.dart`, `status_ticks.dart` |
-| Backend | `backend/src/services/twilioChat/{messageService,twilioClient,validation,signature}.js`, `controllers/twilioChatController.js`, `routes/twilioChatRoutes.js`, `middleware/firebaseAuth.js` |
+| Backend | `backend/src/modules/twilio-chat/{messageService,twilioClient,validation,signature,twilioChatController,twilioChatRoutes}.js`, `backend/src/middleware/firebaseAuth.js` |
 | Rules | `firestore.rules`, `storage.rules` |
 
 ## 2. API (callable actions; originally REST under `/api/outreach`)

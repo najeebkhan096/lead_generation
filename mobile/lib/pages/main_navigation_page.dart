@@ -1,11 +1,18 @@
 import 'package:flutter/material.dart';
+
 import '../theme/app_theme.dart';
 import 'leads_page.dart';
-import 'whatsapp_verified_leads_page.dart';
-import 'sales_page.dart';
-import '../features/twilio_outreach/twilio_outreach_page.dart';
 import 'profile_page.dart';
+import 'verified_leads_page.dart';
 
+/// The app follows the same flow as the web console:
+///
+///   Leads  →  WhatsApp / Email (the verified output)  →  More
+///
+/// Leads are what a scan found (1-star review and no-website leads); the
+/// WhatsApp and Email tabs are the leads each validator confirmed, each from
+/// its own collection. Outreach chat, sales, archives and the account live
+/// under More so the main bar stays four items.
 class MainNavigationPage extends StatefulWidget {
   const MainNavigationPage({super.key});
 
@@ -17,10 +24,9 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
   int _selectedIndex = 0;
 
   static const List<Widget> _pages = [
-    WhatsAppVerifiedLeadsPage(),
     LeadsPage(),
-    TwilioOutreachPage(embedded: true),
-    SalesPage(),
+    VerifiedLeadsPage(kind: VerifiedKind.whatsapp),
+    VerifiedLeadsPage(kind: VerifiedKind.email),
     ProfilePage(),
   ];
 
@@ -33,29 +39,12 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _selectedIndex,
-        onDestinationSelected: (index) =>
-            setState(() => _selectedIndex = index),
+        onDestinationSelected: (index) => setState(() => _selectedIndex = index),
         destinations: const [
-          NavigationDestination(
-            icon: Icon(AppIcons.chat),
-            label: 'WA',
-          ),
-          NavigationDestination(
-            icon: Icon(AppIcons.compass),
-            label: 'Leads',
-          ),
-          NavigationDestination(
-            icon: Icon(AppIcons.send),
-            label: 'Outreach',
-          ),
-          NavigationDestination(
-            icon: Icon(AppIcons.wallet),
-            label: 'Sales',
-          ),
-          NavigationDestination(
-            icon: Icon(AppIcons.user),
-            label: 'Profile',
-          ),
+          NavigationDestination(icon: Icon(AppIcons.compass), label: 'Leads'),
+          NavigationDestination(icon: Icon(AppIcons.chat), label: 'WhatsApp'),
+          NavigationDestination(icon: Icon(AppIcons.mail), label: 'Email'),
+          NavigationDestination(icon: Icon(AppIcons.more), label: 'More'),
         ],
       ),
     );
