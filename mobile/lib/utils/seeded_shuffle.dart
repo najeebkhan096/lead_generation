@@ -29,3 +29,19 @@ List<T> seededShuffle<T>(List<T> items, String Function(T item) keyOf, String se
     ..sort((a, b) => a.$2.compareTo(b.$2));
   return ranked.map((e) => e.$1).toList(growable: false);
 }
+
+/// A stable 40-hex-character document id derived from [seed].
+///
+/// Lead document ids are 40 hex characters of a SHA-256, i.e. uniformly
+/// spread, so a start point derived from a salesman's uid lands somewhere
+/// different in the id order for each salesman. Paging the collection from
+/// that point (and wrapping around) spreads salesmen across different
+/// leads *without* having to download the whole pool to shuffle it — the
+/// property [seededShuffle] gave when everything was loaded at once.
+String seededStartId(String seed) {
+  final out = StringBuffer();
+  for (var i = 0; i < 5; i++) {
+    out.write(_fnv1aHash('$seed#$i').toRadixString(16).padLeft(8, '0'));
+  }
+  return out.toString();
+}

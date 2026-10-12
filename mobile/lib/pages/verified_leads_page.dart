@@ -2,10 +2,11 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
 import '../models/lead.dart';
+import '../services/lead_repository.dart';
 import '../services/open_links.dart';
+import '../services/paged_query.dart';
 import '../theme/app_theme.dart';
-import '../widgets/page_header.dart';
-import '../widgets/search_field.dart';
+import '../widgets/lead_collection_page.dart';
 
 /// Which validation a verified-leads list is the output of.
 enum VerifiedKind {
@@ -28,8 +29,6 @@ enum VerifiedKind {
   final String emptyHint;
 }
 
-const _allCategories = 'All';
-
 class _Row {
   const _Row(this.lead, this.sourceType);
 
@@ -42,207 +41,49 @@ class _Row {
 
 /// A verified lead list — the output of one of the two validators.
 ///
-/// Reads the dedicated collection straight from Firestore (the same way
-/// the Leads tab does), so a lead the web console validates shows up here
-/// live, without any archive step.
-class VerifiedLeadsPage extends StatefulWidget {
+/// Reads the dedicated collection straight from Firestore, a page at a time
+/// (see [LeadCollectionPage]), so a lead the web console validates shows up
+/// here after a pull-to-refresh, without any archive step.
+class VerifiedLeadsPage extends StatelessWidget {
   const VerifiedLeadsPage({super.key, required this.kind});
 
   final VerifiedKind kind;
 
-  @override
-  State<VerifiedLeadsPage> createState() => _VerifiedLeadsPageState();
-}
-
-class _VerifiedLeadsPageState extends State<VerifiedLeadsPage> {
-  final _search = TextEditingController();
-  String _query = '';
-  String _category = _allCategories;
-  String? _source; // null = all, 'review', 'website'
-  late final Stream<List<_Row>> _stream;
-
-  @override
-  void initState() {
-    super.initState();
-    _stream = FirebaseFirestore.instance
-        .collection(widget.kind.collection)
-        .orderBy('updatedAt', descending: true)
-        .snapshots()
-        .map((snap) => [
-              for (final doc in snap.docs) _Row(Lead.fromDoc(doc), doc.data()['sourceType'] as String?),
-            ]);
-  }
-
-  @override
-  void dispose() {
-    _search.dispose();
-    super.dispose();
-  }
-
-  bool get _isWhatsApp => widget.kind == VerifiedKind.whatsapp;
+  bool get _isWhatsApp => kind == VerifiedKind.whatsapp;
 
   @override
   Widget build(BuildContext context) {
-    final t = context.tokens;
-    return Scaffold(
-      body: SafeArea(
-        child: StreamBuilder<List<_Row>>(
-          stream: _stream,
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
-            }
-            if (snapshot.hasError) {
-              return _Message(
-                icon: AppIcons.alert,
-                title: 'Could not load ${widget.kind.title} leads',
-                body: snapshot.error.toString(),
-              );
-            }
-
-            final all = snapshot.data ?? const <_Row>[];
-            final categories = <String>{
-              for (final r in all) if (r.lead.category.trim().isNotEmpty) r.lead.category.trim(),
-            }.toList()
-              ..sort();
-            final category = categories.contains(_category) ? _category : _allCategories;
-
-            final q = _query.trim().toLowerCase();
-            final rows = all.where((r) {
-              if (category != _allCategories && r.lead.category != category) return false;
-              if (_source != null && r.sourceType != _source) return false;
-              if (q.isEmpty) return true;
-              final l = r.lead;
-              return l.business.toLowerCase().contains(q) ||
-                  l.location.toLowerCase().contains(q) ||
-                  (l.phone ?? '').toLowerCase().contains(q) ||
-                  (l.email ?? '').toLowerCase().contains(q);
-            }).toList();
-
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                PageHeader(
-                  title: '${widget.kind.title} leads',
-                  subtitle: all.isEmpty
-                      ? widget.kind.emptyHint
-                      : '${rows.length} ${rows.length == 1 ? 'business' : 'businesses'} verified',
-                  trailing: HeaderBadge(
-                    icon: _isWhatsApp ? AppIcons.chat : AppIcons.mail,
-                    background: t.accentTint,
-                    foreground: t.accentDeep,
-                  ),
-                ),
-                if (all.isEmpty)
-                  Expanded(
-                    child: _Message(
-                      icon: _isWhatsApp ? AppIcons.chat : AppIcons.mail,
-                      title: 'No ${widget.kind.title} leads yet',
-                      body: 'Validate leads from the web console and they appear here.',
-                    ),
-                  )
-                else ...[
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: Column(
-                      children: [
-                        SearchField(
-                          controller: _search,
-                          value: _query,
-                          hintText: 'Search ${widget.kind.title.toLowerCase()} leads...',
-                          onChanged: (v) => setState(() => _query = v),
-                        ),
-                        const SizedBox(height: 12),
-                        SizedBox(
-                          height: 40,
-                          child: ListView(
-                            scrollDirection: Axis.horizontal,
-                            children: [
-                              _Chip(
-                                label: 'All signals',
-                                selected: _source == null,
-                                onTap: () => setState(() => _source = null),
-                              ),
-                              _Chip(
-                                label: '1-star',
-                                selected: _source == 'review',
-                                onTap: () => setState(() => _source = 'review'),
-                              ),
-                              _Chip(
-                                label: 'No website',
-                                selected: _source == 'website',
-                                onTap: () => setState(() => _source = 'website'),
-                              ),
-                            ],
-                          ),
-                        ),
-                        if (categories.length > 1) ...[
-                          const SizedBox(height: 8),
-                          SizedBox(
-                            height: 40,
-                            child: ListView(
-                              scrollDirection: Axis.horizontal,
-                              children: [
-                                _Chip(
-                                  label: _allCategories,
-                                  selected: category == _allCategories,
-                                  onTap: () => setState(() => _category = _allCategories),
-                                ),
-                                for (final c in categories)
-                                  _Chip(
-                                    label: c,
-                                    selected: category == c,
-                                    onTap: () => setState(() => _category = c),
-                                  ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                  Expanded(
-                    child: rows.isEmpty
-                        ? const _Message(
-                            icon: AppIcons.searchX,
-                            title: 'No matches',
-                            body: 'Try a different name, number or filter.',
-                          )
-                        : ListView.builder(
-                            padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
-                            itemCount: rows.length,
-                            itemBuilder: (context, i) => _VerifiedCard(row: rows[i], kind: widget.kind),
-                          ),
-                  ),
-                ],
-              ],
-            );
+    return LeadCollectionPage<_Row>(
+      title: '${kind.title} leads',
+      noun: 'business',
+      headerIcon: _isWhatsApp ? AppIcons.chat : AppIcons.mail,
+      searchHint: 'Search ${kind.title.toLowerCase()} leads...',
+      emptyIcon: _isWhatsApp ? AppIcons.chat : AppIcons.mail,
+      emptyTitle: 'No ${kind.title} leads yet',
+      emptyBody: 'Validate leads from the web console and they appear here.',
+      emptySubtitle: kind.emptyHint,
+      filters: const [
+        (label: 'All signals', value: null),
+        (label: '1-star', value: 'review'),
+        (label: 'No website', value: 'website'),
+      ],
+      controllerFor: (sourceType) => PagedQueryController<_Row>(
+        segments: [
+          (category) {
+            Query<Map<String, dynamic>> q = FirebaseFirestore.instance.collection(kind.collection);
+            if (sourceType != null) q = q.where('sourceType', isEqualTo: sourceType);
+            if (category != null) q = q.where('category', isEqualTo: category);
+            return q.orderBy('updatedAt', descending: true);
           },
-        ),
+        ],
+        map: (doc) => _Row(Lead.fromDoc(doc), doc.data()['sourceType'] as String?),
       ),
-    );
-  }
-}
-
-class _Chip extends StatelessWidget {
-  const _Chip({required this.label, required this.selected, required this.onTap});
-
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = context.tokens;
-    return Padding(
-      padding: const EdgeInsets.only(right: 8),
-      child: ChoiceChip(
-        label: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
-        selected: selected,
-        onSelected: (_) => onTap(),
-        selectedColor: t.accentTint,
-        showCheckmark: false,
-      ),
+      searchText: (r) =>
+          '${r.lead.business} ${r.lead.location} ${r.lead.phone ?? ''} ${r.lead.email ?? ''} ${r.lead.category}'
+              .toLowerCase(),
+      categoryOf: (r) => r.lead.category,
+      loadCategories: LeadRepository().fetchCategoryNames,
+      itemBuilder: (context, row) => _VerifiedCard(row: row, kind: kind),
     );
   }
 }
@@ -371,39 +212,6 @@ class _VerifiedCard extends StatelessWidget {
             ],
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _Message extends StatelessWidget {
-  const _Message({required this.icon, required this.title, required this.body});
-
-  final IconData icon;
-  final String title;
-  final String body;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = context.tokens;
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 72,
-              height: 72,
-              decoration: BoxDecoration(color: t.accentTint, shape: BoxShape.circle),
-              child: Icon(icon, size: 30, color: t.accentDeep),
-            ),
-            const SizedBox(height: 16),
-            Text(title, style: Theme.of(context).textTheme.titleMedium, textAlign: TextAlign.center),
-            const SizedBox(height: 6),
-            Text(body, style: Theme.of(context).textTheme.bodyMedium, textAlign: TextAlign.center),
-          ],
-        ),
       ),
     );
   }

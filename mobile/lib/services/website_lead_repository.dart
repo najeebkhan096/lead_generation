@@ -14,27 +14,7 @@ class WebsiteLeadRepository {
 
   final FirebaseFirestore _db;
 
-  /// One-time fetch of every website lead, newest first.
-  Future<List<Lead>> fetchAllLeads() async {
-    final collection = _db.collection('websiteLeads');
-    try {
-      final snap =
-          await collection.orderBy('updatedAt', descending: true).get();
-      return snap.docs.map(Lead.fromDoc).toList();
-    } on FirebaseException {
-      final snap = await collection.get();
-      return snap.docs.map(Lead.fromDoc).toList();
-    }
-  }
 
-  /// Real-time stream of every website lead.
-  Stream<List<Lead>> getLeadsStream() {
-    return _db
-        .collection('websiteLeads')
-        .orderBy('updatedAt', descending: true)
-        .snapshots()
-        .map((snap) => snap.docs.map(Lead.fromDoc).toList());
-  }
 
   Future<void> updateFavorite(String leadId, bool isFavorite, String? userId) async {
     final updates = <String, dynamic>{

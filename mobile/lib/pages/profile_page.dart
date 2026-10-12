@@ -1,6 +1,5 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import '../models/lead.dart';
 import '../services/auth_service.dart';
 import '../services/lead_repository.dart';
 import '../services/open_links.dart';
@@ -324,43 +323,46 @@ class _IdentityCard extends StatelessWidget {
   }
 }
 
-/// Live pipeline numbers straight from the leads stream.
-class _StatsRow extends StatelessWidget {
+/// Pipeline numbers, from server-side count aggregation — three tiny
+/// reads instead of downloading every lead to count it.
+class _StatsRow extends StatefulWidget {
   const _StatsRow();
+
+  @override
+  State<_StatsRow> createState() => _StatsRowState();
+}
+
+class _StatsRowState extends State<_StatsRow> {
+  late final Future<({int total, int inProgress, int won})> _counts =
+      LeadRepository().fetchPipelineCounts();
 
   @override
   Widget build(BuildContext context) {
     final t = context.tokens;
-    return StreamBuilder<List<Lead>>(
-      stream: LeadRepository().getLeadsStream(),
+    return FutureBuilder<({int total, int inProgress, int won})>(
+      future: _counts,
       builder: (context, snapshot) {
-        final leads = snapshot.data ?? const <Lead>[];
-        final inProgress = leads
-            .where((l) =>
-                l.status == LeadStatus.contacted ||
-                l.status == LeadStatus.booked)
-            .length;
-        final won =
-            leads.where((l) => l.status == LeadStatus.dealDone).length;
+        final c = snapshot.data;
+        String show(int? n) => n == null ? '–' : '$n';
 
         return Row(
           children: [
             _Stat(
-              value: '${leads.length}',
+              value: show(c?.total),
               label: 'Leads',
               background: t.neutralTint,
               foreground: t.subtle,
             ),
             const SizedBox(width: 10),
             _Stat(
-              value: '$inProgress',
+              value: show(c?.inProgress),
               label: 'In progress',
               background: t.accentTint,
               foreground: t.accentTextStrong,
             ),
             const SizedBox(width: 10),
             _Stat(
-              value: '$won',
+              value: show(c?.won),
               label: 'Deals won',
               background: t.sageTint,
               foreground: t.sageTextStrong,

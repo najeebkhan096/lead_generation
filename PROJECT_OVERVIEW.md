@@ -109,6 +109,25 @@ A desktop app. It starts the backend on port 3001, health-checks `/api/health`, 
 
 **Validating copies, it never moves.** Both validators work on either lead type. A verified lead is *copied* into `whatsappLeads` / `emailLeads` (with `sourceType: review | website`, and for email the page it came from), and the verdict is also written onto the source lead (`hasWhatsApp`, `email`). Source leads are never deleted or re-keyed.
 
+## 4b. Paging and lazy loading
+
+Nothing loads a whole collection. `websiteLeads` alone holds tens of thousands of documents, so every lead list is read a page at a time and rendered lazily.
+
+**Backend** (`lib/pagination.js`): `GET /api/db/{leads,website-leads,whatsapp-leads,email-leads}` take `limit` (default 50, max 200), `cursor`, `category`, `q`, and return `{ leads, nextCursor, total }`.
+
+| | Indexed path | Scan path |
+|---|---|---|
+| When | no text search | `q` (text search) or an in-memory filter |
+| Cost | one page of reads | walks the collection in slices (≤2,500 docs per request), field-masked; only matches are fetched in full |
+| `total` | on the first page only | `null` |
+| Resume | `nextCursor` | `nextCursor` — the client keeps asking until a page fills |
+
+`nextCursor` is the last returned document's `updatedAt` + id (ties are broken by id, so nothing is skipped or repeated). `GET /api/db/categories?collection=` returns distinct categories with counts (cached 10 minutes) and `GET /api/db/overview` the dashboard's numbers (cached 1 minute). A category filter needs a composite index; until it has built, the backend falls back to filtering in memory instead of failing.
+
+**Web**: one list engine — `PagedLeadsBloc` + `PagedLeadList` (a sliver grid, so only visible cards are built; the next page loads on scroll or via a "Load more" button) — behind Review, No-website, WhatsApp and Email leads (`LeadListPage` + a small config each). Search is debounced and answered by the server. Archive lead lists are bounded (parsed from a workbook) and reveal a window at a time (`LazyRevealMixin`).
+
+**Mobile**: `PagedQueryController` (`limit` + `startAfterDocument`) behind `LeadCollectionPage`. Lists are one-shot page reads, so new data arrives on pull-to-refresh rather than live. "Discover leads" starts each salesman at a point derived from their uid in the document-id order and wraps around, which keeps salesmen on different leads without downloading the pool to shuffle it. Search on the phone filters what has been read (up to 1,500 documents) — pick a category to search further. Profile stats use server-side `count()`.
+
 ## 4a. Validation
 
 | | WhatsApp | Email |
@@ -126,7 +145,7 @@ Web-search emails are deliberately conservative: an address is kept only if it a
 |------|--------|-------|
 | Health | `GET /api/health` | |
 | Scan | `/api/state-scan` | live engine |
-| Saved leads | `/api/db` | `leads`, `website-leads`, **`whatsapp-leads`**, `email-leads`, stats, clear |
+| Saved leads | `/api/db` | `leads`, `website-leads`, **`whatsapp-leads`**, `email-leads` (all paged — see 4b), `categories`, `overview`, stats, clear |
 | WhatsApp validation | `/api/whatsapp-web` | `connect`, `validate-saved`, `validate-list`, `validate/status`, `validate/cancel`, `safety` |
 | Email validation | `/api/email-validation` | `validate-saved`, `validate-list`, `status`, `cancel` |
 | Excel archives | `/api/excel-scans` | |

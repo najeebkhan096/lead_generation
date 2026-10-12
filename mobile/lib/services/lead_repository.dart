@@ -9,29 +9,7 @@ class LeadRepository {
 
   final FirebaseFirestore _db;
 
-  /// One-time fetch of every saved business, newest first.
-  ///
-  /// Falls back to an unordered fetch if the `updatedAt` index/field is
-  /// unavailable so the Saved Businesses screen still loads.
-  Future<List<Lead>> fetchAllLeads() async {
-    final collection = _db.collection('leads');
-    try {
-      final snap =
-          await collection.orderBy('updatedAt', descending: true).get();
-      return snap.docs.map(Lead.fromDoc).toList();
-    } on FirebaseException {
-      final snap = await collection.get();
-      return snap.docs.map(Lead.fromDoc).toList();
-    }
-  }
 
-  /// Real-time stream of every saved business.
-  Stream<List<Lead>> getLeadsStream() {
-    return _db.collection('leads')
-        .orderBy('updatedAt', descending: true)
-        .snapshots()
-        .map((snap) => snap.docs.map(Lead.fromDoc).toList());
-  }
 
   /// Real-time stream of past searches.
   Stream<List<SavedSearch>> getSearchesStream() {
@@ -55,6 +33,37 @@ class LeadRepository {
       final snap = await collection.limit(100).get();
       return snap.docs.map(SavedSearch.fromDoc).toList();
     }
+  }
+
+  /// The categories a scan has ever been run for, newest scans first.
+  ///
+  /// A cheap source for the category filter: one document per scan batch,
+  /// instead of reading every lead to find out which categories exist.
+  Future<List<String>> fetchCategoryNames() async {
+    final snap = await _db
+        .collection('searches')
+        .orderBy('createdAt', descending: true)
+        .limit(500)
+        .get();
+    final names = <String>{
+      for (final doc in snap.docs)
+        if (((doc.data()['category'] as String?) ?? '').trim().isNotEmpty)
+          (doc.data()['category'] as String).trim(),
+    };
+    return names.toList()..sort();
+  }
+
+  /// Pipeline totals via server-side count aggregation — three tiny reads
+  /// instead of downloading every lead to count them.
+  Future<({int total, int inProgress, int won})> fetchPipelineCounts() async {
+    final leads = _db.collection('leads');
+    Future<int> count(Query<Map<String, dynamic>> q) async => (await q.count().get()).count ?? 0;
+    final results = await Future.wait([
+      count(leads),
+      count(leads.where('status', whereIn: ['contacted', 'booked'])),
+      count(leads.where('status', isEqualTo: 'dealDone')),
+    ]);
+    return (total: results[0], inProgress: results[1], won: results[2]);
   }
 
   Future<void> updateFavorite(String leadId, bool isFavorite, String? userId) async {
