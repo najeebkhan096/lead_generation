@@ -1,0 +1,168 @@
+import { findLeads, findLeadsNationwide, findLeadsSequential, getCurrentLeads } from './leadService.js';
+import { analyzeReview, generateOutreachMessage } from './reviewAnalyzer.js';
+import { clearLeads, setStatus, getStore } from '../../lib/memoryStore.js';
+import { countryMeta } from '../../data/countries.js';
+
+function isNationwideRequest(body = {}) {
+  if (body.nationwide === true || body.nationwide === 'true') return true;
+  const loc = String(body.location || '').trim().toLowerCase();
+  if (!loc) return true; // no location → search all US states
+  return (
+    loc === 'usa' ||
+    loc === 'us' ||
+    loc === 'united states' ||
+    loc === 'all' ||
+    loc === 'all us states' ||
+    loc === 'all usa' ||
+    loc === 'nationwide'
+  );
+}
+
+/**
+ * Start search in the background and return immediately (202).
+ * Render free tier kills long HTTP requests (~100s) with 502 —
+ * clients must poll GET /api/search/status then GET /api/search/results.
+ *
+ * Nationwide (default): loops all US states until ~100 1★ leads (phone + Maps, no WA check).
+ */
+export async function startSearch(req, res) {
+  const {
+    location,
+    category,
+    categories,
+    dateRange = '30',
+    maxResults = 150,
+    maxResultsPerState,
+    targetLeadCount = 100,
+    analyze = false,
+    nationwide,
+    country = 'US',
+  } = req.body || {};
+
+  const hasCategory = (category && String(category).trim().length > 0) ||
+                      (Array.isArray(categories) && categories.length > 0);
+
+  if (!hasCategory) {
+    return res.status(400).json({
+      error: 'At least one business category is required',
+    });
+  }
+
+  const store = getStore();
+  if (store.status === 'searching') {
+    return res.status(409).json({
+      error: 'A search is already running. Poll /api/search/status.',
+      status: store.status,
+      progress: store.progress,
+    });
+  }
+
+  setStatus('searching');
+
+  const runNationwide = isNationwideRequest({ location, nationwide });
+
+  if (runNationwide) {
+    if (Array.isArray(categories) && categories.length > 0) {
+      findLeadsSequential({
+        categories: categories.map(c => String(c).trim()),
+        dateRange: String(dateRange),
+        maxResultsPerState: Number(maxResultsPerState || maxResults) || 150,
+        analyze: Boolean(analyze),
+        country: String(country),
+      }).catch((err) => {
+        console.error('Background sequential search failed:', err);
+        setStatus('error', err.message || 'Sequential search failed');
+      });
+
+      return res.status(202).json({
+        started: true,
+        sequential: true,
+        categories,
+        message: `Sequential search started (${countryMeta(country).label}). Results for each category will be auto-saved to Firebase.`,
+      });
+    }
+
+    findLeadsNationwide({
+      category: String(category).trim(),
+      dateRange: String(dateRange),
+      maxResultsPerState: Number(maxResultsPerState || maxResults) || 150,
+      targetLeadCount: Number(targetLeadCount) || 100,
+      analyze: Boolean(analyze),
+      country: String(country),
+    }).catch((err) => {
+      console.error('Background nationwide search failed:', err);
+      setStatus('error', err.message || 'Search failed');
+    });
+
+    return res.status(202).json({
+      started: true,
+      nationwide: true,
+      targetLeadCount: Number(targetLeadCount) || 100,
+      message: `Nationwide search started (${countryMeta(country).label}). Poll /api/search/status until status is done or error.`,
+    });
+  }
+
+  if (!location) {
+    return res.status(400).json({
+      error: 'location is required when nationwide is false',
+    });
+  }
+
+  findLeads({
+    location: String(location).trim(),
+    category: String(category).trim(),
+    dateRange: String(dateRange),
+    maxResults: Number(maxResults) || 150,
+    analyze: Boolean(analyze),
+  }).catch((err) => {
+    console.error('Background search failed:', err);
+    setStatus('error', err.message || 'Search failed');
+  });
+
+  return res.status(202).json({
+    started: true,
+    nationwide: false,
+    message: 'Search started. Poll /api/search/status until status is done or error.',
+  });
+}
+
+export function getStatus(_req, res) {
+  const store = getCurrentLeads();
+  return res.json({
+    status: store.status,
+    error: store.error,
+    progress: store.progress,
+    lastSearch: store.lastSearch,
+    leadCount: store.leads.length,
+  });
+}
+
+export function getResults(_req, res) {
+  const store = getCurrentLeads();
+  return res.json({
+    status: store.status,
+    lastSearch: store.lastSearch,
+    leads: store.leads,
+  });
+}
+
+export function clearResults(_req, res) {
+  clearLeads();
+  return res.json({ success: true, message: 'In-memory leads cleared' });
+}
+
+export function analyze(req, res) {
+  const { reviewText, businessName } = req.body || {};
+  if (!reviewText) {
+    return res.status(400).json({ error: 'reviewText is required' });
+  }
+  const result = analyzeReview(reviewText, businessName);
+  return res.json(result);
+}
+
+export function outreach(req, res) {
+  const { businessName, category } = req.body || {};
+  return res.json({
+    message: generateOutreachMessage(businessName, category),
+  });
+}

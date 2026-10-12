@@ -1,5 +1,5 @@
 import { searchBusinesses } from '../src/scraper/googleMapsScraper.js';
-import { filterRecentOneStarLeads } from '../src/services/reviewFilter.js';
+import { filterRecentOneStarLeads } from '../src/modules/scan/reviewFilter.js';
 
 const started = Date.now();
 const businesses = await searchBusinesses('Dentist', 'New York', {

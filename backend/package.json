@@ -8,11 +8,11 @@
     "start": "node --max-old-space-size=8192 src/index.js",
     "dev": "node --max-old-space-size=8192 --watch src/index.js",
     "build:web": "bash ../scripts/build-web.sh",
-    "test:outreach": "node --test src/services/outreach/*.test.js",
-    "test:email-validation": "node --test src/services/emailValidationJob.test.js"
+    "test": "node --test src/modules/outreach/*.test.js src/modules/validation/*/*.test.js",
+    "test:outreach": "node --test src/modules/outreach/*.test.js",
+    "test:validation": "node --test src/modules/validation/*/*.test.js"
   },
   "dependencies": {
-    "better-sqlite3": "^13.0.1",
     "cheerio": "^1.0.0",
     "cors": "^2.8.5",
     "dotenv": "^17.4.2",

@@ -19,7 +19,7 @@
 
 import { initFirebase, getFirestore } from '../src/firebase/admin.js';
 import { COUNTRIES } from '../src/data/countries.js';
-import { normalizePhone, waMeLink } from '../src/services/whatsappChecker.js';
+import { normalizePhone, waMeLink } from '../src/modules/validation/whatsapp/whatsappChecker.js';
 
 initFirebase();
 
