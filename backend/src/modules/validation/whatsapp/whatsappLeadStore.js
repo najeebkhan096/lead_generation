@@ -12,8 +12,7 @@
 
 import { FieldValue } from 'firebase-admin/firestore';
 import { getFirestore } from '../../../firebase/admin.js';
-import { countryMeta } from '../../../data/countries.js';
-import { leadDocId, withCountrySuffix } from '../../../lib/leadIdentity.js';
+import { leadDocId, normalizeCategory } from '../../../lib/leadIdentity.js';
 import { pagedList, invalidateCategories } from '../../../lib/pagination.js';
 import { normalizePhone, waMeLink } from './whatsappChecker.js';
 
@@ -39,7 +38,6 @@ function inferSourceType(lead) {
 }
 
 function toFirestoreWhatsAppLead(lead, { country } = {}) {
-  const countrySuffix = country ? countryMeta(country).shortName : null;
   const bad = lead.badReview || {};
   return {
     externalId: lead.id || null,
@@ -48,7 +46,7 @@ function toFirestoreWhatsAppLead(lead, { country } = {}) {
     sourceId: lead.dbId || null,
     sourceType: inferSourceType(lead),
     business: lead.business || 'Unknown',
-    category: withCountrySuffix(lead.category, countrySuffix),
+    category: normalizeCategory(lead.category, country),
     location: lead.location || null,
     address: lead.address || null,
     phone: lead.phone || null,

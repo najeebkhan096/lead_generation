@@ -11,8 +11,7 @@
 
 import { FieldValue } from 'firebase-admin/firestore';
 import { getFirestore } from '../../../firebase/admin.js';
-import { countryMeta } from '../../../data/countries.js';
-import { leadDocId, withCountrySuffix } from '../../../lib/leadIdentity.js';
+import { leadDocId, normalizeCategory } from '../../../lib/leadIdentity.js';
 import { pagedList, invalidateCategories } from '../../../lib/pagination.js';
 
 const COLLECTION = 'emailLeads';
@@ -21,11 +20,10 @@ const COLLECTION = 'emailLeads';
 export const emailLeadDocId = leadDocId;
 
 function toFirestoreEmailLead(lead, { country } = {}) {
-  const countrySuffix = country ? countryMeta(country).shortName : null;
   return {
     externalId: lead.id || null,
     business: lead.business || 'Unknown',
-    category: withCountrySuffix(lead.category, countrySuffix),
+    category: normalizeCategory(lead.category, country),
     location: lead.location || null,
     searchLocation: lead.searchLocation || null,
     address: lead.address || null,

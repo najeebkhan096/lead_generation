@@ -5,7 +5,7 @@ import {
   getJobSnapshot,
   _resetValidationJobForTests,
 } from './whatsappValidationJob.js';
-import { leadDocId, withCountrySuffix } from '../../../lib/leadIdentity.js';
+import { leadDocId, withCountrySuffix, normalizeCategory, hasCountryTag } from '../../../lib/leadIdentity.js';
 import { LEAD_SOURCES, leadSource } from '../../leads/leadSources.js';
 
 beforeEach(() => _resetValidationJobForTests());
@@ -80,4 +80,18 @@ test('lead sources map both signals and reject unknown collections', () => {
   assert.equal(leadSource('leads').sourceType, 'review');
   assert.equal(leadSource('websiteLeads').sourceType, 'website');
   assert.throws(() => leadSource('users'), (e) => e.status === 400);
+});
+
+test('categories are normalized to the country-tagged form every collection uses', () => {
+  // an Excel archive's sheet name carries no tag
+  assert.equal(normalizeCategory('Car Dealer'), 'Car Dealer USA');
+  assert.equal(normalizeCategory('  Auto Body Shop '), 'Auto Body Shop USA');
+  // already tagged (any known country) -> untouched
+  assert.equal(normalizeCategory('Car Dealer USA'), 'Car Dealer USA');
+  assert.equal(normalizeCategory('Air Conditioning Contractor UK'), 'Air Conditioning Contractor UK');
+  assert.equal(normalizeCategory('Cleaning Service', 'UK'), 'Cleaning Service UK');
+  assert.equal(normalizeCategory(''), null);
+  assert.equal(hasCountryTag('Cafe USA'), true);
+  assert.equal(hasCountryTag('Cafe'), false);
+  assert.equal(hasCountryTag('Spectacular'), false, 'a suffix must be a whole word');
 });
