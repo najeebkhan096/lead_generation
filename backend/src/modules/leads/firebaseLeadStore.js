@@ -11,6 +11,7 @@ import { getFirestore } from '../../firebase/admin.js';
 import { getStore } from '../../lib/memoryStore.js';
 import { countryMeta } from '../../data/countries.js';
 import { leadDocId, withCountrySuffix } from '../../lib/leadIdentity.js';
+import { pagedList, invalidateCategories } from '../../lib/pagination.js';
 
 function toFirestoreLead(lead, searchId, countrySuffix) {
   const bad = lead.badReview || {};
@@ -55,6 +56,7 @@ function toFirestoreLead(lead, searchId, countrySuffix) {
  * Save current in-memory leads (or provided list) to Firestore.
  */
 export async function saveLeadsToFirebase(leadsInput) {
+  invalidateCategories('leads');
   const store = getStore();
   const leads = Array.isArray(leadsInput) && leadsInput.length ? leadsInput : store.leads;
 
@@ -154,6 +156,7 @@ export async function createSearchRecord({ category, location, dateRange, nation
  * in-memory Excel archive until the entire category scan finishes.
  */
 export async function upsertLeadToFirebase(lead, { searchId = null, country = 'US' } = {}) {
+  invalidateCategories('leads');
   const db = getFirestore();
   const countrySuffix = countryMeta(country).shortName;
   const id = leadDocId(lead);
@@ -232,21 +235,23 @@ export async function setLeadEmail(leadId, { email, emails, emailSource, emailFo
   );
 }
 
-export async function listFirebaseLeads({ limit = 500 } = {}) {
-  const db = getFirestore();
-  // Was hard-capped at 500 regardless of what callers asked for — since
-  // the Dashboard and Leads page both request as many as they can to
-  // compute accurate totals, that silently truncated real data (e.g.
-  // showing "500 leads" when there were actually 3,000+).
-  const lim = Math.min(Number(limit) || 500, 5000);
-  const snap = await db
-    .collection('leads')
-    .orderBy('updatedAt', 'desc')
-    .limit(lim)
-    .get();
-
-  const leads = snap.docs.map(docToLead);
-  return { total: leads.length, leads, provider: 'firebase' };
+/**
+ * One page of saved review leads, newest first — see `lib/pagination.js`
+ * for the request/response contract (`limit`, `cursor`, `category`, `q`).
+ * `verifiedOnly` keeps only leads a real WhatsApp check confirmed.
+ */
+export async function listFirebaseLeads({ limit, cursor, category, q, verifiedOnly } = {}) {
+  return pagedList({
+    db: getFirestore(),
+    collection: 'leads',
+    mapDoc: docToLead,
+    limit,
+    cursor,
+    category,
+    q,
+    memoryFilter: verifiedOnly ? (d) => d.hasWhatsApp === true : undefined,
+    maskFields: ['hasWhatsApp'],
+  });
 }
 
 /** Every saved lead in an exact category — e.g. for a per-scan Excel export. */
@@ -380,6 +385,7 @@ export async function deleteLead(leadId) {
  * `withCountrySuffix`). Does not touch the `searches` collection.
  */
 export async function deleteLeadsByCategory(category) {
+  invalidateCategories('leads');
   const db = getFirestore();
   const snap = await db.collection('leads').where('category', '==', category).get();
   const refs = snap.docs.map((doc) => doc.ref);
@@ -421,6 +427,7 @@ export async function listFirebaseSearches({ limit = 50 } = {}) {
  * anything here, regardless.
  */
 export async function clearAllData() {
+  invalidateCategories('leads');
   const db = getFirestore();
   const deleted = {};
 

@@ -14,6 +14,7 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { getFirestore } from '../../../firebase/admin.js';
 import { countryMeta } from '../../../data/countries.js';
 import { leadDocId, withCountrySuffix } from '../../../lib/leadIdentity.js';
+import { pagedList, invalidateCategories } from '../../../lib/pagination.js';
 import { normalizePhone, waMeLink } from './whatsappChecker.js';
 
 const COLLECTION = 'whatsappLeads';
@@ -74,6 +75,7 @@ function toFirestoreWhatsAppLead(lead, { country } = {}) {
  * a WhatsApp lead is the phone number.
  */
 export async function saveWhatsAppLeadsToFirebase(leadsInput, { country = null } = {}) {
+  invalidateCategories(COLLECTION);
   const leads = Array.isArray(leadsInput) ? leadsInput.filter((l) => l?.phone) : [];
   if (!leads.length) return { inserted: 0, updated: 0, total: 0 };
 
@@ -133,14 +135,19 @@ function docToWhatsAppLead(doc) {
   };
 }
 
-export async function listWhatsAppLeads({ limit = 500, sourceType } = {}) {
-  const db = getFirestore();
-  const lim = Math.min(Number(limit) || 500, 5000);
-  let q = db.collection(COLLECTION);
-  if (sourceType) q = q.where('sourceType', '==', sourceType);
-  const snap = await q.orderBy('updatedAt', 'desc').limit(lim).get();
-  const leads = snap.docs.map(docToWhatsAppLead);
-  return { total: leads.length, leads, provider: 'firebase' };
+/** One page of WhatsApp-verified leads, newest first. `sourceType` narrows
+ * to `review` or `website` leads. */
+export async function listWhatsAppLeads({ limit, cursor, category, q, sourceType } = {}) {
+  return pagedList({
+    db: getFirestore(),
+    collection: COLLECTION,
+    mapDoc: docToWhatsAppLead,
+    limit,
+    cursor,
+    category,
+    q,
+    where: sourceType ? [['sourceType', '==', sourceType]] : [],
+  });
 }
 
 export async function deleteWhatsAppLead(leadId) {
@@ -156,6 +163,7 @@ export async function deleteWhatsAppLead(leadId) {
 }
 
 export async function deleteWhatsAppLeadsByCategory(category) {
+  invalidateCategories(COLLECTION);
   const db = getFirestore();
   const snap = await db.collection(COLLECTION).where('category', '==', category).get();
   const refs = snap.docs.map((doc) => doc.ref);
@@ -174,6 +182,7 @@ export async function getWhatsAppLeadCount() {
 }
 
 export async function clearAllWhatsAppLeads() {
+  invalidateCategories(COLLECTION);
   const db = getFirestore();
   const refs = await db.collection(COLLECTION).listDocuments();
   for (let i = 0; i < refs.length; i += 400) {

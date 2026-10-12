@@ -11,6 +11,8 @@ import {
   getSavedWebsiteLeads,
   deleteSavedWebsiteLead,
   deleteSavedWebsiteLeadsByCategory,
+  getCategories,
+  getDashboardOverview,
   getSavedWhatsAppLeads,
   deleteSavedWhatsAppLead,
   deleteSavedWhatsAppLeadsByCategory,
@@ -22,6 +24,8 @@ import {
 const router = Router();
 
 router.post('/save', saveToDatabase);
+router.get('/overview', getDashboardOverview);
+router.get('/categories', getCategories);
 router.get('/leads', getSavedLeads);
 router.patch('/leads/:id/whatsapp', setLeadWhatsAppStatus);
 router.delete('/leads/:id', deleteSavedLead);

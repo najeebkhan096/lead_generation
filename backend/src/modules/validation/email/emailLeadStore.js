@@ -13,6 +13,7 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { getFirestore } from '../../../firebase/admin.js';
 import { countryMeta } from '../../../data/countries.js';
 import { leadDocId, withCountrySuffix } from '../../../lib/leadIdentity.js';
+import { pagedList, invalidateCategories } from '../../../lib/pagination.js';
 
 const COLLECTION = 'emailLeads';
 
@@ -56,6 +57,7 @@ function toFirestoreEmailLead(lead, { country } = {}) {
  * is ignored — an email lead without an email isn't a lead.
  */
 export async function saveEmailLeadsToFirebase(leadsInput, { country = null } = {}) {
+  invalidateCategories(COLLECTION);
   const leads = Array.isArray(leadsInput) ? leadsInput.filter((l) => l?.email) : [];
   if (!leads.length) return { inserted: 0, updated: 0, total: 0 };
 
@@ -120,17 +122,17 @@ function docToEmailLead(doc) {
   };
 }
 
-export async function listEmailLeads({ limit = 500 } = {}) {
-  const db = getFirestore();
-  const lim = Math.min(Number(limit) || 500, 5000);
-  const snap = await db
-    .collection(COLLECTION)
-    .orderBy('updatedAt', 'desc')
-    .limit(lim)
-    .get();
-
-  const leads = snap.docs.map(docToEmailLead);
-  return { total: leads.length, leads, provider: 'firebase' };
+/** One page of email-verified leads, newest first — see `lib/pagination.js`. */
+export async function listEmailLeads({ limit, cursor, category, q } = {}) {
+  return pagedList({
+    db: getFirestore(),
+    collection: COLLECTION,
+    mapDoc: docToEmailLead,
+    limit,
+    cursor,
+    category,
+    q,
+  });
 }
 
 export async function deleteEmailLead(leadId) {
@@ -146,6 +148,7 @@ export async function deleteEmailLead(leadId) {
 }
 
 export async function deleteEmailLeadsByCategory(category) {
+  invalidateCategories(COLLECTION);
   const db = getFirestore();
   const snap = await db.collection(COLLECTION).where('category', '==', category).get();
   const refs = snap.docs.map((doc) => doc.ref);
@@ -166,6 +169,7 @@ export async function getEmailLeadCount() {
 }
 
 export async function clearAllEmailLeads() {
+  invalidateCategories(COLLECTION);
   const db = getFirestore();
   const refs = await db.collection(COLLECTION).listDocuments();
   for (let i = 0; i < refs.length; i += 400) {

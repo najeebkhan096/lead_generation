@@ -29,7 +29,49 @@ import {
   getWhatsAppLeadCount,
   clearAllWhatsAppLeads,
 } from '../validation/whatsapp/whatsappLeadStore.js';
-import { getFirebaseStatus } from '../../firebase/admin.js';
+import { getFirebaseStatus, getFirestore } from '../../firebase/admin.js';
+import { listCategories } from '../../lib/pagination.js';
+import { getOverview, invalidateOverview } from './overview.js';
+
+const CATEGORY_COLLECTIONS = ['leads', 'websiteLeads', 'whatsappLeads', 'emailLeads'];
+
+/** The paging/filter parameters every lead list accepts — see lib/pagination.js. */
+function pageParams(req) {
+  const { limit, cursor, category, q } = req.query;
+  return {
+    limit,
+    cursor: cursor ? String(cursor) : undefined,
+    category: category ? String(category) : undefined,
+    q: q ? String(q).slice(0, 100) : undefined,
+  };
+}
+
+/**
+ * GET /api/db/categories?collection=leads|websiteLeads|whatsappLeads|emailLeads
+ * — distinct categories with counts, for the category filter. Cached
+ * server-side; `refresh=1` forces a rescan.
+ */
+export async function getCategories(req, res) {
+  try {
+    const collection = String(req.query.collection || 'leads');
+    if (!CATEGORY_COLLECTIONS.includes(collection)) {
+      return res.status(400).json({ error: `collection must be one of: ${CATEGORY_COLLECTIONS.join(', ')}` });
+    }
+    const categories = await listCategories(getFirestore(), collection, { force: req.query.refresh === '1' });
+    return res.json({ collection, categories });
+  } catch (err) {
+    return res.status(err.status || 500).json({ error: err.message || 'Failed to load categories' });
+  }
+}
+
+/** GET /api/db/overview — the dashboard's numbers, computed server-side. */
+export async function getDashboardOverview(req, res) {
+  try {
+    return res.json(await getOverview({ force: req.query.refresh === '1' }));
+  } catch (err) {
+    return res.status(err.status || 500).json({ error: err.message || 'Failed to load overview' });
+  }
+}
 
 const CLEAR_CONFIRM_PHRASE = 'DELETE ALL DATA';
 
@@ -52,7 +94,10 @@ export async function saveToDatabase(req, res) {
  */
 export async function getSavedLeads(req, res) {
   try {
-    const result = await listFirebaseLeads({ limit: req.query.limit });
+    const result = await listFirebaseLeads({
+      ...pageParams(req),
+      verifiedOnly: req.query.verified === '1',
+    });
     return res.json(result);
   } catch (err) {
     const status = err.status || 500;
@@ -121,7 +166,10 @@ export async function deleteSavedLeadsByCategory(req, res) {
  */
 export async function getSavedWebsiteLeads(req, res) {
   try {
-    const result = await listWebsiteLeads({ limit: req.query.limit });
+    const result = await listWebsiteLeads({
+      ...pageParams(req),
+      emailOnly: req.query.hasEmail === '1',
+    });
     return res.json(result);
   } catch (err) {
     const status = err.status || 500;
@@ -173,7 +221,7 @@ export async function deleteSavedWebsiteLeadsByCategory(req, res) {
 export async function getSavedWhatsAppLeads(req, res) {
   try {
     const sourceType = ['review', 'website'].includes(req.query.sourceType) ? req.query.sourceType : undefined;
-    return res.json(await listWhatsAppLeads({ limit: req.query.limit, sourceType }));
+    return res.json(await listWhatsAppLeads({ ...pageParams(req), sourceType }));
   } catch (err) {
     return res.status(err.status || 500).json({ error: err.message || 'Failed to load WhatsApp leads' });
   }
@@ -213,7 +261,7 @@ export async function deleteSavedWhatsAppLeadsByCategory(req, res) {
  */
 export async function getSavedEmailLeads(req, res) {
   try {
-    const result = await listEmailLeads({ limit: req.query.limit });
+    const result = await listEmailLeads(pageParams(req));
     return res.json(result);
   } catch (err) {
     const status = err.status || 500;
@@ -315,6 +363,7 @@ export async function clearDatabase(req, res) {
         error: `Confirmation required. Send { "confirm": "${CLEAR_CONFIRM_PHRASE}" } to proceed.`,
       });
     }
+    invalidateOverview();
     const [result, websiteLeadsResult, whatsappLeadsResult, emailLeadsResult] = await Promise.all([
       clearAllData(),
       clearAllWebsiteLeads(),
