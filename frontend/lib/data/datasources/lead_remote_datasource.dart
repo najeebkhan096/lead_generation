@@ -7,6 +7,7 @@ import '../../core/constants/api_constants.dart';
 import '../../domain/entities/email_validation_snapshot.dart';
 import '../../domain/entities/lead.dart';
 import '../../domain/entities/lead_page.dart';
+import '../../domain/entities/validation_start.dart';
 import '../../domain/entities/multi_search_snapshot.dart';
 import '../../domain/entities/state_city_scan_snapshot.dart';
 import '../../domain/entities/excel_archive.dart';
@@ -450,38 +451,33 @@ class LeadRemoteDataSource {
     }
   }
 
-  /// Same guarded validation job as [startWhatsAppValidation], but for
-  /// leads that were never saved to Firestore (e.g. extracted from an
-  /// Excel archive) — `id` here is just a correlation key for reading
-  /// back [WhatsAppValidationSnapshot.results], not a real document id.
-  Future<void> validateExternalLeads(List<Map<String, dynamic>> leads) async {
-    final response = await _client.post(
-      _uri(ApiConstants.whatsAppWebValidateList),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'leads': leads}),
-    ).timeout(const Duration(minutes: 2));
-    if (response.statusCode >= 400) {
-      final body = _tryDecode(response.body);
-      throw Exception(body['error'] ?? 'Failed to start WhatsApp validation');
-    }
-  }
+  /// Starts a WhatsApp validation over an explicit list (e.g. an Excel
+  /// archive's businesses). Numbers already answered are reused or skipped by
+  /// the backend; [recheck] asks about every number again.
+  Future<ValidationStart> validateExternalLeads(
+    List<Map<String, dynamic>> leads, {
+    bool recheck = false,
+  }) =>
+      _startValidation(
+        ApiConstants.whatsAppWebValidateList,
+        {'leads': leads, if (recheck) 'recheck': true},
+        'Failed to start WhatsApp validation',
+      );
 
   /// Starts the WhatsApp validator over saved leads by Firestore id.
   /// [collection] is `leads` or `websiteLeads`; verified numbers are copied
-  /// into the WhatsApp leads collection.
-  Future<void> validateSavedLeadWhatsApp(String collection, List<String> ids) async {
-    final response = await _client
-        .post(
-          _uri(ApiConstants.whatsAppWebValidateSaved),
-          headers: {'Content-Type': 'application/json'},
-          body: jsonEncode({'collection': collection, 'ids': ids}),
-        )
-        .timeout(const Duration(minutes: 2));
-    if (response.statusCode >= 400) {
-      final body = _tryDecode(response.body);
-      throw Exception(body['error'] ?? 'Failed to start WhatsApp validation');
-    }
-  }
+  /// into the WhatsApp leads collection. Already-checked numbers are skipped
+  /// unless [recheck].
+  Future<ValidationStart> validateSavedLeadWhatsApp(
+    String collection,
+    List<String> ids, {
+    bool recheck = false,
+  }) =>
+      _startValidation(
+        ApiConstants.whatsAppWebValidateSaved,
+        {'collection': collection, 'ids': ids, if (recheck) 'recheck': true},
+        'Failed to start WhatsApp validation',
+      );
 
   Future<void> deleteWhatsAppLead(String leadId) async {
     final response = await _client.delete(_uri(ApiConstants.whatsappLeadDelete(leadId)));
@@ -776,39 +772,55 @@ class LeadRemoteDataSource {
     }
   }
 
-  /// Starts the email validation job over an explicit list of businesses
-  /// (e.g. extracted from an Excel archive). Each map needs `id` and
-  /// `website`; the rest is stored on the `emailLeads` document it creates.
-  Future<void> validateEmailLeads(List<Map<String, dynamic>> leads) async {
-    final response = await _client
-        .post(
-          _uri(ApiConstants.emailValidateList),
-          headers: {'Content-Type': 'application/json'},
-          body: jsonEncode({'leads': leads}),
-        )
-        .timeout(const Duration(minutes: 2));
-    if (response.statusCode >= 400) {
-      final body = _tryDecode(response.body);
-      throw Exception(body['error'] ?? 'Failed to start email validation');
-    }
-  }
+  /// Starts the email validator over an explicit list of businesses (e.g.
+  /// extracted from an Excel archive). Each map needs `id` and `website`; the
+  /// rest is stored on the `emailLeads` document it creates. Businesses
+  /// already verified are reused and ones checked before are skipped unless
+  /// [recheck].
+  Future<ValidationStart> validateEmailLeads(
+    List<Map<String, dynamic>> leads, {
+    bool recheck = false,
+  }) =>
+      _startValidation(
+        ApiConstants.emailValidateList,
+        {'leads': leads, if (recheck) 'recheck': true},
+        'Failed to start email validation',
+      );
 
   /// Starts the email validator over saved leads by Firestore id.
   /// [collection] is `leads` (review leads) or `websiteLeads`. The backend
   /// crawls a lead's site when it has one, otherwise looks the business up
-  /// on the web, and skips leads that already have an email.
-  Future<void> validateSavedLeadEmails(String collection, List<String> ids) async {
+  /// on the web. Leads that already have an email — or were checked recently
+  /// with nothing found — are skipped unless [recheck].
+  Future<ValidationStart> validateSavedLeadEmails(
+    String collection,
+    List<String> ids, {
+    bool recheck = false,
+  }) =>
+      _startValidation(
+        ApiConstants.emailValidateSaved,
+        {'collection': collection, 'ids': ids, if (recheck) 'recheck': true},
+        'Failed to start email validation',
+      );
+
+  /// POSTs a validation request and reads back what the backend decided to
+  /// run. An "everything was already checked" refusal becomes an
+  /// [AlreadyCheckedException] so the UI can offer to re-check.
+  Future<ValidationStart> _startValidation(String path, Map<String, dynamic> body, String fallbackError) async {
     final response = await _client
         .post(
-          _uri(ApiConstants.emailValidateSaved),
+          _uri(path),
           headers: {'Content-Type': 'application/json'},
-          body: jsonEncode({'collection': collection, 'ids': ids}),
+          body: jsonEncode(body),
         )
         .timeout(const Duration(minutes: 2));
+    final decoded = _tryDecode(response.body);
     if (response.statusCode >= 400) {
-      final body = _tryDecode(response.body);
-      throw Exception(body['error'] ?? 'Failed to start email validation');
+      final message = (decoded['error'] as String?) ?? fallbackError;
+      if (decoded['code'] == 'ALREADY_CHECKED') throw AlreadyCheckedException(message);
+      throw Exception(message);
     }
+    return ValidationStart.fromJson(decoded);
   }
 
   Future<EmailValidationSnapshot> getEmailValidationStatus() async {

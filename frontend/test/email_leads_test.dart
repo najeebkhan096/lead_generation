@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lead_generation_app/domain/entities/email_validation_snapshot.dart';
 import 'package:lead_generation_app/domain/entities/excel_archive.dart';
 import 'package:lead_generation_app/domain/entities/lead.dart';
+import 'package:lead_generation_app/domain/entities/validation_start.dart';
 import 'package:lead_generation_app/domain/entities/whatsapp_web_status.dart';
 import 'package:lead_generation_app/domain/repositories/lead_repository.dart';
 import 'package:lead_generation_app/domain/entities/lead_page.dart';
@@ -139,15 +140,17 @@ class _FakeRepository implements LeadRepository {
   Future<void> deleteEmailLead(String leadId) async => deleted.add(leadId);
 
   @override
-  Future<void> validateSavedLeadEmails(String collection, List<String> ids) async {
+  Future<ValidationStart> validateSavedLeadEmails(String collection, List<String> ids, {bool recheck = false}) async {
     validatedCollection = collection;
     validatedWebsiteLeadIds = ids;
+    return const ValidationStart(total: 1);
   }
 
   @override
-  Future<void> validateSavedLeadWhatsApp(String collection, List<String> ids) async {
+  Future<ValidationStart> validateSavedLeadWhatsApp(String collection, List<String> ids, {bool recheck = false}) async {
     validatedCollection = collection;
     whatsAppValidatedIds = ids;
+    return const ValidationStart(total: 1);
   }
 
   @override
@@ -169,7 +172,16 @@ class _FakeRepository implements LeadRepository {
   Future<List<ExcelArchive>> listExcelArchives() async => [_archive];
 
   @override
-  Future<void> validateEmailLeads(List<Map<String, dynamic>> leads) async => validated = leads;
+  Future<ValidationStart> validateEmailLeads(List<Map<String, dynamic>> leads, {bool recheck = false}) async {
+    validated = leads;
+    return const ValidationStart(total: 1);
+  }
+
+  @override
+  Future<ValidationStart> validateExternalLeads(List<Map<String, dynamic>> leads, {bool recheck = false}) async {
+    validated = leads;
+    return const ValidationStart(total: 1);
+  }
 
   @override
   Future<EmailValidationSnapshot> getEmailValidationStatus() async =>
@@ -846,7 +858,7 @@ void main() {
       await pumpPage(tester, repo);
 
       expect(tester.takeException(), isNull);
-      expect(find.textContaining('2 of 3 without a verified email'), findsOneWidget);
+      expect(find.textContaining('Email: 2 to check'), findsOneWidget);
       expect(find.text('hi@beta.example'), findsOneWidget); // shown on the card
       final loadsBefore = repo.pageCalls.length;
 
@@ -891,7 +903,7 @@ void main() {
         ..websiteLeads = [websiteLead('b', 'Beta Cafe', email: 'hi@beta.example')];
       await pumpPage(tester, repo);
 
-      expect(find.textContaining('0 of 1 without a verified email'), findsOneWidget);
+      expect(find.textContaining('Email: 0 to check'), findsOneWidget);
       final button = tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'Email'));
       expect(button.onPressed, isNull);
     });

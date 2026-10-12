@@ -44,6 +44,7 @@ test('classifies each business and saves only verified emails', async () => {
     dead: { emails: [], primary: null, pagesFetched: 0, lastError: 'HTTP 500' },
   };
   const out = startEmailValidationJob({
+    recordCheckFn: async () => {}, // never touch the real leadChecks collection
     leads: [site('ok'), site('bad'), site('none'), site('dead')],
     discoverFn: async (url) => discovery[new URL(url).hostname.split('.')[0]],
     verifyFn: async (email) =>
@@ -79,6 +80,7 @@ test('classifies each business and saves only verified emails', async () => {
 test('falls back to the next candidate when the best one is not deliverable', async () => {
   const saved = [];
   startEmailValidationJob({
+    recordCheckFn: async () => {}, // never touch the real leadChecks collection
     leads: [site('x')],
     discoverFn: async () => found('info@dead-domain.example', 'sales@live-domain.example'),
     verifyFn: async (email) =>
@@ -95,6 +97,7 @@ test('falls back to the next candidate when the best one is not deliverable', as
 test('verifies a shared address once across the batch', async () => {
   let verifies = 0;
   startEmailValidationJob({
+    recordCheckFn: async () => {}, // never touch the real leadChecks collection
     leads: [site('a'), site('b'), site('c')],
     discoverFn: async () => found('hello@chain.example'),
     verifyFn: async () => {
@@ -111,10 +114,13 @@ test('verifies a shared address once across the batch', async () => {
 
 test('skips businesses without a website and rejects a batch with none', async () => {
   assert.throws(
-    () => startEmailValidationJob({ leads: [{ id: 'n', business: 'No Site', website: null }] }),
+    () => startEmailValidationJob({
+    recordCheckFn: async () => {}, // never touch the real leadChecks collection
+    leads: [{ id: 'n', business: 'No Site', website: null }] }),
     /website/
   );
   const out = startEmailValidationJob({
+    recordCheckFn: async () => {}, // never touch the real leadChecks collection
     leads: [site('a'), { id: 'n', business: 'No Site', website: '' }],
     discoverFn: async () => found('a@a.example'),
     verifyFn: async () => ({ result: 'valid' }),
@@ -129,6 +135,7 @@ test('only one job runs at a time; cancel stops the rest', async () => {
   let release;
   const gate = new Promise((r) => (release = r));
   startEmailValidationJob({
+    recordCheckFn: async () => {}, // never touch the real leadChecks collection
     leads: Array.from({ length: 6 }, (_, i) => site(`s${i}`)),
     discoverFn: async () => {
       await gate;
@@ -139,7 +146,9 @@ test('only one job runs at a time; cancel stops the rest', async () => {
     concurrency: 2,
   });
   assert.throws(
-    () => startEmailValidationJob({ leads: [site('z')], discoverFn: async () => found('z@z.example') }),
+    () => startEmailValidationJob({
+    recordCheckFn: async () => {}, // never touch the real leadChecks collection
+    leads: [site('z')], discoverFn: async () => found('z@z.example') }),
     /already running/
   );
   assert.equal(cancelEmailValidationJob(), true);
@@ -151,6 +160,7 @@ test('only one job runs at a time; cancel stops the rest', async () => {
 
 test('a save failure is reported on the result, not thrown', async () => {
   startEmailValidationJob({
+    recordCheckFn: async () => {}, // never touch the real leadChecks collection
     leads: [site('a')],
     discoverFn: async () => found('a@a.example'),
     verifyFn: async () => ({ result: 'valid' }),

@@ -13,6 +13,7 @@ import * as whatsappWeb from './whatsappWebService.js';
 import * as whatsappSafety from './whatsappSafety.js';
 import { updateLeadWhatsAppStatus } from '../../leads/firebaseLeadStore.js';
 import { saveWhatsAppLeadsToFirebase } from './whatsappLeadStore.js';
+import { recordWhatsAppCheck } from '../leadChecks.js';
 
 /** @type {Job | null} */
 let job = null;
@@ -24,24 +25,44 @@ let job = null;
  * @param {(id: string, status: object) => Promise<void>} [opts.updateLeadFn] - test-only seam
  * @param {(leads: object[]) => Promise<unknown>} [opts.saveWhatsAppLeadsFn] - test-only seam;
  *   copies each verified lead into the `whatsappLeads` collection
+ * @param {(lead: object, check: {valid: boolean}) => Promise<unknown>} [opts.recordCheckFn]
+ *   remembers every definite answer so a later run (notably over an Excel
+ *   archive, whose leads have no document to carry a flag) can skip it
+ * @param {Record<string, {valid: boolean}>} [opts.reused] answers already
+ *   known for leads the caller filtered out of [opts.leads]; seeded into the
+ *   results so the client sees one complete picture
  */
 export function startValidationJob({
   leads,
   checkNumberFn = whatsappSafety.guardedCheck,
   updateLeadFn = updateLeadWhatsAppStatus,
   saveWhatsAppLeadsFn = saveWhatsAppLeadsToFirebase,
+  recordCheckFn = recordWhatsAppCheck,
+  reused = {},
 }) {
   if (job && job.status === 'running') {
     const err = new Error('A WhatsApp validation job is already running.');
     err.status = 409;
     throw err;
   }
-  if (!Array.isArray(leads) || !leads.length) {
+  const reusedCount = Object.keys(reused).length;
+  if (!Array.isArray(leads) || (!leads.length && !reusedCount)) {
     throw new Error('leads array is required');
   }
 
+  const batch = leads
+    .map((l) => ({ ...l, id: l?.id || l?.dbId }))
+    .filter((l) => l?.id && l?.phone);
+  if (!batch.length && !reusedCount) {
+    throw new Error('None of the selected leads have a phone number to check.');
+  }
+
+  // The connection and safety gates only matter when a number will actually
+  // be checked — a run that is entirely answers already on file needs
+  // neither (and must not start the cooldown).
   const usingRealChecker = checkNumberFn === whatsappSafety.guardedCheck;
-  if (usingRealChecker) {
+  const needsSession = usingRealChecker && batch.length > 0;
+  if (needsSession) {
     if (!whatsappWeb.isReady()) {
       const err = new Error('WhatsApp Web is not connected. Connect it first from the WhatsApp Tool page.');
       err.status = 409;
@@ -55,13 +76,6 @@ export function startValidationJob({
     }
   }
 
-  const batch = leads
-    .map((l) => ({ ...l, id: l?.id || l?.dbId }))
-    .filter((l) => l?.id && l?.phone);
-  if (!batch.length) {
-    throw new Error('None of the selected leads have a phone number to check.');
-  }
-
   job = {
     status: 'running', // running | done | cancelled
     total: batch.length,
@@ -70,7 +84,10 @@ export function startValidationJob({
     invalidCount: 0,
     errorCount: 0,
     currentLead: null,
-    results: {}, // leadId -> { valid, error }
+    reusedCount,
+    results: Object.fromEntries(
+      Object.entries(reused).map(([id, r]) => [id, { valid: r.valid === true, error: null, reused: true }])
+    ), // leadId -> { valid, error }
     startedAt: Date.now(),
     finishedAt: null,
     cancelled: false,
@@ -102,6 +119,13 @@ export function startValidationJob({
         if (result.valid) thisJob.validCount += 1;
         else thisJob.invalidCount += 1;
         thisJob.results[lead.id] = { valid: result.valid, error: null };
+        // Remember the answer — not-on-WhatsApp included, which is exactly
+        // the result nothing else would otherwise keep for an archive lead.
+        try {
+          await recordCheckFn(lead, { valid: result.valid });
+        } catch (err) {
+          console.warn(`Could not record the WhatsApp check for "${lead.business}":`, err.message || err);
+        }
         try {
           await updateLeadFn(lead.id, { hasWhatsApp: result.valid });
         } catch (saveErr) {
@@ -123,15 +147,15 @@ export function startValidationJob({
     thisJob.currentLead = null;
     thisJob.status = thisJob.cancelled ? 'cancelled' : 'done';
     thisJob.finishedAt = Date.now();
-    if (usingRealChecker) whatsappSafety.recordJobFinished();
+    if (needsSession) whatsappSafety.recordJobFinished();
   })().catch((err) => {
     thisJob.status = 'cancelled';
     thisJob.finishedAt = Date.now();
-    if (usingRealChecker) whatsappSafety.recordJobFinished();
+    if (needsSession) whatsappSafety.recordJobFinished();
     console.error('WhatsApp validation job crashed:', err);
   });
 
-  return { started: true, total: batch.length, skipped: leads.length - batch.length };
+  return { started: true, total: batch.length, skipped: leads.length - batch.length, reused: reusedCount };
 }
 
 export function getJobSnapshot() {
@@ -143,6 +167,7 @@ export function getJobSnapshot() {
     validCount: job.validCount,
     invalidCount: job.invalidCount,
     errorCount: job.errorCount,
+    reusedCount: job.reusedCount,
     currentLead: job.currentLead,
     results: job.results,
     startedAt: job.startedAt,

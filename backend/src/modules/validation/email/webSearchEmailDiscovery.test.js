@@ -143,6 +143,7 @@ async function untilDone() {
 test('job (no-website mode) validates leads that have no website and saves provenance', async () => {
   const saved = [];
   startEmailValidationJob({
+    recordCheckFn: async () => {}, // never touch the real leadChecks collection
     leads: [{ id: 'w1', dbId: 'w1', business: "Joe's Pizza", website: null, mapsUrl: 'm1' }],
     requireWebsite: false,
     discoverFn: async () => ({
@@ -168,6 +169,7 @@ test('job (no-website mode) validates leads that have no website and saves prove
 test('job halts (without counting the refused lookup) when the search engine blocks', async () => {
   let calls = 0;
   startEmailValidationJob({
+    recordCheckFn: async () => {}, // never touch the real leadChecks collection
     leads: Array.from({ length: 8 }, (_, i) => ({ id: `w${i}`, business: `Biz ${i}`, mapsUrl: `m${i}` })),
     requireWebsite: false,
     concurrency: 1,

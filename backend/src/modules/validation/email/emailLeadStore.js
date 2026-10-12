@@ -133,6 +133,25 @@ export async function listEmailLeads({ limit, cursor, category, q } = {}) {
   });
 }
 
+/**
+ * Already-verified email leads for the given ids, as `Map<id, data>` — lets
+ * an Excel-archive run reuse what's known instead of crawling it again.
+ */
+export async function getEmailLeadsByDocIds(ids) {
+  const unique = [...new Set(ids)];
+  const out = new Map();
+  if (!unique.length) return out;
+  const db = getFirestore();
+  for (let i = 0; i < unique.length; i += 300) {
+    const slice = unique.slice(i, i + 300);
+    const snaps = await db.getAll(...slice.map((id) => db.collection(COLLECTION).doc(id)));
+    snaps.forEach((snap, idx) => {
+      if (snap.exists) out.set(slice[idx], snap.data());
+    });
+  }
+  return out;
+}
+
 export async function deleteEmailLead(leadId) {
   const db = getFirestore();
   const ref = db.collection(COLLECTION).doc(leadId);

@@ -1,6 +1,9 @@
 import * as whatsappWeb from './whatsappWebService.js';
 import * as whatsappSafety from './whatsappSafety.js';
 import { leadSource } from '../../leads/leadSources.js';
+import { getChecks, isWhatsAppCheckFresh } from '../leadChecks.js';
+import { getVerifiedWhatsAppIds } from './whatsappLeadStore.js';
+import { leadDocId } from '../../../lib/leadIdentity.js';
 import {
   startValidationJob,
   getJobSnapshot,
@@ -50,54 +53,101 @@ export async function startValidation(req, res) {
 }
 
 /**
- * Validates an explicit `{id, phone, business}[]` list that was never
- * saved to Firestore (e.g. businesses extracted from an Excel archive) —
- * same guarded job engine and rate limiting as [startValidation], but
- * `updateLeadFn` is a no-op instead of the default Firestore `.update()`,
- * since `id` here is a synthetic key, not a real document id.
- */
-/**
  * POST /api/whatsapp-web/validate-saved
  *
- * Body: `{ collection: 'leads' | 'websiteLeads', ids: string[] }` — saved
- * leads of either signal, by Firestore id. Leads with no phone number or
- * that were already checked are skipped. The result is written onto the
- * lead and the verified ones are copied into `whatsappLeads`.
+ * Body: `{ collection: 'leads' | 'websiteLeads', ids: string[], recheck?:
+ * boolean }` — saved leads of either signal, by Firestore id. Leads with no
+ * phone number are skipped, and so are leads already checked (a definite
+ * answer — on WhatsApp or not — is stored on the lead); `recheck: true`
+ * asks again. The result is written onto the lead and the verified ones are
+ * copied into `whatsappLeads`.
  */
 export async function startSavedLeadValidation(req, res) {
-  const { collection, ids } = req.body || {};
+  const { collection, ids, recheck } = req.body || {};
   if (!Array.isArray(ids) || !ids.length) {
     return res.status(400).json({ error: 'ids array is required' });
   }
   try {
     const source = leadSource(collection);
     const found = await source.load(ids);
-    const todo = found.filter((l) => l.phone && !l.whatsAppCheckedAt);
+    const withPhone = found.filter((l) => l.phone);
+    // `whatsAppCheckedAt` is set for a definite answer either way, so a
+    // lead that was checked — on WhatsApp or not — isn't asked again.
+    const todo = recheck === true ? withPhone : withPhone.filter((l) => !l.whatsAppCheckedAt);
+    const alreadyChecked = withPhone.length - todo.length;
     if (!todo.length) {
       return res.status(400).json({
-        error: found.length
-          ? 'Every selected business has no phone number or was already checked.'
-          : 'None of the selected businesses were found.',
+        code: alreadyChecked ? 'ALREADY_CHECKED' : 'NOTHING_TO_CHECK',
+        error: !found.length
+          ? 'None of the selected businesses were found.'
+          : alreadyChecked
+            ? `${alreadyChecked} number${alreadyChecked === 1 ? ' was' : 's were'} already checked. Choose "re-check" to ask again.`
+            : 'None of the selected businesses have a phone number.',
       });
     }
     const result = startValidationJob({
       leads: todo.map((l) => ({ ...l, id: l.dbId, sourceType: source.sourceType })),
       updateLeadFn: source.setWhatsApp,
     });
-    return res.status(202).json({ ...result, alreadyChecked: found.length - todo.length });
+    return res.status(202).json({ ...result, alreadyChecked, noPhone: found.length - withPhone.length });
   } catch (err) {
     return res.status(err.status || 500).json({ error: err.message || 'Failed to start validation' });
   }
 }
 
-export function startExternalValidation(req, res) {
-  const { leads } = req.body || {};
+/**
+ * Validates an explicit `{id, phone, business, …}[]` list that was never
+ * saved to Firestore (e.g. businesses extracted from an Excel archive).
+ *
+ * Archive leads have no document to carry a "checked" flag, so the
+ * `leadChecks` memory stands in for it — keyed by the same id the business
+ * has everywhere else:
+ *
+ *  - answered "on WhatsApp" before (or already a WhatsApp lead) -> reused
+ *  - answered "not on WhatsApp" recently                         -> skipped
+ *  - never checked / answer too old                              -> checked
+ *
+ * `recheck: true` asks about every number again. The result of each check
+ * is written to the memory; archive leads have no lead document to update,
+ * so the per-lead update is a no-op.
+ */
+export async function startExternalValidation(req, res) {
+  const { leads, recheck } = req.body || {};
   if (!Array.isArray(leads) || !leads.length) {
     return res.status(400).json({ error: 'leads array is required' });
   }
   try {
-    const result = startValidationJob({ leads, updateLeadFn: async () => {} });
-    return res.status(202).json(result);
+    let toCheck = leads;
+    const reused = {};
+    let alreadyChecked = 0;
+
+    if (recheck !== true) {
+      const withPhone = leads.filter((l) => l?.phone);
+      const ids = withPhone.map((l) => leadDocId(l));
+      const [checks, verifiedIds] = await Promise.all([getChecks(withPhone), getVerifiedWhatsAppIds(ids)]);
+      toCheck = leads.filter((l) => !l?.phone); // job drops these with a clear skip count
+      withPhone.forEach((lead, i) => {
+        const check = checks.get(ids[i])?.whatsapp;
+        if (verifiedIds.has(ids[i]) || (check && check.valid === true && isWhatsAppCheckFresh(check))) {
+          reused[lead.id] = { valid: true };
+        } else if (check && isWhatsAppCheckFresh(check)) {
+          alreadyChecked += 1; // answered "not on WhatsApp"
+        } else {
+          toCheck.push(lead);
+        }
+      });
+    }
+
+    if (!toCheck.some((l) => l?.phone) && !Object.keys(reused).length) {
+      return res.status(400).json({
+        code: alreadyChecked ? 'ALREADY_CHECKED' : 'NOTHING_TO_CHECK',
+        error: alreadyChecked
+          ? `All ${alreadyChecked} number${alreadyChecked === 1 ? ' was' : 's were'} already checked and ${alreadyChecked === 1 ? 'is' : 'are'} not on WhatsApp. Choose "re-check" to ask again.`
+          : 'None of the selected leads have a phone number to check.',
+      });
+    }
+    const result = startValidationJob({ leads: toCheck, reused, updateLeadFn: async () => {} });
+    return res.status(202).json({ ...result, alreadyChecked });
   } catch (err) {
     const status = err.status || 500;
     return res.status(status).json({ error: err.message || 'Failed to start validation' });

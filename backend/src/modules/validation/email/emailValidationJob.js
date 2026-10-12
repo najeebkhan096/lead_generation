@@ -16,6 +16,7 @@
 import { discoverEmailsFromWebsite } from './emailDiscoveryService.js';
 import { createEmailVerificationService } from './emailVerificationService.js';
 import { saveEmailLeadsToFirebase } from './emailLeadStore.js';
+import { recordEmailCheck } from '../leadChecks.js';
 
 const DEFAULT_CONCURRENCY = 4;
 // A site can list several addresses; trying more than a few for one
@@ -57,6 +58,12 @@ async function pickVerified(emails, verifyFn) {
  * @param {(website: string, lead: object) => Promise<object>} [opts.discoverFn] - test seam
  * @param {(email: string) => Promise<object>} [opts.verifyFn] - test seam
  * @param {(leads: object[]) => Promise<unknown>} [opts.saveFn] - test seam
+ * @param {(lead: object, check: object) => Promise<unknown>} [opts.recordCheckFn]
+ *   remembers every outcome (found / none / invalid / unreachable) so a later
+ *   run can skip what is already known — see `leadChecks.js`
+ * @param {Record<string, object>} [opts.reused] results already known for
+ *   leads the caller filtered out of [opts.leads]; seeded into the job's
+ *   results so the client sees one complete picture
  */
 export function startEmailValidationJob({
   leads,
@@ -65,13 +72,16 @@ export function startEmailValidationJob({
   discoverFn = discoverEmailsFromWebsite,
   verifyFn,
   saveFn = saveEmailLeadsToFirebase,
+  recordCheckFn = recordEmailCheck,
+  reused = {},
 }) {
   if (job && job.status === 'running') {
     const err = new Error('An email validation job is already running.');
     err.status = 409;
     throw err;
   }
-  if (!Array.isArray(leads) || !leads.length) {
+  const reusedCount = Object.keys(reused).length;
+  if (!Array.isArray(leads) || (!leads.length && !reusedCount)) {
     throw new Error('leads array is required');
   }
 
@@ -80,7 +90,7 @@ export function startEmailValidationJob({
     .filter((l) =>
       requireWebsite ? l?.id && l?.website && String(l.website).trim() : l?.id && l?.business
     );
-  if (!batch.length) {
+  if (!batch.length && !reusedCount) {
     throw new Error(
       requireWebsite
         ? 'None of the selected businesses have a website to check.'
@@ -116,7 +126,8 @@ export function startEmailValidationJob({
     noEmailCount: 0, // site reachable, no public email on it
     errorCount: 0, // site unreachable / unusable
     currentLead: null,
-    results: {}, // leadId -> { valid, email, emails, source, result, reason, error }
+    reusedCount,
+    results: { ...reused }, // leadId -> { valid, email, emails, source, result, reason, error }
     startedAt: Date.now(),
     finishedAt: null,
     cancelled: false,
@@ -126,6 +137,15 @@ export function startEmailValidationJob({
   const thisJob = job;
 
   let cursor = 0;
+
+  /** Remembers an outcome. Never lets a bookkeeping failure break the run. */
+  async function remember(lead, check) {
+    try {
+      await recordCheckFn(lead, check);
+    } catch (err) {
+      console.warn(`Could not record the email check for "${lead.business}":`, err.message || err);
+    }
+  }
 
   async function processLead(lead) {
     thisJob.currentLead = { id: lead.id, business: lead.business || null };
@@ -151,9 +171,11 @@ export function startEmailValidationJob({
         if (!found.pagesFetched && !found.searched) {
           thisJob.errorCount += 1;
           thisJob.results[lead.id] = { ...base, error: found.lastError || 'Website could not be reached' };
+          await remember(lead, { status: 'unreachable', reason: found.lastError || 'Website could not be reached' });
         } else {
           thisJob.noEmailCount += 1;
           thisJob.results[lead.id] = { ...base, reason: 'no_email_found' };
+          await remember(lead, { status: 'none', reason: 'no_email_found' });
         }
         return;
       }
@@ -173,6 +195,11 @@ export function startEmailValidationJob({
           result: picked.verdict?.result || 'unknown',
           reason: picked.verdict?.reason || null,
         };
+        await remember(lead, {
+          status: 'invalid',
+          address: picked.verdict?.email || emails[0],
+          reason: picked.verdict?.reason || picked.verdict?.result || null,
+        });
         return;
       }
 
@@ -188,6 +215,7 @@ export function startEmailValidationJob({
         result: 'valid',
         reason: picked.verdict.reason || null,
       };
+      await remember(lead, { status: 'found', address: picked.email });
 
       try {
         const { id, ...fields } = lead;
@@ -220,6 +248,7 @@ export function startEmailValidationJob({
       }
       thisJob.errorCount += 1;
       thisJob.results[lead.id] = { ...base, error: err.message || String(err) };
+      await remember(lead, { status: 'unreachable', reason: err.message || String(err) });
     } finally {
       // A lookup the search engine refused was never actually checked.
       if (!blocked) thisJob.checked += 1;
@@ -247,7 +276,7 @@ export function startEmailValidationJob({
     console.error('Email validation job crashed:', err);
   });
 
-  return { started: true, total: batch.length, skipped: leads.length - batch.length };
+  return { started: true, total: batch.length, skipped: leads.length - batch.length, reused: reusedCount };
 }
 
 export function getEmailJobSnapshot() {
@@ -260,6 +289,7 @@ export function getEmailJobSnapshot() {
     invalidCount: job.invalidCount,
     noEmailCount: job.noEmailCount,
     errorCount: job.errorCount,
+    reusedCount: job.reusedCount,
     currentLead: job.currentLead,
     results: job.results,
     startedAt: job.startedAt,

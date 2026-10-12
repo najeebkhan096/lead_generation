@@ -66,6 +66,7 @@ class EmailValidationSnapshot extends Equatable {
     this.invalidCount = 0,
     this.noEmailCount = 0,
     this.errorCount = 0,
+    this.reusedCount = 0,
     this.currentLeadBusiness,
     this.results = const {},
     this.elapsedMs = 0,
@@ -88,6 +89,10 @@ class EmailValidationSnapshot extends Equatable {
 
   /// The site couldn't be reached.
   final int errorCount;
+
+  /// Already verified earlier: included in [results] as verified, not
+  /// checked again this run.
+  final int reusedCount;
   final String? currentLeadBusiness;
   final Map<String, EmailValidationResult> results;
   final int elapsedMs;
@@ -107,6 +112,7 @@ class EmailValidationSnapshot extends Equatable {
       invalidCount: n('invalidCount'),
       noEmailCount: n('noEmailCount'),
       errorCount: n('errorCount'),
+      reusedCount: n('reusedCount'),
       currentLeadBusiness: (json['currentLead'] as Map<String, dynamic>?)?['business'] as String?,
       results: resultsJson.map(
         (k, v) => MapEntry(k, EmailValidationResult.fromJson(v as Map<String, dynamic>)),

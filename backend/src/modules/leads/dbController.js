@@ -32,6 +32,7 @@ import {
 import { getFirebaseStatus, getFirestore } from '../../firebase/admin.js';
 import { listCategories } from '../../lib/pagination.js';
 import { getOverview, invalidateOverview } from './overview.js';
+import { attachEmailChecks } from '../validation/leadChecks.js';
 
 const CATEGORY_COLLECTIONS = ['leads', 'websiteLeads', 'whatsappLeads', 'emailLeads'];
 
@@ -98,6 +99,7 @@ export async function getSavedLeads(req, res) {
       ...pageParams(req),
       verifiedOnly: req.query.verified === '1',
     });
+    await attachEmailChecks(result.leads);
     return res.json(result);
   } catch (err) {
     const status = err.status || 500;
@@ -170,6 +172,7 @@ export async function getSavedWebsiteLeads(req, res) {
       ...pageParams(req),
       emailOnly: req.query.hasEmail === '1',
     });
+    await attachEmailChecks(result.leads);
     return res.json(result);
   } catch (err) {
     const status = err.status || 500;

@@ -148,6 +148,22 @@ export async function listWhatsAppLeads({ limit, cursor, category, q, sourceType
   });
 }
 
+/** Which of [ids] are already verified WhatsApp leads. */
+export async function getVerifiedWhatsAppIds(ids) {
+  const unique = [...new Set(ids)];
+  const out = new Set();
+  if (!unique.length) return out;
+  const db = getFirestore();
+  for (let i = 0; i < unique.length; i += 300) {
+    const slice = unique.slice(i, i + 300);
+    const snaps = await db.getAll(...slice.map((id) => db.collection(COLLECTION).doc(id)));
+    snaps.forEach((snap, idx) => {
+      if (snap.exists) out.add(slice[idx]);
+    });
+  }
+  return out;
+}
+
 export async function deleteWhatsAppLead(leadId) {
   const db = getFirestore();
   const ref = db.collection(COLLECTION).doc(leadId);

@@ -170,6 +170,7 @@ class WhatsAppValidationSnapshot extends Equatable {
     this.validCount = 0,
     this.invalidCount = 0,
     this.errorCount = 0,
+    this.reusedCount = 0,
     this.currentLeadBusiness,
     this.results = const {},
     this.elapsedMs = 0,
@@ -183,6 +184,10 @@ class WhatsAppValidationSnapshot extends Equatable {
   final int validCount;
   final int invalidCount;
   final int errorCount;
+
+  /// Numbers already answered earlier, included as results but not asked
+  /// about again this run.
+  final int reusedCount;
   final String? currentLeadBusiness;
   final Map<String, WhatsAppCheckResultEntry> results;
   final int elapsedMs;
@@ -200,6 +205,7 @@ class WhatsAppValidationSnapshot extends Equatable {
       validCount: (json['validCount'] as num?)?.toInt() ?? 0,
       invalidCount: (json['invalidCount'] as num?)?.toInt() ?? 0,
       errorCount: (json['errorCount'] as num?)?.toInt() ?? 0,
+      reusedCount: (json['reusedCount'] as num?)?.toInt() ?? 0,
       currentLeadBusiness: (json['currentLead'] as Map<String, dynamic>?)?['business'] as String?,
       results: resultsJson.map(
         (k, v) => MapEntry(k, WhatsAppCheckResultEntry.fromJson(v as Map<String, dynamic>)),

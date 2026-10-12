@@ -8,6 +8,7 @@ import '../../core/theme/app_theme.dart';
 import '../../domain/entities/email_validation_snapshot.dart';
 import '../../domain/entities/excel_archive.dart';
 import '../../domain/entities/lead.dart';
+import '../../domain/entities/validation_start.dart';
 import '../../domain/repositories/lead_repository.dart';
 import '../utils/lazy_reveal.dart';
 import '../widgets/email_lead_card.dart';
@@ -176,42 +177,93 @@ class _ExcelArchiveEmailValidatorPageState extends State<ExcelArchiveEmailValida
         ? '"$_category"'
         : '${_selectedStates.length} selected state${_selectedStates.length == 1 ? '' : 's'} in "$_category"';
     final skipped = inScope.length - eligible.length;
+    var recheck = false;
     final confirm = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Validate emails?'),
-        content: Text(
-          'Looks for a contact email on ${eligible.length} business '
-          'website${eligible.length == 1 ? '' : 's'} in $scope and checks each address is '
-          'deliverable (roughly ${(eligible.length * 1.5 / 60).ceil()}-'
-          '${(eligible.length * 3 / 60).ceil()} min). '
-          '${skipped > 0 ? '$skipped without a website will be skipped. ' : ''}'
-          'Nothing is sent to anyone.',
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          title: const Text('Validate emails?'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Looks for a contact email on ${eligible.length} business '
+                'website${eligible.length == 1 ? '' : 's'} in $scope and checks each address is '
+                'deliverable (roughly ${(eligible.length * 1.5 / 60).ceil()}-'
+                '${(eligible.length * 3 / 60).ceil()} min). '
+                '${skipped > 0 ? '$skipped without a website will be skipped. ' : ''}'
+                'Businesses already verified are kept as they are, and ones checked recently with '
+                'nothing found are skipped. Nothing is sent to anyone.',
+              ),
+              const SizedBox(height: 12),
+              CheckboxListTile(
+                value: recheck,
+                onChanged: (v) => setLocal(() => recheck = v ?? false),
+                contentPadding: EdgeInsets.zero,
+                controlAffinity: ListTileControlAffinity.leading,
+                dense: true,
+                title: const Text('Re-check everything, including ones checked before'),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+            TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Validate')),
+          ],
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Validate')),
-        ],
       ),
     );
     if (confirm != true || !mounted) return;
 
+    final payload = [
+      for (final l in eligible)
+        {
+          'id': l.id,
+          'website': l.website,
+          'business': l.business,
+          'phone': l.phone,
+          'category': l.category,
+          'location': l.location,
+          'address': l.address,
+          'mapsUrl': l.mapsUrl,
+          'rating': l.rating,
+          'totalReviews': l.totalReviews,
+        },
+    ];
     try {
-      await _repo.validateEmailLeads([
-        for (final l in eligible)
-          {
-            'id': l.id,
-            'website': l.website,
-            'business': l.business,
-            'phone': l.phone,
-            'category': l.category,
-            'location': l.location,
-            'address': l.address,
-            'mapsUrl': l.mapsUrl,
-            'rating': l.rating,
-            'totalReviews': l.totalReviews,
-          },
-      ]);
+      final start = await _repo.validateEmailLeads(payload, recheck: recheck);
+      final summary = start.summary;
+      if (summary != null && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(summary)));
+      }
+    } on AlreadyCheckedException catch (e) {
+      if (!mounted) return;
+      final again = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Already checked'),
+          content: Text(e.message),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('OK')),
+            TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Re-check anyway')),
+          ],
+        ),
+      );
+      if (again == true && mounted) {
+        try {
+          await _repo.validateEmailLeads(payload, recheck: true);
+        } catch (err) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(err.toString().replaceFirst('Exception: ', ''))),
+            );
+          }
+          return;
+        }
+      } else {
+        return;
+      }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

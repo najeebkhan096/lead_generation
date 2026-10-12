@@ -26,6 +26,8 @@ class EmailOutcomeSummary extends StatelessWidget {
       runSpacing: 8,
       children: [
         chip('verified', snapshot.validCount, AppTheme.sage100, AppTheme.sage800),
+        if (snapshot.reusedCount > 0)
+          chip('already verified', snapshot.reusedCount, AppTheme.sage100, AppTheme.sage800),
         chip('no email on site', snapshot.noEmailCount, AppTheme.neutral100, AppTheme.neutral700),
         chip('failed verification', snapshot.invalidCount, AppTheme.accent100, AppTheme.accent800),
         chip('unreachable', snapshot.errorCount, AppTheme.neutral100, AppTheme.neutral700),

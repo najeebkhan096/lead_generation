@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/theme/app_theme.dart';
 import '../../domain/entities/excel_archive.dart';
 import '../../domain/entities/lead.dart';
+import '../../domain/entities/validation_start.dart';
 import '../../domain/entities/whatsapp_web_status.dart';
 import '../../domain/repositories/lead_repository.dart';
 import '../utils/lazy_reveal.dart';
@@ -219,43 +220,92 @@ class _ExcelArchiveLeadsPageState extends State<ExcelArchiveLeadsPage> with Lazy
     final scope = _allStates
         ? '"$_category"'
         : '${_selectedStates.length} selected state${_selectedStates.length == 1 ? '' : 's'} in "$_category"';
+    var recheck = false;
     final confirm = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Validate WhatsApp numbers?'),
-        content: Text(
-          'Checks ${eligible.length} business${eligible.length == 1 ? '' : 'es'} in $scope '
-          'against your connected WhatsApp Web session (roughly ${(eligible.length * 3 / 60).ceil()}-'
-          '${(eligible.length * 6 / 60).ceil()} min). No messages are sent.',
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          title: const Text('Validate WhatsApp numbers?'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Checks up to ${eligible.length} business${eligible.length == 1 ? '' : 'es'} in $scope '
+                'against your connected WhatsApp Web session (roughly ${(eligible.length * 3 / 60).ceil()}-'
+                '${(eligible.length * 6 / 60).ceil()} min). Numbers already answered earlier are not '
+                'asked again — verified ones are kept, and ones found not to be on WhatsApp are skipped. '
+                'No messages are sent.',
+              ),
+              const SizedBox(height: 12),
+              CheckboxListTile(
+                value: recheck,
+                onChanged: (v) => setLocal(() => recheck = v ?? false),
+                contentPadding: EdgeInsets.zero,
+                controlAffinity: ListTileControlAffinity.leading,
+                dense: true,
+                title: const Text('Re-ask every number, including ones checked before'),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+            TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Validate')),
+          ],
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Validate')),
-        ],
       ),
     );
     if (confirm != true || !mounted) return;
 
+    // The whole lead, not just its phone: a verified number is copied into
+    // the WhatsApp leads collection with these details.
+    final payload = [
+      for (final l in eligible)
+        {
+          'id': l.id,
+          'phone': l.phone!,
+          'business': l.business,
+          'category': l.category,
+          'location': l.location,
+          'address': l.address,
+          'website': l.website,
+          'mapsUrl': l.mapsUrl,
+          'rating': l.rating,
+          'totalReviews': l.totalReviews,
+          'sourceType': l.badReview.text.trim().isNotEmpty ? 'review' : 'website',
+          'badReview': {'text': l.badReview.text, 'date': l.badReview.date},
+        },
+    ];
     try {
-      // The whole lead, not just its phone: a verified number is copied
-      // into the WhatsApp leads collection with these details.
-      await _repo.validateExternalLeads([
-        for (final l in eligible)
-          {
-            'id': l.id,
-            'phone': l.phone!,
-            'business': l.business,
-            'category': l.category,
-            'location': l.location,
-            'address': l.address,
-            'website': l.website,
-            'mapsUrl': l.mapsUrl,
-            'rating': l.rating,
-            'totalReviews': l.totalReviews,
-            'sourceType': l.badReview.text.trim().isNotEmpty ? 'review' : 'website',
-            'badReview': {'text': l.badReview.text, 'date': l.badReview.date},
-          },
-      ]);
+      final start = await _repo.validateExternalLeads(payload, recheck: recheck);
+      final summary = start.summary;
+      if (summary != null && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(summary)));
+      }
+    } on AlreadyCheckedException catch (e) {
+      if (!mounted) return;
+      final again = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Already checked'),
+          content: Text(e.message),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('OK')),
+            TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Re-check anyway')),
+          ],
+        ),
+      );
+      if (again != true || !mounted) return;
+      try {
+        await _repo.validateExternalLeads(payload, recheck: true);
+      } catch (err) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(err.toString().replaceFirst('Exception: ', ''))),
+          );
+        }
+        return;
+      }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

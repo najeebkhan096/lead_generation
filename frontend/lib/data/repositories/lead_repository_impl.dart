@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import '../../domain/entities/email_validation_snapshot.dart';
 import '../../domain/entities/lead.dart';
 import '../../domain/entities/lead_page.dart';
+import '../../domain/entities/validation_start.dart';
 import '../../domain/entities/multi_search_snapshot.dart';
 import '../../domain/entities/state_city_scan_snapshot.dart';
 import '../../domain/entities/excel_archive.dart';
@@ -75,16 +76,16 @@ class LeadRepositoryImpl implements LeadRepository {
       _remote.deleteEmailLeadsByCategory(category);
 
   @override
-  Future<void> validateEmailLeads(List<Map<String, dynamic>> leads) =>
-      _remote.validateEmailLeads(leads);
+  Future<ValidationStart> validateEmailLeads(List<Map<String, dynamic>> leads, {bool recheck = false}) =>
+      _remote.validateEmailLeads(leads, recheck: recheck);
 
   @override
-  Future<void> validateSavedLeadEmails(String collection, List<String> ids) =>
-      _remote.validateSavedLeadEmails(collection, ids);
+  Future<ValidationStart> validateSavedLeadEmails(String collection, List<String> ids, {bool recheck = false}) =>
+      _remote.validateSavedLeadEmails(collection, ids, recheck: recheck);
 
   @override
-  Future<void> validateSavedLeadWhatsApp(String collection, List<String> ids) =>
-      _remote.validateSavedLeadWhatsApp(collection, ids);
+  Future<ValidationStart> validateSavedLeadWhatsApp(String collection, List<String> ids, {bool recheck = false}) =>
+      _remote.validateSavedLeadWhatsApp(collection, ids, recheck: recheck);
 
   @override
   Future<void> deleteWhatsAppLead(String leadId) => _remote.deleteWhatsAppLead(leadId);
@@ -226,8 +227,8 @@ class LeadRepositoryImpl implements LeadRepository {
       _remote.startWhatsAppValidation(leads);
 
   @override
-  Future<void> validateExternalLeads(List<Map<String, dynamic>> leads) =>
-      _remote.validateExternalLeads(leads);
+  Future<ValidationStart> validateExternalLeads(List<Map<String, dynamic>> leads, {bool recheck = false}) =>
+      _remote.validateExternalLeads(leads, recheck: recheck);
 
   @override
   Future<void> startWhatsAppAutoValidation({List<String>? states}) =>

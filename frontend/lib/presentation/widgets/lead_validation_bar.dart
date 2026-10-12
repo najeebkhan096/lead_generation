@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/theme/app_theme.dart';
 import '../../domain/entities/email_validation_snapshot.dart';
 import '../../domain/entities/lead.dart';
+import '../../domain/entities/validation_start.dart';
 import '../../domain/entities/whatsapp_web_status.dart';
 import '../../domain/repositories/lead_repository.dart';
 import 'email_outcome_summary.dart';
@@ -77,10 +78,88 @@ class _LeadValidationBarState extends State<LeadValidationBar> {
   List<Lead> get _waPending =>
       widget.leads.where((l) => l.dbId != null && _hasText(l.phone) && l.whatsAppCheckedAt == null).toList();
 
-  List<Lead> get _emailPending => widget.leads.where((l) => l.dbId != null && !_hasText(l.email)).toList();
+  /// Numbers that already have a definite answer (on WhatsApp or not).
+  List<Lead> get _waChecked =>
+      widget.leads.where((l) => l.dbId != null && _hasText(l.phone) && l.whatsAppCheckedAt != null).toList();
+
+  /// Leads with no email that haven't been tried recently — what an email
+  /// run will actually work on.
+  List<Lead> get _emailPending =>
+      widget.leads.where((l) => l.dbId != null && !_hasText(l.email) && !l.emailCheckedRecently).toList();
+
+  /// Leads with no email that *were* tried recently and came up empty. A run
+  /// skips them (retrying the same dead ends first is what used to make a
+  /// second run no faster than the first) unless the user chooses to re-check.
+  List<Lead> get _emailRecheckable =>
+      widget.leads.where((l) => l.dbId != null && !_hasText(l.email) && l.emailCheckedRecently).toList();
 
   void _toast(String message) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  /// Confirms a run. When [recheckCount] > 0 it also offers to include the
+  /// leads that were already answered; returns `null` if cancelled, else
+  /// whether to re-check them.
+  Future<bool?> _confirmRun({
+    required String title,
+    required String message,
+    required int recheckCount,
+    required String recheckLabel,
+    bool recheckByDefault = false,
+  }) {
+    var recheck = recheckByDefault;
+    return showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          title: Text(title),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(message),
+              if (recheckCount > 0) ...[
+                const SizedBox(height: 12),
+                CheckboxListTile(
+                  value: recheck,
+                  onChanged: (v) => setLocal(() => recheck = v ?? false),
+                  contentPadding: EdgeInsets.zero,
+                  controlAffinity: ListTileControlAffinity.leading,
+                  dense: true,
+                  title: Text(recheckLabel),
+                ),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+            TextButton(onPressed: () => Navigator.pop(ctx, recheck), child: const Text('Validate')),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// A run was refused because everything selected was already checked.
+  /// Offers the explicit override instead of leaving the user stuck.
+  Future<bool> _offerRecheck(String message) async {
+    final go = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Already checked'),
+        content: Text(message),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('OK')),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Re-check anyway')),
+        ],
+      ),
+    );
+    return go == true;
+  }
+
+  void _noteStart(ValidationStart start) {
+    final summary = start.summary;
+    if (summary != null && mounted) _toast(summary);
   }
 
   Future<void> _startWhatsApp() async {
@@ -129,31 +208,36 @@ class _LeadValidationBarState extends State<LeadValidationBar> {
     }
 
     final pending = _waPending;
-    if (pending.isEmpty) {
-      _toast('Nothing to check — every lead here is already checked or has no phone number.');
+    final checked = _waChecked;
+    if (pending.isEmpty && checked.isEmpty) {
+      _toast('Nothing to check — none of these leads has a phone number.');
       return;
     }
-    final batch = pending.take(leadValidationBatch).toList();
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Validate WhatsApp numbers?'),
-        content: Text(
-          'Checks ${batch.length} number${batch.length == 1 ? '' : 's'} against your connected '
-          'WhatsApp Web session (roughly ${(batch.length * 5 / 60).ceil()}-${(batch.length * 7 / 60).ceil()} min). '
-          'It only looks up whether each number is on WhatsApp — no messages are sent.'
-          '${pending.length > batch.length ? '\n\nThis run covers the first ${batch.length} of ${pending.length}; run it again for the rest.' : ''}',
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Validate')),
-        ],
-      ),
+    final decision = await _confirmRun(
+      title: 'Validate WhatsApp numbers?',
+      message: pending.isEmpty
+          ? 'Every number here was already checked.'
+          : 'Checks ${pending.take(leadValidationBatch).length} number${pending.length == 1 ? '' : 's'} against your '
+              'connected WhatsApp Web session (roughly ${(pending.take(leadValidationBatch).length * 5 / 60).ceil()}-'
+              '${(pending.take(leadValidationBatch).length * 7 / 60).ceil()} min). Numbers already checked are skipped. '
+              'It only looks up whether each number is on WhatsApp — no messages are sent.'
+              '${pending.length > leadValidationBatch ? '\n\nThis run covers the first $leadValidationBatch of ${pending.length}; run it again for the rest.' : ''}',
+      recheckCount: checked.length,
+      recheckLabel: 'Also re-ask ${checked.length} number${checked.length == 1 ? '' : 's'} already checked',
+      recheckByDefault: pending.isEmpty,
     );
-    if (confirm != true || !mounted) return;
+    if (decision == null || !mounted) return;
+    final pool = decision ? [...pending, ...checked] : pending;
+    await _runWhatsApp([for (final l in pool.take(leadValidationBatch)) l.dbId!], recheck: decision);
+  }
 
+  Future<void> _runWhatsApp(List<String> ids, {required bool recheck}) async {
     try {
-      await _repo.validateSavedLeadWhatsApp(widget.collection, [for (final l in batch) l.dbId!]);
+      final start = await _repo.validateSavedLeadWhatsApp(widget.collection, ids, recheck: recheck);
+      _noteStart(start);
+    } on AlreadyCheckedException catch (e) {
+      if (mounted && await _offerRecheck(e.message)) await _runWhatsApp(ids, recheck: true);
+      return;
     } catch (e) {
       if (mounted) _toast(e.toString().replaceFirst('Exception: ', ''));
       return;
@@ -163,34 +247,40 @@ class _LeadValidationBarState extends State<LeadValidationBar> {
 
   Future<void> _startEmail() async {
     final pending = _emailPending;
-    if (pending.isEmpty) {
+    final recheckable = _emailRecheckable;
+    if (pending.isEmpty && recheckable.isEmpty) {
       _toast('Every lead here already has an email.');
       return;
     }
     final batch = pending.take(leadValidationBatch).toList();
     final withSite = batch.where((l) => _hasText(l.website)).length;
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Validate emails?'),
-        content: Text(
-          'Looks for a contact email for ${batch.length} business${batch.length == 1 ? '' : 'es'}: '
-          '$withSite by reading their website, ${batch.length - withSite} by searching the web for '
-          'their name and phone (roughly ${(batch.length * 2.5 / 60).ceil()}-${(batch.length * 5 / 60).ceil()} min). '
-          'Only addresses that pass a deliverability check are kept — expect some to come back '
-          'empty. Nothing is sent to anyone.'
-          '${pending.length > batch.length ? '\n\nThis run covers the first ${batch.length} of ${pending.length}; run it again for the rest.' : ''}',
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Validate')),
-        ],
-      ),
+    final decision = await _confirmRun(
+      title: 'Validate emails?',
+      message: pending.isEmpty
+          ? 'Every lead without an email was already tried recently and nothing usable was found.'
+          : 'Looks for a contact email for ${batch.length} business${batch.length == 1 ? '' : 'es'}: '
+              '$withSite by reading their website, ${batch.length - withSite} by searching the web for '
+              'their name and phone (roughly ${(batch.length * 2.5 / 60).ceil()}-${(batch.length * 5 / 60).ceil()} min). '
+              'Only addresses that pass a deliverability check are kept — expect some to come back '
+              'empty. Leads tried recently with nothing found are skipped. Nothing is sent to anyone.'
+              '${pending.length > batch.length ? '\n\nThis run covers the first ${batch.length} of ${pending.length}; run it again for the rest.' : ''}',
+      recheckCount: recheckable.length,
+      recheckLabel:
+          'Also re-check ${recheckable.length} lead${recheckable.length == 1 ? '' : 's'} where no email was found earlier',
+      recheckByDefault: pending.isEmpty,
     );
-    if (confirm != true || !mounted) return;
+    if (decision == null || !mounted) return;
+    final pool = decision ? [...pending, ...recheckable] : pending;
+    await _runEmail([for (final l in pool.take(leadValidationBatch)) l.dbId!], recheck: decision);
+  }
 
+  Future<void> _runEmail(List<String> ids, {required bool recheck}) async {
     try {
-      await _repo.validateSavedLeadEmails(widget.collection, [for (final l in batch) l.dbId!]);
+      final start = await _repo.validateSavedLeadEmails(widget.collection, ids, recheck: recheck);
+      _noteStart(start);
+    } on AlreadyCheckedException catch (e) {
+      if (mounted && await _offerRecheck(e.message)) await _runEmail(ids, recheck: true);
+      return;
     } catch (e) {
       if (mounted) _toast(e.toString().replaceFirst('Exception: ', ''));
       return;
@@ -264,6 +354,7 @@ class _LeadValidationBarState extends State<LeadValidationBar> {
 
     final waPending = _waPending.length;
     final emailPending = _emailPending.length;
+    final emailRecheckable = _emailRecheckable.length;
     final total = widget.leads.length;
 
     return Column(
@@ -301,8 +392,10 @@ class _LeadValidationBarState extends State<LeadValidationBar> {
                         Text(
                           total == 0
                               ? 'Nothing to validate in this list.'
-                              : '$waPending of $total not yet checked on WhatsApp · '
-                                  '$emailPending of $total without a verified email',
+                              : 'WhatsApp: $waPending to check · '
+                                  'Email: $emailPending to check'
+                                  '${emailRecheckable > 0 ? ' ($emailRecheckable tried before, nothing found)' : ''}'
+                                  ' · of $total loaded',
                           style: const TextStyle(fontSize: 11.5, color: AppTheme.faint),
                         ),
                       ],
@@ -320,12 +413,12 @@ class _LeadValidationBarState extends State<LeadValidationBar> {
                 children: [
                   ...widget.filters,
                   OutlinedButton.icon(
-                    onPressed: waPending == 0 ? null : _startWhatsApp,
+                    onPressed: waPending == 0 && _waChecked.isEmpty ? null : _startWhatsApp,
                     icon: const Icon(AppIcons.chat, size: 16),
                     label: const Text('WhatsApp'),
                   ),
                   FilledButton.icon(
-                    onPressed: emailPending == 0 ? null : _startEmail,
+                    onPressed: emailPending == 0 && emailRecheckable == 0 ? null : _startEmail,
                     icon: const Icon(AppIcons.mail, size: 16),
                     label: const Text('Email'),
                   ),
@@ -376,6 +469,8 @@ class _LeadValidationBarState extends State<LeadValidationBar> {
           runSpacing: 8,
           children: [
             chip('on WhatsApp', snap.validCount, AppTheme.sage100, AppTheme.sage800),
+            if (snap.reusedCount > 0)
+              chip('already verified', snap.reusedCount, AppTheme.sage100, AppTheme.sage800),
             chip('not on WhatsApp', snap.invalidCount, AppTheme.neutral100, AppTheme.neutral700),
             if (snap.errorCount > 0) chip('errors', snap.errorCount, AppTheme.accent100, AppTheme.accent800),
           ],

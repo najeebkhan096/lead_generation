@@ -29,6 +29,7 @@ test('verified numbers are copied to whatsappLeads; others are not', async () =>
   const copied = [];
   const flagged = [];
   startValidationJob({
+    recordCheckFn: async () => {}, // never touch the real leadChecks collection
     leads: [lead('a', '+15125550001'), lead('b', '+15125550002')],
     checkNumberFn: async (phone) => ({ checked: true, valid: phone.endsWith('1') }),
     updateLeadFn: async (id, status) => flagged.push([id, status.hasWhatsApp]),
@@ -46,6 +47,7 @@ test('verified numbers are copied to whatsappLeads; others are not', async () =>
 
 test('a failed copy is reported on the result and does not stop the run', async () => {
   startValidationJob({
+    recordCheckFn: async () => {}, // never touch the real leadChecks collection
     leads: [lead('a', '+15125550001'), lead('b', '+15125550003')],
     checkNumberFn: async () => ({ checked: true, valid: true }),
     updateLeadFn: async () => {},
