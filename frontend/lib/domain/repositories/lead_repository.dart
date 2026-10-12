@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import '../entities/email_validation_snapshot.dart';
 import '../entities/lead.dart';
+import '../entities/lead_page.dart';
 import '../entities/multi_search_snapshot.dart';
 import '../entities/state_city_scan_snapshot.dart';
 import '../entities/excel_archive.dart';
@@ -17,12 +18,31 @@ abstract class LeadRepository {
   /// .xlsx workbook with one sheet per category.
   Future<Uint8List> exportMultiExcel();
 
-  Future<List<Lead>> getSavedBusinesses();
+  /// One page of a lead collection, newest first, with optional category,
+  /// text-search and narrowing filters. See the datasource for details.
+  Future<LeadPage> getLeadsPage(
+    LeadCollection collection, {
+    String? cursor,
+    String? category,
+    String? query,
+    int limit,
+    bool verifiedOnly,
+    bool emailOnly,
+    String? sourceType,
+  });
 
-  /// Every business discovered during a scan that has no website — a
-  /// second, independent lead signal saved automatically alongside the
-  /// review-based [getSavedBusinesses] leads.
-  Future<List<Lead>> getWebsiteLeads();
+  /// Distinct categories of a collection with their counts.
+  Future<List<LeadCategory>> getLeadCategories(LeadCollection collection);
+
+  /// The dashboard's numbers, computed server-side.
+  Future<DashboardOverview> getDashboardOverview();
+
+  /// Deletes one lead from [collection] by [Lead.dbId]. Irreversible.
+  Future<void> deleteLeadIn(LeadCollection collection, String leadId);
+
+  /// Deletes every lead of an exact category from [collection]. Irreversible.
+  /// Returns how many were deleted.
+  Future<int> deleteLeadsInCategory(LeadCollection collection, String category);
 
   /// Deletes a single saved website lead from Firestore. Irreversible.
   /// `leadId` must be [Lead.dbId].
@@ -31,11 +51,6 @@ abstract class LeadRepository {
   /// Deletes every saved website lead in an exact category. Irreversible.
   /// Returns how many were deleted.
   Future<int> deleteWebsiteLeadsByCategory(String category);
-
-  /// Every business the email validator found and verified a contact email
-  /// for — a third, independent lead signal alongside
-  /// [getSavedBusinesses] and [getWebsiteLeads].
-  Future<List<Lead>> getEmailLeads();
 
   /// Deletes a single saved email lead from Firestore. Irreversible.
   /// `leadId` must be [Lead.dbId].
@@ -60,10 +75,6 @@ abstract class LeadRepository {
   /// [collection] is `leads` or `websiteLeads`. Verified numbers are copied
   /// into the WhatsApp leads collection.
   Future<void> validateSavedLeadWhatsApp(String collection, List<String> ids);
-
-  /// Leads whose number a real WhatsApp check confirmed (`whatsappLeads`).
-  /// [sourceType] narrows to `review` or `website` leads.
-  Future<List<Lead>> getWhatsAppLeads({String? sourceType});
 
   Future<void> deleteWhatsAppLead(String leadId);
 

@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import '../../domain/entities/email_validation_snapshot.dart';
 import '../../domain/entities/lead.dart';
+import '../../domain/entities/lead_page.dart';
 import '../../domain/entities/multi_search_snapshot.dart';
 import '../../domain/entities/state_city_scan_snapshot.dart';
 import '../../domain/entities/excel_archive.dart';
@@ -23,10 +24,41 @@ class LeadRepositoryImpl implements LeadRepository {
   Future<Uint8List> exportMultiExcel() => _remote.exportMultiExcel();
 
   @override
-  Future<List<Lead>> getSavedBusinesses() => _remote.getSavedLeads();
+  Future<LeadPage> getLeadsPage(
+    LeadCollection collection, {
+    String? cursor,
+    String? category,
+    String? query,
+    int limit = 50,
+    bool verifiedOnly = false,
+    bool emailOnly = false,
+    String? sourceType,
+  }) =>
+      _remote.getLeadsPage(
+        collection,
+        cursor: cursor,
+        category: category,
+        query: query,
+        limit: limit,
+        verifiedOnly: verifiedOnly,
+        emailOnly: emailOnly,
+        sourceType: sourceType,
+      );
 
   @override
-  Future<List<Lead>> getWebsiteLeads() => _remote.getWebsiteLeads();
+  Future<List<LeadCategory>> getLeadCategories(LeadCollection collection) =>
+      _remote.getLeadCategories(collection);
+
+  @override
+  Future<DashboardOverview> getDashboardOverview() => _remote.getDashboardOverview();
+
+  @override
+  Future<void> deleteLeadIn(LeadCollection collection, String leadId) =>
+      _remote.deleteLeadIn(collection, leadId);
+
+  @override
+  Future<int> deleteLeadsInCategory(LeadCollection collection, String category) =>
+      _remote.deleteLeadsInCategory(collection, category);
 
   @override
   Future<void> deleteWebsiteLead(String leadId) => _remote.deleteWebsiteLead(leadId);
@@ -34,9 +66,6 @@ class LeadRepositoryImpl implements LeadRepository {
   @override
   Future<int> deleteWebsiteLeadsByCategory(String category) =>
       _remote.deleteWebsiteLeadsByCategory(category);
-
-  @override
-  Future<List<Lead>> getEmailLeads() => _remote.getEmailLeads();
 
   @override
   Future<void> deleteEmailLead(String leadId) => _remote.deleteEmailLead(leadId);
@@ -56,10 +85,6 @@ class LeadRepositoryImpl implements LeadRepository {
   @override
   Future<void> validateSavedLeadWhatsApp(String collection, List<String> ids) =>
       _remote.validateSavedLeadWhatsApp(collection, ids);
-
-  @override
-  Future<List<Lead>> getWhatsAppLeads({String? sourceType}) =>
-      _remote.getWhatsAppLeads(sourceType: sourceType);
 
   @override
   Future<void> deleteWhatsAppLead(String leadId) => _remote.deleteWhatsAppLead(leadId);

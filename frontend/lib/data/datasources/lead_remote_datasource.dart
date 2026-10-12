@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import '../../core/constants/api_constants.dart';
 import '../../domain/entities/email_validation_snapshot.dart';
 import '../../domain/entities/lead.dart';
+import '../../domain/entities/lead_page.dart';
 import '../../domain/entities/multi_search_snapshot.dart';
 import '../../domain/entities/state_city_scan_snapshot.dart';
 import '../../domain/entities/excel_archive.dart';
@@ -42,39 +43,6 @@ class LeadRemoteDataSource {
     return response.bodyBytes;
   }
 
-  /// Fetches every business persisted to Firestore via the backend proxy.
-  Future<List<Lead>> getSavedLeads() async {
-    final response = await _client.get(
-      _uri(ApiConstants.savedLeads).replace(queryParameters: {'limit': '5000'}),
-    );
-    if (response.statusCode >= 400) {
-      final body = _tryDecode(response.body);
-      throw Exception(body['error'] ?? 'Failed to load saved businesses');
-    }
-    final body = jsonDecode(response.body) as Map<String, dynamic>;
-    final leadsJson = (body['leads'] as List<dynamic>? ?? []);
-    return leadsJson
-        .map((e) => Lead.fromJson(e as Map<String, dynamic>))
-        .toList();
-  }
-
-  /// Fetches every business discovered during a scan that has no website,
-  /// from Firestore's `websiteLeads` collection via the backend proxy.
-  Future<List<Lead>> getWebsiteLeads() async {
-    final response = await _client.get(
-      _uri(ApiConstants.websiteLeads).replace(queryParameters: {'limit': '5000'}),
-    );
-    if (response.statusCode >= 400) {
-      final body = _tryDecode(response.body);
-      throw Exception(body['error'] ?? 'Failed to load website leads');
-    }
-    final body = jsonDecode(response.body) as Map<String, dynamic>;
-    final leadsJson = (body['leads'] as List<dynamic>? ?? []);
-    return leadsJson
-        .map((e) => Lead.fromJson(e as Map<String, dynamic>))
-        .toList();
-  }
-
   /// Deletes a single saved website lead from Firestore. [leadId] must be
   /// the lead's Firestore [Lead.dbId].
   Future<void> deleteWebsiteLead(String leadId) async {
@@ -102,23 +70,6 @@ class LeadRemoteDataSource {
     return (body['deleted'] as num?)?.toInt() ?? 0;
   }
 
-  /// Fetches every business a scan found a public contact email for, from
-  /// Firestore's `emailLeads` collection via the backend proxy.
-  Future<List<Lead>> getEmailLeads() async {
-    final response = await _client.get(
-      _uri(ApiConstants.emailLeads).replace(queryParameters: {'limit': '5000'}),
-    );
-    if (response.statusCode >= 400) {
-      final body = _tryDecode(response.body);
-      throw Exception(body['error'] ?? 'Failed to load email leads');
-    }
-    final body = jsonDecode(response.body) as Map<String, dynamic>;
-    final leadsJson = (body['leads'] as List<dynamic>? ?? []);
-    return leadsJson
-        .map((e) => Lead.fromJson(e as Map<String, dynamic>))
-        .toList();
-  }
-
   /// Deletes a single saved email lead from Firestore. [leadId] must be
   /// the lead's Firestore [Lead.dbId].
   Future<void> deleteEmailLead(String leadId) async {
@@ -142,6 +93,90 @@ class LeadRemoteDataSource {
     final body = _tryDecode(response.body);
     if (response.statusCode >= 400) {
       throw Exception(body['error'] ?? 'Failed to delete email leads');
+    }
+    return (body['deleted'] as num?)?.toInt() ?? 0;
+  }
+
+  /// One page of a lead collection, newest first.
+  ///
+  /// [cursor] is the previous page's `nextCursor`. [category] is an exact
+  /// category; [query] a text search (the backend scans for it, so it can
+  /// take several round trips on a big collection — a page may come back
+  /// with few results and still have a `nextCursor`). [verifiedOnly] (review
+  /// leads), [emailOnly] (website leads) and [sourceType] (WhatsApp leads)
+  /// are collection-specific narrowing filters.
+  Future<LeadPage> getLeadsPage(
+    LeadCollection collection, {
+    String? cursor,
+    String? category,
+    String? query,
+    int limit = 50,
+    bool verifiedOnly = false,
+    bool emailOnly = false,
+    String? sourceType,
+  }) async {
+    final params = <String, String>{
+      'limit': '$limit',
+      'cursor': ?cursor,
+      'category': ?category,
+      if (query != null && query.trim().isNotEmpty) 'q': query.trim(),
+      if (verifiedOnly) 'verified': '1',
+      if (emailOnly) 'hasEmail': '1',
+      'sourceType': ?sourceType,
+    };
+    final response = await _client.get(_uri(collection.path).replace(queryParameters: params));
+    if (response.statusCode >= 400) {
+      final body = _tryDecode(response.body);
+      throw Exception(body['error'] ?? 'Failed to load leads');
+    }
+    return LeadPage.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  /// Distinct categories (with counts) of [collection] — for the category
+  /// filter. The backend caches this, so it's cheap after the first call.
+  Future<List<LeadCategory>> getLeadCategories(LeadCollection collection) async {
+    final response = await _client.get(
+      _uri(ApiConstants.dbCategories).replace(queryParameters: {'collection': collection.firestoreName}),
+    );
+    if (response.statusCode >= 400) {
+      final body = _tryDecode(response.body);
+      throw Exception(body['error'] ?? 'Failed to load categories');
+    }
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    return ((body['categories'] as List<dynamic>?) ?? const [])
+        .map((e) => LeadCategory.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// The dashboard's numbers (computed server-side).
+  Future<DashboardOverview> getDashboardOverview() async {
+    final response = await _client.get(_uri(ApiConstants.dbOverview));
+    if (response.statusCode >= 400) {
+      final body = _tryDecode(response.body);
+      throw Exception(body['error'] ?? 'Failed to load the dashboard');
+    }
+    return DashboardOverview.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  /// Deletes one lead from [collection]. [leadId] is the lead's
+  /// [Lead.dbId]. Irreversible.
+  Future<void> deleteLeadIn(LeadCollection collection, String leadId) async {
+    final response = await _client.delete(_uri('${collection.path}/$leadId'));
+    if (response.statusCode >= 400) {
+      final body = _tryDecode(response.body);
+      throw Exception(body['error'] ?? 'Failed to delete lead');
+    }
+  }
+
+  /// Deletes every lead of an exact category from [collection]. Returns how
+  /// many were deleted. Irreversible.
+  Future<int> deleteLeadsInCategory(LeadCollection collection, String category) async {
+    final response = await _client.delete(
+      _uri(collection.path).replace(queryParameters: {'category': category}),
+    );
+    final body = _tryDecode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['error'] ?? 'Failed to delete leads');
     }
     return (body['deleted'] as num?)?.toInt() ?? 0;
   }
@@ -446,24 +481,6 @@ class LeadRemoteDataSource {
       final body = _tryDecode(response.body);
       throw Exception(body['error'] ?? 'Failed to start WhatsApp validation');
     }
-  }
-
-  /// Every lead whose number a real WhatsApp check confirmed — the
-  /// `whatsappLeads` collection. [sourceType] narrows to `review` or
-  /// `website` leads.
-  Future<List<Lead>> getWhatsAppLeads({String? sourceType}) async {
-    final response = await _client.get(
-      _uri(ApiConstants.whatsappLeads).replace(
-        queryParameters: {'limit': '5000', 'sourceType': ?sourceType},
-      ),
-    );
-    if (response.statusCode >= 400) {
-      final body = _tryDecode(response.body);
-      throw Exception(body['error'] ?? 'Failed to load WhatsApp leads');
-    }
-    final body = jsonDecode(response.body) as Map<String, dynamic>;
-    final leadsJson = (body['leads'] as List<dynamic>? ?? []);
-    return leadsJson.map((e) => Lead.fromJson(e as Map<String, dynamic>)).toList();
   }
 
   Future<void> deleteWhatsAppLead(String leadId) async {

@@ -9,6 +9,7 @@ import '../../domain/entities/email_validation_snapshot.dart';
 import '../../domain/entities/excel_archive.dart';
 import '../../domain/entities/lead.dart';
 import '../../domain/repositories/lead_repository.dart';
+import '../utils/lazy_reveal.dart';
 import '../widgets/email_lead_card.dart';
 import '../widgets/email_outcome_summary.dart';
 import '../widgets/state_scope_section.dart';
@@ -67,7 +68,8 @@ class ExcelArchiveEmailValidatorPage extends StatefulWidget {
   State<ExcelArchiveEmailValidatorPage> createState() => _ExcelArchiveEmailValidatorPageState();
 }
 
-class _ExcelArchiveEmailValidatorPageState extends State<ExcelArchiveEmailValidatorPage> {
+class _ExcelArchiveEmailValidatorPageState extends State<ExcelArchiveEmailValidatorPage>
+    with LazyRevealMixin {
   List<Lead> _leads = [];
   bool _loading = true;
   String? _error;
@@ -91,12 +93,14 @@ class _ExcelArchiveEmailValidatorPageState extends State<ExcelArchiveEmailValida
   @override
   void initState() {
     super.initState();
+    initReveal();
     _load();
   }
 
   @override
   void dispose() {
     _timer?.cancel();
+    disposeReveal();
     super.dispose();
   }
 
@@ -368,6 +372,7 @@ class _ExcelArchiveEmailValidatorPageState extends State<ExcelArchiveEmailValida
                                 style: TextStyle(color: AppTheme.faint)),
                           )
                         : ListView(
+                            controller: revealController,
                             padding: const EdgeInsets.fromLTRB(20, 12, 20, 40),
                             children: [
                               Text(
@@ -463,7 +468,7 @@ class _ExcelArchiveEmailValidatorPageState extends State<ExcelArchiveEmailValida
                                   spacing: 14,
                                   runSpacing: 14,
                                   children: [
-                                    for (final lead in verifiedHere)
+                                    for (final lead in verifiedHere.take(revealCount))
                                       SizedBox(
                                         width: 340,
                                         height: 262,

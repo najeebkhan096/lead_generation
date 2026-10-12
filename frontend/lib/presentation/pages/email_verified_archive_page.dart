@@ -6,6 +6,7 @@ import '../../core/theme/app_theme.dart';
 import '../../domain/entities/excel_archive.dart';
 import '../../domain/entities/lead.dart';
 import '../../domain/repositories/lead_repository.dart';
+import '../utils/lazy_reveal.dart';
 import '../widgets/email_lead_card.dart';
 
 String _timeAgo(DateTime? when) {
@@ -227,7 +228,7 @@ class _ArchiveViewerPage extends StatefulWidget {
   State<_ArchiveViewerPage> createState() => _ArchiveViewerPageState();
 }
 
-class _ArchiveViewerPageState extends State<_ArchiveViewerPage> {
+class _ArchiveViewerPageState extends State<_ArchiveViewerPage> with LazyRevealMixin {
   List<Lead> _leads = [];
   bool _loading = true;
   String? _error;
@@ -235,7 +236,14 @@ class _ArchiveViewerPageState extends State<_ArchiveViewerPage> {
   @override
   void initState() {
     super.initState();
+    initReveal();
     _load();
+  }
+
+  @override
+  void dispose() {
+    disposeReveal();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -298,6 +306,7 @@ class _ArchiveViewerPageState extends State<_ArchiveViewerPage> {
                                 style: TextStyle(color: AppTheme.faint)),
                           )
                         : ListView(
+                            controller: revealController,
                             padding: const EdgeInsets.fromLTRB(20, 12, 20, 40),
                             children: [
                               Row(
@@ -318,7 +327,7 @@ class _ArchiveViewerPageState extends State<_ArchiveViewerPage> {
                                 spacing: 14,
                                 runSpacing: 14,
                                 children: [
-                                  for (final lead in _leads)
+                                  for (final lead in _leads.take(revealCount))
                                     SizedBox(
                                       width: 340,
                                       height: 262,

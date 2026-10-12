@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../domain/entities/lead.dart';
+import '../../domain/entities/lead_page.dart';
 import '../../domain/entities/multi_search_snapshot.dart';
 import '../../domain/repositories/lead_repository.dart';
 import '../utils/date_format.dart';
@@ -22,7 +23,7 @@ class DashboardPage extends StatefulWidget {
 
 class _DashboardPageState extends State<DashboardPage> {
   _LoadStatus _status = _LoadStatus.loading;
-  List<Lead> _leads = const [];
+  DashboardOverview? _overview;
   String? _error;
 
   @override
@@ -34,10 +35,12 @@ class _DashboardPageState extends State<DashboardPage> {
   Future<void> _load() async {
     setState(() => _status = _LoadStatus.loading);
     try {
-      final leads = await context.read<LeadRepository>().getSavedBusinesses();
+      // Server-computed numbers (a few hundred bytes) — the dashboard no
+      // longer downloads every lead just to count them.
+      final overview = await context.read<LeadRepository>().getDashboardOverview();
       if (!mounted) return;
       setState(() {
-        _leads = leads;
+        _overview = overview;
         _status = _LoadStatus.success;
       });
     } catch (e) {
@@ -79,7 +82,7 @@ class _DashboardPageState extends State<DashboardPage> {
                             else if (_status == _LoadStatus.failure)
                               _DashboardError(message: _error!, onRetry: _load)
                             else
-                              _DashboardBody(leads: _leads),
+                              if (_overview != null) _DashboardBody(overview: _overview!),
                             if (_status != _LoadStatus.loading) ...[
                               const SizedBox(height: 32),
                               _DangerZoneCard(onCleared: _load),
@@ -222,19 +225,19 @@ class _MultiScanBannerState extends State<_MultiScanBanner> {
 }
 
 class _DashboardBody extends StatelessWidget {
-  const _DashboardBody({required this.leads});
+  const _DashboardBody({required this.overview});
 
-  final List<Lead> leads;
+  final DashboardOverview overview;
 
   @override
   Widget build(BuildContext context) {
-    if (leads.isEmpty) {
+    if (overview.isEmpty) {
       return const _EmptyDashboard();
     }
 
-    final stats = _Stats.from(leads);
-    final categories = _categoryBreakdown(leads);
-    final recent = _recentLeads(leads);
+    final stats = _Stats.from(overview);
+    final categories = [for (final c in overview.topCategories) MapEntry(c.name, c.count)];
+    final recent = overview.recent;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -267,24 +270,6 @@ class _DashboardBody extends StatelessWidget {
         ),
       ],
     );
-  }
-
-  static List<MapEntry<String, int>> _categoryBreakdown(List<Lead> leads) {
-    final counts = <String, int>{};
-    for (final lead in leads) {
-      final category = lead.category.trim();
-      if (category.isEmpty) continue;
-      counts[category] = (counts[category] ?? 0) + 1;
-    }
-    final entries = counts.entries.toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
-    return entries.take(6).toList();
-  }
-
-  static List<Lead> _recentLeads(List<Lead> leads) {
-    final withDates = leads.where((l) => l.savedAt != null).toList()
-      ..sort((a, b) => b.savedAt!.compareTo(a.savedAt!));
-    return withDates.take(5).toList();
   }
 }
 
@@ -454,22 +439,14 @@ class _Stats {
   final double? avgRating;
   final int addedThisWeek;
 
-  factory _Stats.from(List<Lead> leads) {
-    final ratings = leads.where((l) => l.rating != null).map((l) => l.rating!);
-    final weekAgo = DateTime.now().subtract(const Duration(days: 7));
-    return _Stats(
-      total: leads.length,
-      whatsAppReady: leads
-          .where((l) => l.hasWhatsApp || (l.waLink?.isNotEmpty ?? false))
-          .length,
-      categories: leads.map((l) => l.category.trim()).where((c) => c.isNotEmpty).toSet().length,
-      markets: leads.map((l) => l.location.trim()).where((l) => l.isNotEmpty).toSet().length,
-      avgRating: ratings.isEmpty
-          ? null
-          : ratings.reduce((a, b) => a + b) / ratings.length,
-      addedThisWeek: leads.where((l) => l.savedAt != null && l.savedAt!.isAfter(weekAgo)).length,
-    );
-  }
+  factory _Stats.from(DashboardOverview o) => _Stats(
+        total: o.total,
+        whatsAppReady: o.whatsAppReady,
+        categories: o.categories,
+        markets: o.markets,
+        avgRating: o.avgRating,
+        addedThisWeek: o.addedThisWeek,
+      );
 }
 
 class _StatGrid extends StatelessWidget {

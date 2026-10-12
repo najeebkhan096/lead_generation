@@ -9,6 +9,7 @@ import '../../domain/entities/excel_archive.dart';
 import '../../domain/entities/lead.dart';
 import '../../domain/entities/whatsapp_web_status.dart';
 import '../../domain/repositories/lead_repository.dart';
+import '../utils/lazy_reveal.dart';
 import '../widgets/lead_card.dart';
 import '../widgets/state_scope_section.dart';
 
@@ -62,7 +63,7 @@ class ExcelArchiveLeadsPage extends StatefulWidget {
   State<ExcelArchiveLeadsPage> createState() => _ExcelArchiveLeadsPageState();
 }
 
-class _ExcelArchiveLeadsPageState extends State<ExcelArchiveLeadsPage> {
+class _ExcelArchiveLeadsPageState extends State<ExcelArchiveLeadsPage> with LazyRevealMixin {
   List<Lead> _leads = [];
   bool _loading = true;
   String? _error;
@@ -86,12 +87,14 @@ class _ExcelArchiveLeadsPageState extends State<ExcelArchiveLeadsPage> {
   @override
   void initState() {
     super.initState();
+    initReveal();
     _load();
   }
 
   @override
   void dispose() {
     _validationTimer?.cancel();
+    disposeReveal();
     super.dispose();
   }
 
@@ -409,6 +412,7 @@ class _ExcelArchiveLeadsPageState extends State<ExcelArchiveLeadsPage> {
                             child: Text('This archive has no businesses.', style: TextStyle(color: AppTheme.faint)),
                           )
                         : ListView(
+                            controller: revealController,
                             padding: const EdgeInsets.fromLTRB(20, 12, 20, 40),
                             children: [
                               Text(
@@ -440,6 +444,7 @@ class _ExcelArchiveLeadsPageState extends State<ExcelArchiveLeadsPage> {
                                               _category = v;
                                               _selectedStates.clear();
                                               _allStates = true;
+                                              revealCount = LazyRevealMixin.revealStep;
                                             });
                                           }
                                         },
@@ -496,7 +501,8 @@ class _ExcelArchiveLeadsPageState extends State<ExcelArchiveLeadsPage> {
                                 style: const TextStyle(fontSize: 12, color: AppTheme.faint, fontWeight: FontWeight.w700),
                               ),
                               const SizedBox(height: 10),
-                              ...filtered.map((lead) => LeadCard(lead: lead)),
+                              // Only a window of cards is built; it grows as you scroll.
+                              ...filtered.take(revealCount).map((lead) => LeadCard(lead: lead)),
                             ],
                           ),
           ),

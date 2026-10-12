@@ -6,6 +6,7 @@ import '../../core/theme/app_theme.dart';
 import '../../domain/entities/excel_archive.dart';
 import '../../domain/entities/lead.dart';
 import '../../domain/repositories/lead_repository.dart';
+import '../utils/lazy_reveal.dart';
 import '../widgets/lead_card.dart';
 
 String _timeAgo(DateTime? when) {
@@ -227,7 +228,7 @@ class _VerifiedArchiveViewerPage extends StatefulWidget {
   State<_VerifiedArchiveViewerPage> createState() => _VerifiedArchiveViewerPageState();
 }
 
-class _VerifiedArchiveViewerPageState extends State<_VerifiedArchiveViewerPage> {
+class _VerifiedArchiveViewerPageState extends State<_VerifiedArchiveViewerPage> with LazyRevealMixin {
   List<Lead> _leads = [];
   bool _loading = true;
   String? _error;
@@ -235,7 +236,14 @@ class _VerifiedArchiveViewerPageState extends State<_VerifiedArchiveViewerPage> 
   @override
   void initState() {
     super.initState();
+    initReveal();
     _load();
+  }
+
+  @override
+  void dispose() {
+    disposeReveal();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -280,6 +288,7 @@ class _VerifiedArchiveViewerPageState extends State<_VerifiedArchiveViewerPage> 
                     : _leads.isEmpty
                         ? const Center(child: Text('No businesses in this archive.', style: TextStyle(color: AppTheme.faint)))
                         : ListView(
+                            controller: revealController,
                             padding: const EdgeInsets.fromLTRB(20, 12, 20, 40),
                             children: [
                               Row(
@@ -296,7 +305,8 @@ class _VerifiedArchiveViewerPageState extends State<_VerifiedArchiveViewerPage> 
                                 ],
                               ),
                               const SizedBox(height: 16),
-                              ..._leads.map((lead) => LeadCard(lead: lead)),
+                              // A window of cards, growing as you scroll.
+                              ..._leads.take(revealCount).map((lead) => LeadCard(lead: lead)),
                             ],
                           ),
           ),

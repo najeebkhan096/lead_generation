@@ -24,6 +24,8 @@ class ApiConstants {
   static const String multiSearchResumeCategory = '/api/search/multi/resume-category';
   static const String exportXlsxMulti = '/api/export/xlsx/multi';
   static const String savedLeads = '/api/db/leads';
+  static const String dbCategories = '/api/db/categories';
+  static const String dbOverview = '/api/db/overview';
   static String leadWhatsAppStatus(String leadId) => '/api/db/leads/$leadId/whatsapp';
   static String leadDelete(String leadId) => '/api/db/leads/$leadId';
   static const String websiteLeads = '/api/db/website-leads';
