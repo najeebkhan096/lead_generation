@@ -60,6 +60,10 @@ class OutreachApi {
       _post('text',
           {'leadId': leadId, 'messageId': messageId, 'body': body, 'replyToMessageId': replyTo});
 
+  /// Plain SMS (any country, no WhatsApp window needed). Used by the test page.
+  Future<void> sendSms({required String leadId, required String messageId, required String body}) =>
+      _post('sms', {'leadId': leadId, 'messageId': messageId, 'body': body});
+
   Future<void> sendMedia({
     required String leadId,
     required String messageId,
@@ -77,8 +81,14 @@ class OutreachApi {
 
   /// [mediaUrl] is the Firebase download URL of the uploaded header image; the
   /// backend strips the template's fixed prefix (error 21620 otherwise).
-  Future<void> sendTemplate({required String leadId, required String messageId, required String mediaUrl}) =>
-      _post('template', {'leadId': leadId, 'messageId': messageId, 'mediaUrl': mediaUrl});
+  /// [channel] is `auto` (US numbers by SMS, the rest on WhatsApp), `sms` or `whatsapp`.
+  Future<void> sendTemplate({
+    required String leadId,
+    required String messageId,
+    required String mediaUrl,
+    String channel = 'auto',
+  }) =>
+      _post('template', {'leadId': leadId, 'messageId': messageId, 'mediaUrl': mediaUrl, 'channel': channel});
 
   Future<void> retry({required String leadId, required String messageId}) =>
       _post('retry', {'leadId': leadId, 'messageId': messageId});

@@ -30,6 +30,14 @@ const LEAD_COLUMNS = [
   { header: 'Maps URL', key: 'mapsUrl', width: 30 },
 ];
 
+/** Appended after `LEAD_COLUMNS` for email-verified exports only, so every
+ * other workbook this app writes keeps its exact existing layout. */
+const EMAIL_COLUMNS = [
+  { header: 'Email', key: 'email', width: 32 },
+  { header: 'Email Source', key: 'emailSource', width: 16 },
+  { header: 'Other Emails', key: 'otherEmails', width: 36 },
+];
+
 function leadRow(lead) {
   return {
     business: lead.business,
@@ -44,6 +52,9 @@ function leadRow(lead) {
     reviewText: lead.badReview?.text,
     reviewDate: lead.badReview?.date,
     mapsUrl: lead.mapsUrl,
+    email: lead.email || '',
+    emailSource: lead.emailSource || '',
+    otherEmails: (lead.emails || []).filter((e) => e !== lead.email).join(', '),
   };
 }
 
@@ -75,9 +86,12 @@ function safeSheetName(name, used) {
  * single search (one sheet) and a multi-category/multi-country job (one
  * sheet per category, e.g. "cleaning services UK", "cleaning services DE").
  * @param {{ name: string, leads: object[] }[]} sheets
+ * @param {{ withEmail?: boolean }} [options] adds the Email columns — only
+ *   the email-verified archive uses them.
  * @returns {Promise<Buffer>}
  */
-export async function leadsToXlsxBuffer(sheets) {
+export async function leadsToXlsxBuffer(sheets, { withEmail = false } = {}) {
+  const columns = withEmail ? [...LEAD_COLUMNS, ...EMAIL_COLUMNS] : LEAD_COLUMNS;
   const workbook = new ExcelJS.Workbook();
   workbook.creator = 'LeadFinder';
   workbook.created = new Date();
@@ -86,9 +100,9 @@ export async function leadsToXlsxBuffer(sheets) {
 
   for (const { name, leads } of sheets) {
     const sheet = workbook.addWorksheet(safeSheetName(name, usedNames));
-    sheet.columns = LEAD_COLUMNS;
+    sheet.columns = columns;
     sheet.getRow(1).font = { bold: true };
-    sheet.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: LEAD_COLUMNS.length } };
+    sheet.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: columns.length } };
     for (const lead of leads) {
       sheet.addRow(leadRow(lead));
     }
@@ -96,7 +110,7 @@ export async function leadsToXlsxBuffer(sheets) {
 
   // A workbook needs at least one sheet even if every category came back empty.
   if (!sheets.length) {
-    workbook.addWorksheet('Leads').columns = LEAD_COLUMNS;
+    workbook.addWorksheet('Leads').columns = columns;
   }
 
   return workbook.xlsx.writeBuffer();
@@ -167,6 +181,12 @@ export function sheetsToLeadsJson(sheets, idPrefix) {
         rating: typeof rating === 'number' ? rating : (rating ? Number(rating) || null : null),
         hasWhatsApp: row['Has WhatsApp'] === 'Yes',
         waLink: row['WhatsApp Link'] || null,
+        // Only present in email-verified workbooks; null everywhere else.
+        email: row['Email'] || null,
+        emailSource: row['Email Source'] || null,
+        emails: [row['Email'], ...String(row['Other Emails'] || '').split(',')]
+          .map((e) => String(e || '').trim())
+          .filter(Boolean),
         badReview: {
           stars: null,
           text: row['Review'] || '',

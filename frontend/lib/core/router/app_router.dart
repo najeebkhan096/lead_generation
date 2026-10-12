@@ -3,6 +3,9 @@ import 'package:go_router/go_router.dart';
 import '../../domain/entities/lead.dart';
 import '../../presentation/pages/business_details_page.dart';
 import '../../presentation/pages/dashboard_page.dart';
+import '../../presentation/pages/email_lead_details_page.dart';
+import '../../presentation/pages/email_verified_archive_page.dart';
+import '../../presentation/pages/email_leads_page.dart';
 import '../../presentation/pages/excel_archive_page.dart';
 import '../../presentation/pages/excel_scan_page.dart';
 import '../../presentation/pages/multi_scan_page.dart';
@@ -22,9 +25,10 @@ import '../../presentation/widgets/admin_shell.dart';
 /// instead of the whole app living behind one address — back/forward,
 /// refresh, and bookmarking all work per-page now.
 ///
-/// The five primary sections (Dashboard/Leads/WhatsApp Tool/Sales/
-/// Settings) are [StatefulShellRoute] branches — [AdminShell] wraps them
-/// with the persistent sidebar/bottom-nav, and each branch keeps its own
+/// The primary sections (Dashboard/Leads/Website Leads/Email Leads/
+/// WhatsApp Tool/Sales/Outreach/Settings) are [StatefulShellRoute]
+/// branches — [AdminShell] wraps them with the persistent
+/// sidebar/bottom-nav, and each branch keeps its own
 /// state (scroll position, in-flight loads) when you switch away and back,
 /// exactly like the `IndexedStack` this replaced. Everything reached one
 /// level down (Excel Scan, Scan Progress, Excel Archive, Watchlist,
@@ -46,6 +50,9 @@ final GoRouter appRouter = GoRouter(
           GoRoute(path: '/website-leads', builder: (context, state) => const WebsiteLeadsPage()),
         ]),
         StatefulShellBranch(routes: [
+          GoRoute(path: '/email-leads', builder: (context, state) => const EmailLeadsPage()),
+        ]),
+        StatefulShellBranch(routes: [
           GoRoute(path: '/whatsapp', builder: (context, state) => const WhatsAppCheckerPage()),
         ]),
         StatefulShellBranch(routes: [
@@ -65,9 +72,20 @@ final GoRouter appRouter = GoRouter(
     GoRoute(path: '/watchlist', builder: (context, state) => const WatchlistPage()),
     GoRoute(path: '/users', builder: (context, state) => const UsersPage()),
     GoRoute(path: '/whatsapp-verified', builder: (context, state) => const WhatsAppValidatedArchivePage()),
+    GoRoute(path: '/email-verified', builder: (context, state) => const EmailVerifiedArchivePage()),
     // Legacy/dormant multi-country scan dashboard — still reachable from
     // the handful of old archives that predate the state/city scan engine.
     GoRoute(path: '/multi-scan', builder: (context, state) => const MultiScanPage()),
+    // Same `extra` convention as `/leads/details` — falls back to the Email
+    // Leads list when opened without a lead (e.g. a refreshed tab).
+    GoRoute(
+      path: '/email-leads/details',
+      builder: (context, state) {
+        final extra = state.extra;
+        if (extra is Lead) return EmailLeadDetailsPage(lead: extra);
+        return const EmailLeadsPage();
+      },
+    ),
     // Carries its [Lead] via `extra` rather than fetching by id — an
     // internal admin tool's detail drill-down, not something meant to be
     // cold-loaded from a bare URL. Falls back to the Leads list if opened

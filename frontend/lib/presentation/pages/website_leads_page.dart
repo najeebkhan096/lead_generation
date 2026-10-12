@@ -9,6 +9,7 @@ import '../bloc/website_leads/website_leads_bloc.dart';
 import '../bloc/website_leads/website_leads_event.dart';
 import '../bloc/website_leads/website_leads_state.dart';
 import '../widgets/saved_business_card.dart';
+import '../widgets/website_lead_email_validator.dart';
 import 'business_details_page.dart' show LeadDetailsArgs;
 
 const _allCategories = 'All categories';
@@ -41,6 +42,7 @@ class _WebsiteLeadsView extends StatefulWidget {
 class _WebsiteLeadsViewState extends State<_WebsiteLeadsView> {
   final _searchController = TextEditingController();
   String _category = _allCategories;
+  bool _emailOnly = false;
 
   @override
   void dispose() {
@@ -189,9 +191,12 @@ class _WebsiteLeadsViewState extends State<_WebsiteLeadsView> {
     final categories = _categoriesFrom(state.businesses);
     final effectiveCategory = categories.contains(_category) ? _category : _allCategories;
     final searched = state.filteredBusinesses;
-    final filtered = effectiveCategory == _allCategories
+    final inCategory = effectiveCategory == _allCategories
         ? searched
         : searched.where((b) => b.category == effectiveCategory).toList();
+    final filtered = _emailOnly
+        ? inCategory.where((b) => b.email != null && b.email!.isNotEmpty).toList()
+        : inCategory;
     // Deleting a category removes every lead in it regardless of the search
     // box, so the confirm dialog must count from the full unfiltered list.
     final categoryTotalCount = state.businesses.where((b) => b.category == effectiveCategory).length;
@@ -201,6 +206,15 @@ class _WebsiteLeadsViewState extends State<_WebsiteLeadsView> {
       children: [
         _Header(total: state.businesses.length),
         const SizedBox(height: 24),
+        // Validates the list as filtered by search + category (not the
+        // "has email" toggle — that only narrows what's shown).
+        WebsiteLeadEmailValidator(
+          leads: inCategory,
+          emailOnly: _emailOnly,
+          onEmailOnlyChanged: (v) => setState(() => _emailOnly = v),
+          onFinished: () => context.read<WebsiteLeadsBloc>().add(const WebsiteLeadsRequested()),
+        ),
+        const SizedBox(height: 16),
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

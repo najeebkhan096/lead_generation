@@ -63,13 +63,51 @@ class _ChatPageState extends State<ChatPage> {
 
   void _jumpToBottom() => _scroll.animateTo(0, duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
 
+  /// US numbers: WhatsApp blocks marketing templates (error 63049), so the
+  /// default is SMS with a WhatsApp link; WhatsApp stays available as an override.
+  Future<String?> _pickChannel() {
+    return showModalBottomSheet<String>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Padding(
+            padding: EdgeInsets.fromLTRB(20, 16, 20, 4),
+            child: Text(
+              'This is a US (+1) number. Meta blocks WhatsApp marketing messages to US numbers, so they usually fail.',
+              style: TextStyle(fontSize: 13),
+            ),
+          ),
+          ListTile(
+            leading: const Icon(Icons.sms_outlined),
+            title: const Text('Send by SMS (recommended)'),
+            subtitle: const Text('Includes a link to continue on WhatsApp'),
+            onTap: () => Navigator.pop(ctx, 'sms'),
+          ),
+          ListTile(
+            leading: const Icon(Icons.chat_outlined),
+            title: const Text('Send on WhatsApp anyway'),
+            subtitle: const Text('Likely to be blocked'),
+            onTap: () => Navigator.pop(ctx, 'whatsapp'),
+          ),
+        ]),
+      ),
+    );
+  }
+
   Future<void> _sendTemplate() async {
     if (_sendingTemplate) return;
     setState(() => _sendingTemplate = true);
     try {
+      var channel = 'auto';
+      if (widget.lead.isUsNumber) {
+        final picked = await _pickChannel();
+        if (picked == null) return;
+        channel = picked;
+      }
+      if (!mounted) return;
       final url = await pickAndUploadTemplateImage(context, recipient: widget.lead.displayName);
       if (url == null) return;
-      _c.sendTemplate(url);
+      _c.sendTemplate(url, channel: channel);
     } catch (e) {
       _snack('Could not upload the image: $e');
     } finally {
@@ -358,7 +396,9 @@ class _ChatPageState extends State<ChatPage> {
               Expanded(
                 child: Text(
                   never
-                      ? 'No reply yet: WhatsApp only delivers an approved template first.'
+                      ? (widget.lead.isUsNumber
+                          ? 'US number: WhatsApp blocks marketing messages here, so the first message goes by SMS with a WhatsApp link.'
+                          : 'No reply yet: WhatsApp only delivers an approved template first.')
                       : 'Over 24 h since their last message: only a template can be sent until they reply.',
                   style: const TextStyle(fontSize: 12),
                 ),

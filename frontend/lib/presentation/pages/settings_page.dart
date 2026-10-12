@@ -66,6 +66,12 @@ class SettingsPage extends StatelessWidget {
                       subtitle: 'Businesses uploaded after real WhatsApp number validation',
                       onTap: () => context.push('/whatsapp-verified'),
                     ),
+                    _SettingsItem(
+                      icon: AppIcons.mail,
+                      title: 'Email Verified',
+                      subtitle: 'Businesses uploaded after their contact email was found and verified',
+                      onTap: () => context.push('/email-verified'),
+                    ),
                   ],
                 ),
               ],

@@ -18,10 +18,13 @@ const _wideBreakpoint = 900.0;
 /// with an Overview/Manage tab switch — same data, fewer places to look.
 /// Website Leads earns its own slot despite that bar: it's populated by
 /// every scan exactly like Leads is, just filtered on the opposite signal
-/// (no website instead of a bad review), so it's just as frequent-use.
+/// (no website instead of a bad review), so it's just as frequent-use. Email
+/// Leads is the third of those — populated by the same scans, filtered on
+/// "website lists a contact email".
 ///
 /// [navigationShell] comes from `app_router.dart`'s `StatefulShellRoute` —
-/// each branch (Dashboard/Leads/Website Leads/WhatsApp Tool/Sales/Settings)
+/// each branch (Dashboard/Leads/Website Leads/Email Leads/WhatsApp Tool/
+/// Sales/Outreach/Settings)
 /// has its own URL and keeps its own state when you switch away and back,
 /// the same way the old `IndexedStack` did, just addressable now.
 class AdminShell extends StatelessWidget {
@@ -33,6 +36,7 @@ class AdminShell extends StatelessWidget {
     (icon: AppIcons.dashboard, label: 'Dashboard'),
     (icon: AppIcons.leads, label: 'Leads'),
     (icon: AppIcons.globe, label: 'Website Leads'),
+    (icon: AppIcons.mail, label: 'Email Leads'),
     (icon: AppIcons.chat, label: 'WhatsApp Tool'),
     (icon: AppIcons.tag, label: 'Sales'),
     (icon: AppIcons.mail, label: 'Outreach'),

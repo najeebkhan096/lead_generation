@@ -22,6 +22,7 @@ class _Pending {
     this.body = '',
     this.picked,
     this.templateUrl,
+    this.templateChannel = 'auto',
     this.replyTo,
   });
 
@@ -32,6 +33,7 @@ class _Pending {
   final String body;
   final PickedMedia? picked;
   final String? templateUrl;
+  final String templateChannel;
   final String? replyTo;
 
   MediaInfo? uploaded;
@@ -187,6 +189,7 @@ class ChatController extends ChangeNotifier {
       direction: MessageDirection.outbound,
       type: p.type,
       body: p.body,
+      channel: p.templateChannel == 'sms' ? 'sms' : 'whatsapp',
       media: p.picked != null
           ? MediaInfo(
               mimeType: p.picked!.mimeType,
@@ -248,13 +251,15 @@ class ChatController extends ChangeNotifier {
   }
 
   /// [downloadUrl] is the Firebase URL from [pickAndUploadTemplateImage].
-  void sendTemplate(String downloadUrl) {
+  /// [channel]: `auto` (by country), `sms` or `whatsapp`.
+  void sendTemplate(String downloadUrl, {String channel = 'auto'}) {
     _enqueue(_Pending(
       id: _repo.newMessageId(leadId),
       kind: _Kind.template,
       type: MessageType.template,
       createdAt: DateTime.now(),
       templateUrl: downloadUrl,
+      templateChannel: channel,
     ));
   }
 
@@ -294,7 +299,7 @@ class ChatController extends ChangeNotifier {
           await _api.sendMedia(
               leadId: leadId, messageId: p.id, media: p.uploaded!, caption: p.body, replyTo: p.replyTo);
         case _Kind.template:
-          await _api.sendTemplate(leadId: leadId, messageId: p.id, mediaUrl: p.templateUrl!);
+          await _api.sendTemplate(leadId: leadId, messageId: p.id, mediaUrl: p.templateUrl!, channel: p.templateChannel);
       }
       // Stay listed until the Firestore document shows up (see start()).
     } on OutreachApiException catch (e) {

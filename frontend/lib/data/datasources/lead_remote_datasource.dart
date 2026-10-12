@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 
 import '../../core/constants/api_constants.dart';
+import '../../domain/entities/email_validation_snapshot.dart';
 import '../../domain/entities/lead.dart';
 import '../../domain/entities/multi_search_snapshot.dart';
 import '../../domain/entities/state_city_scan_snapshot.dart';
@@ -97,6 +98,50 @@ class LeadRemoteDataSource {
     final body = _tryDecode(response.body);
     if (response.statusCode >= 400) {
       throw Exception(body['error'] ?? 'Failed to delete website leads');
+    }
+    return (body['deleted'] as num?)?.toInt() ?? 0;
+  }
+
+  /// Fetches every business a scan found a public contact email for, from
+  /// Firestore's `emailLeads` collection via the backend proxy.
+  Future<List<Lead>> getEmailLeads() async {
+    final response = await _client.get(
+      _uri(ApiConstants.emailLeads).replace(queryParameters: {'limit': '5000'}),
+    );
+    if (response.statusCode >= 400) {
+      final body = _tryDecode(response.body);
+      throw Exception(body['error'] ?? 'Failed to load email leads');
+    }
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    final leadsJson = (body['leads'] as List<dynamic>? ?? []);
+    return leadsJson
+        .map((e) => Lead.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// Deletes a single saved email lead from Firestore. [leadId] must be
+  /// the lead's Firestore [Lead.dbId].
+  Future<void> deleteEmailLead(String leadId) async {
+    final response = await _client.delete(
+      _uri(ApiConstants.emailLeadDelete(leadId)),
+    );
+    if (response.statusCode >= 400) {
+      final body = _tryDecode(response.body);
+      throw Exception(body['error'] ?? 'Failed to delete email lead');
+    }
+  }
+
+  /// Deletes every saved email lead in an exact category. Returns the
+  /// number of leads deleted.
+  Future<int> deleteEmailLeadsByCategory(String category) async {
+    final response = await _client.delete(
+      _uri(
+        ApiConstants.emailLeads,
+      ).replace(queryParameters: {'category': category}),
+    );
+    final body = _tryDecode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['error'] ?? 'Failed to delete email leads');
     }
     return (body['deleted'] as num?)?.toInt() ?? 0;
   }
@@ -665,6 +710,112 @@ class LeadRemoteDataSource {
 
   Future<void> deleteValidatedArchive(String id) async {
     final response = await _client.delete(_uri(ApiConstants.whatsappValidatedDelete(id)));
+    if (response.statusCode >= 400) {
+      final body = _tryDecode(response.body);
+      throw Exception(body['error'] ?? 'Failed to delete archive');
+    }
+  }
+
+  /// Starts the email validation job over an explicit list of businesses
+  /// (e.g. extracted from an Excel archive). Each map needs `id` and
+  /// `website`; the rest is stored on the `emailLeads` document it creates.
+  Future<void> validateEmailLeads(List<Map<String, dynamic>> leads) async {
+    final response = await _client
+        .post(
+          _uri(ApiConstants.emailValidateList),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'leads': leads}),
+        )
+        .timeout(const Duration(minutes: 2));
+    if (response.statusCode >= 400) {
+      final body = _tryDecode(response.body);
+      throw Exception(body['error'] ?? 'Failed to start email validation');
+    }
+  }
+
+  /// Starts the email validator over saved website leads (businesses with no
+  /// website) by Firestore id — the backend looks each one up on the web
+  /// instead of crawling a site, and skips leads that already have an email.
+  Future<void> validateWebsiteLeadEmails(List<String> ids) async {
+    final response = await _client
+        .post(
+          _uri(ApiConstants.emailValidateWebsiteLeads),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'ids': ids}),
+        )
+        .timeout(const Duration(minutes: 2));
+    if (response.statusCode >= 400) {
+      final body = _tryDecode(response.body);
+      throw Exception(body['error'] ?? 'Failed to start email validation');
+    }
+  }
+
+  Future<EmailValidationSnapshot> getEmailValidationStatus() async {
+    final response = await _client.get(_uri(ApiConstants.emailValidateStatus));
+    if (response.statusCode >= 400) {
+      throw Exception('Failed to load email validation status');
+    }
+    return EmailValidationSnapshot.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  Future<void> cancelEmailValidation() async {
+    final response = await _client.post(_uri(ApiConstants.emailValidateCancel));
+    if (response.statusCode >= 400) {
+      final body = _tryDecode(response.body);
+      throw Exception(body['error'] ?? 'Failed to cancel email validation');
+    }
+  }
+
+  /// Uploads the email-verified businesses (one sheet per category) as an
+  /// archive of their own — the email counterpart to
+  /// [uploadValidatedArchive].
+  Future<ExcelArchive> uploadEmailVerifiedArchive({
+    required List<Map<String, dynamic>> sheets,
+    String? sourceArchiveId,
+    String? sourceFileName,
+    List<String>? countries,
+  }) async {
+    final response = await _client.post(
+      _uri(ApiConstants.emailValidatedScans),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'sheets': sheets,
+        'sourceArchiveId': ?sourceArchiveId,
+        'sourceFileName': ?sourceFileName,
+        'countries': ?countries,
+      }),
+    );
+    final body = _tryDecode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['error'] ?? 'Failed to upload email-verified businesses');
+    }
+    return ExcelArchive.fromJson(body['archive'] as Map<String, dynamic>);
+  }
+
+  Future<List<ExcelArchive>> listEmailVerifiedArchives() async {
+    final response = await _client.get(_uri(ApiConstants.emailValidatedScans));
+    if (response.statusCode >= 400) {
+      final body = _tryDecode(response.body);
+      throw Exception(body['error'] ?? 'Failed to load email-verified archives');
+    }
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    final archivesJson = (body['archives'] as List<dynamic>? ?? []);
+    return archivesJson.map((e) => ExcelArchive.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  Future<List<Lead>> getEmailVerifiedArchiveLeads(String id) async {
+    final response = await _client.get(_uri(ApiConstants.emailValidatedLeads(id)));
+    if (response.statusCode >= 400) {
+      final body = _tryDecode(response.body);
+      throw Exception(body['error'] ?? 'Failed to extract leads from archive');
+    }
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    final leadsJson = (body['leads'] as List<dynamic>? ?? []);
+    return leadsJson.map((e) => Lead.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  Future<void> deleteEmailVerifiedArchive(String id) async {
+    final response = await _client.delete(_uri(ApiConstants.emailValidatedDelete(id)));
     if (response.statusCode >= 400) {
       final body = _tryDecode(response.body);
       throw Exception(body['error'] ?? 'Failed to delete archive');

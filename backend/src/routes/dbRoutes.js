@@ -11,6 +11,9 @@ import {
   getSavedWebsiteLeads,
   deleteSavedWebsiteLead,
   deleteSavedWebsiteLeadsByCategory,
+  getSavedEmailLeads,
+  deleteSavedEmailLead,
+  deleteSavedEmailLeadsByCategory,
 } from '../controllers/dbController.js';
 
 const router = Router();
@@ -25,6 +28,12 @@ router.delete('/leads', deleteSavedLeadsByCategory);
 router.get('/website-leads', getSavedWebsiteLeads);
 router.delete('/website-leads/:id', deleteSavedWebsiteLead);
 router.delete('/website-leads', deleteSavedWebsiteLeadsByCategory);
+// "Email leads" — businesses whose website listed a contact email that the
+// email validator (see emailValidationRoutes.js) found and verified, saved
+// to their own collection.
+router.get('/email-leads', getSavedEmailLeads);
+router.delete('/email-leads/:id', deleteSavedEmailLead);
+router.delete('/email-leads', deleteSavedEmailLeadsByCategory);
 router.get('/searches', getSavedSearches);
 router.get('/stats', getDbStats);
 router.post('/clear', clearDatabase);

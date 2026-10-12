@@ -51,7 +51,8 @@ async function requireApproved(uid) {
 const ACTIONS = {
   text: (uid, b) => sendOutbound({ uid, kind: 'text', leadId: b.leadId, messageId: b.messageId, body: b.body, replyToMessageId: b.replyToMessageId }),
   media: (uid, b) => sendOutbound({ uid, kind: 'media', leadId: b.leadId, messageId: b.messageId, body: b.caption, media: b.media, replyToMessageId: b.replyToMessageId }),
-  template: (uid, b) => sendOutbound({ uid, kind: 'template', leadId: b.leadId, messageId: b.messageId, mediaUrl: b.mediaUrl }),
+  sms: (uid, b) => sendOutbound({ uid, kind: 'sms', leadId: b.leadId, messageId: b.messageId, body: b.body }),
+  template: (uid, b) => sendOutbound({ uid, kind: 'template', leadId: b.leadId, messageId: b.messageId, mediaUrl: b.mediaUrl, channel: b.channel }),
   retry: (uid, b) => retryOutbound({ uid, leadId: b.leadId, messageId: b.messageId }),
   refresh: (uid, b) => refreshMessageStatus({ uid, leadId: b.leadId, messageId: b.messageId }),
   react: (uid, b) => setReaction({ uid, leadId: b.leadId, messageId: b.messageId, emoji: b.emoji }),

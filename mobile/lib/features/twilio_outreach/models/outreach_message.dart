@@ -74,6 +74,9 @@ class OutreachMessage {
   final String body;
   final MediaInfo? media;
   final String? twilioSid;
+
+  /// `whatsapp` or `sms` (US leads get templates by SMS).
+  final String channel;
   final MessageStatus status;
   final String senderId;
   final DateTime createdAt;
@@ -103,6 +106,7 @@ class OutreachMessage {
     this.body = '',
     this.media,
     this.twilioSid,
+    this.channel = 'whatsapp',
     this.status = MessageStatus.sending,
     this.senderId = '',
     required this.createdAt,
@@ -123,6 +127,7 @@ class OutreachMessage {
   bool get isOutbound => direction == MessageDirection.outbound;
   bool get hasFailed =>
       localError != null || status == MessageStatus.failed || status == MessageStatus.undelivered;
+  bool get isSms => channel == 'sms';
   bool get isUploading => uploadProgress != null;
 
   /// Plain-text summary (reply quotes, list previews, forward).
@@ -162,6 +167,7 @@ class OutreachMessage {
       body: (d['body'] ?? '').toString(),
       media: media is Map ? MediaInfo.fromMap(Map<String, dynamic>.from(media)) : null,
       twilioSid: d['twilioSid'] as String?,
+      channel: d['channel'] == 'sms' ? 'sms' : 'whatsapp',
       status: _enumByName(MessageStatus.values, d['status'], MessageStatus.sending),
       senderId: (d['senderId'] ?? '').toString(),
       createdAt: tsToDate(d['createdAt']) ?? DateTime.now(),
@@ -190,6 +196,7 @@ class OutreachMessage {
         body: body,
         media: media,
         twilioSid: twilioSid,
+        channel: channel,
         status: status ?? this.status,
         senderId: senderId,
         createdAt: createdAt,

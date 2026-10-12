@@ -48,6 +48,9 @@ class Lead extends Equatable {
     this.waLink,
     required this.badReview,
     this.email,
+    this.emails = const [],
+    this.emailSource,
+    this.emailFoundOn,
     this.savedAt,
     this.whatsAppCheckedAt,
     this.emailOutreachStatus,
@@ -77,6 +80,19 @@ class Lead extends Equatable {
   final String? waLink;
   final BadReview badReview;
   final String? email;
+
+  /// Every distinct address found on the business's site, best first.
+  /// Only populated for email leads ([email] is the first entry); empty
+  /// for review and website leads.
+  final List<String> emails;
+
+  /// Where [email] was found: `website`, `contact_page`, `about_page`,
+  /// `mailto`, … — see the backend's outreach `EMAIL_SOURCES`.
+  final String? emailSource;
+
+  /// The page [email] was read from, when it came from a web search — so
+  /// the address's origin can be eyeballed.
+  final String? emailFoundOn;
   final DateTime? savedAt;
 
   /// When [hasWhatsApp] was last determined by an actual check. `null`
@@ -107,6 +123,11 @@ class Lead extends Equatable {
         (json['badReview'] as Map<String, dynamic>?) ?? const {},
       ),
       email: json['email'] as String?,
+      emails: (json['emails'] as List<dynamic>? ?? const [])
+          .whereType<String>()
+          .toList(),
+      emailSource: json['emailSource'] as String?,
+      emailFoundOn: json['emailFoundOn'] as String?,
       savedAt: DateTime.tryParse((json['savedAt'] as String?) ?? ''),
       whatsAppCheckedAt: DateTime.tryParse((json['whatsAppCheckedAt'] as String?) ?? ''),
       emailOutreachStatus: json['emailOutreachStatus'] is String
@@ -116,7 +137,14 @@ class Lead extends Equatable {
     );
   }
 
-  Lead copyWith({bool? hasWhatsApp, DateTime? whatsAppCheckedAt}) {
+  Lead copyWith({
+    bool? hasWhatsApp,
+    DateTime? whatsAppCheckedAt,
+    String? email,
+    List<String>? emails,
+    String? emailSource,
+    String? emailFoundOn,
+  }) {
     return Lead(
       id: id,
       dbId: dbId,
@@ -132,7 +160,10 @@ class Lead extends Equatable {
       hasWhatsApp: hasWhatsApp ?? this.hasWhatsApp,
       waLink: waLink,
       badReview: badReview,
-      email: email,
+      email: email ?? this.email,
+      emails: emails ?? this.emails,
+      emailSource: emailSource ?? this.emailSource,
+      emailFoundOn: emailFoundOn ?? this.emailFoundOn,
       savedAt: savedAt,
       whatsAppCheckedAt: whatsAppCheckedAt ?? this.whatsAppCheckedAt,
       emailOutreachStatus: emailOutreachStatus,

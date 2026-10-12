@@ -110,6 +110,11 @@ class MessageBubble extends StatelessWidget {
               Padding(
                 padding: EdgeInsets.only(top: 2, right: hasMedia ? 4 : 0),
                 child: Row(mainAxisSize: MainAxisSize.min, mainAxisAlignment: MainAxisAlignment.end, children: [
+                  if (message.isSms) ...[
+                    Icon(Icons.sms_outlined, size: 11, color: fg.withValues(alpha: 0.6)),
+                    const SizedBox(width: 2),
+                    Text('SMS ', style: TextStyle(fontSize: 10.5, color: fg.withValues(alpha: 0.6))),
+                  ],
                   Text(clockTime(message.createdAt), style: TextStyle(fontSize: 10.5, color: fg.withValues(alpha: 0.6))),
                   if (mine) ...[const SizedBox(width: 4), StatusTicks(message, size: 15)],
                 ]),
@@ -130,7 +135,10 @@ class MessageBubble extends StatelessWidget {
               if (message.hasFailed)
                 Padding(
                   padding: const EdgeInsets.fromLTRB(4, 0, 4, 2),
-                  child: Text('Not sent • tap for options',
+                  child: Text(
+                      (message.errorMessage?.isNotEmpty ?? false)
+                          ? 'Not sent: ${message.errorMessage} • tap for options'
+                          : 'Not sent • tap for options',
                       style: TextStyle(fontSize: 11, color: Colors.red.shade400, fontWeight: FontWeight.w600)),
                 ),
             ],

@@ -28,6 +28,8 @@ class ApiConstants {
   static String leadDelete(String leadId) => '/api/db/leads/$leadId';
   static const String websiteLeads = '/api/db/website-leads';
   static String websiteLeadDelete(String leadId) => '/api/db/website-leads/$leadId';
+  static const String emailLeads = '/api/db/email-leads';
+  static String emailLeadDelete(String leadId) => '/api/db/email-leads/$leadId';
   static const String clearDb = '/api/db/clear';
   static const String checkWhatsApp = '/api/whatsapp/check';
 
@@ -59,6 +61,15 @@ class ApiConstants {
   static String whatsappValidatedData(String id) => '/api/whatsapp-validated-scans/$id/data';
   static String whatsappValidatedLeads(String id) => '/api/whatsapp-validated-scans/$id/leads';
   static String whatsappValidatedDelete(String id) => '/api/whatsapp-validated-scans/$id';
+
+  static const String emailValidateList = '/api/email-validation/validate-list';
+  static const String emailValidateWebsiteLeads = '/api/email-validation/validate-website-leads';
+  static const String emailValidateStatus = '/api/email-validation/status';
+  static const String emailValidateCancel = '/api/email-validation/cancel';
+
+  static const String emailValidatedScans = '/api/email-validated-scans';
+  static String emailValidatedLeads(String id) => '/api/email-validated-scans/$id/leads';
+  static String emailValidatedDelete(String id) => '/api/email-validated-scans/$id';
 
   static const String sales = '/api/sales';
   static const String salesStats = '/api/sales/stats';

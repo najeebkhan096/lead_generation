@@ -10,6 +10,7 @@ import '../../domain/entities/lead.dart';
 import '../../domain/entities/whatsapp_web_status.dart';
 import '../../domain/repositories/lead_repository.dart';
 import '../widgets/lead_card.dart';
+import '../widgets/state_scope_section.dart';
 
 const _allCategories = 'All categories';
 const _pollInterval = Duration(milliseconds: 1500);
@@ -139,26 +140,9 @@ class _ExcelArchiveLeadsPageState extends State<ExcelArchiveLeadsPage> {
     return [_allCategories, ...sorted];
   }
 
-  String _stateLabel(String location) {
-    final loc = location.trim();
-    if (loc.isEmpty) return 'Unknown';
-    final comma = loc.lastIndexOf(',');
-    return (comma >= 0 ? loc.substring(comma + 1) : loc).trim();
-  }
-
-  List<({String name, int count})> _statesIn(List<Lead> leads) {
-    final counts = <String, int>{};
-    for (final l in leads) {
-      final name = _stateLabel(l.location);
-      counts[name] = (counts[name] ?? 0) + 1;
-    }
-    final names = counts.keys.toList()..sort();
-    return [for (final n in names) (name: n, count: counts[n]!)];
-  }
-
   List<Lead> _applyStateFilter(List<Lead> leads) {
     if (_allStates) return leads;
-    return leads.where((l) => _selectedStates.contains(_stateLabel(l.location))).toList();
+    return leads.where((l) => _selectedStates.contains(stateLabelOf(l.location))).toList();
   }
 
   int get _totalValidated => _validatedByCategory.values.fold(0, (sum, l) => sum + l.length);
@@ -447,8 +431,8 @@ class _ExcelArchiveLeadsPageState extends State<ExcelArchiveLeadsPage> {
                               ],
                               const SizedBox(height: 16),
                               if (filtered.isNotEmpty)
-                                _StateScopeSection(
-                                  states: _statesIn(filtered),
+                                StateScopeSection(
+                                  states: statesIn(filtered),
                                   allStates: _allStates,
                                   selected: _selectedStates,
                                   enabled: !_validating,
@@ -501,83 +485,6 @@ class _ExcelArchiveLeadsPageState extends State<ExcelArchiveLeadsPage> {
                           ),
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _StateScopeSection extends StatelessWidget {
-  const _StateScopeSection({
-    required this.states,
-    required this.allStates,
-    required this.selected,
-    required this.enabled,
-    required this.onAllChanged,
-    required this.onToggle,
-  });
-
-  final List<({String name, int count})> states;
-  final bool allStates;
-  final Set<String> selected;
-  final bool enabled;
-  final ValueChanged<bool> onAllChanged;
-  final void Function(String name, bool selected) onToggle;
-
-  @override
-  Widget build(BuildContext context) {
-    if (states.isEmpty) return const SizedBox.shrink();
-    final selectedCount = allStates
-        ? states.fold<int>(0, (s, l) => s + l.count)
-        : states.where((l) => selected.contains(l.name)).fold<int>(0, (s, l) => s + l.count);
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppTheme.surface,
-        borderRadius: BorderRadius.circular(AppTheme.radius),
-        border: Border.all(color: AppTheme.neutral200),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('States', style: Theme.of(context).textTheme.titleSmall),
-          const SizedBox(height: 4),
-          const Text(
-            'Validate every business in this category, or only the states you pick.',
-            style: TextStyle(fontSize: 12.5, color: AppTheme.faint),
-          ),
-          const SizedBox(height: 10),
-          SegmentedButton<bool>(
-            segments: const [
-              ButtonSegment(value: true, label: Text('All states'), icon: Icon(AppIcons.globe, size: 16)),
-              ButtonSegment(value: false, label: Text('Selected states'), icon: Icon(AppIcons.mapPin, size: 16)),
-            ],
-            selected: {allStates},
-            onSelectionChanged: enabled ? (next) => onAllChanged(next.first) : null,
-          ),
-          if (!allStates) ...[
-            const SizedBox(height: 10),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final loc in states)
-                  FilterChip(
-                    label: Text('${loc.name} (${loc.count})'),
-                    selected: selected.contains(loc.name),
-                    onSelected: enabled ? (v) => onToggle(loc.name, v) : null,
-                  ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              selected.isEmpty
-                  ? 'Pick one or more states to validate.'
-                  : 'Will check $selectedCount business${selectedCount == 1 ? '' : 'es'} in ${selected.length} state${selected.length == 1 ? '' : 's'}.',
-              style: const TextStyle(fontSize: 12.5, color: AppTheme.faint, fontWeight: FontWeight.w600),
-            ),
-          ],
-        ],
       ),
     );
   }

@@ -10,6 +10,10 @@ export function twilioConfig() {
     authToken: process.env.TWILIO_AUTH_TOKEN?.trim(),
     messagingServiceSid: process.env.TWILIO_MESSAGING_SERVICE_SID?.trim(),
     templateContentSid: process.env.TWILIO_TEMPLATE_CONTENT_SID?.trim(),
+    // SMS sender for US leads (a US 10DLC-registered number) and the WhatsApp
+    // number the SMS links to (wa.me). Both E.164, e.g. +15551234567.
+    smsFrom: process.env.TWILIO_PHONE_NUMBER?.trim(),
+    whatsappNumber: process.env.TWILIO_WHATSAPP_NUMBER?.trim(),
     // The template's media URL is `<prefix>{{1}}`; variable 1 is only the part after it.
     templateMediaPrefix:
       process.env.TWILIO_TEMPLATE_MEDIA_PREFIX?.trim() ||
@@ -26,6 +30,14 @@ export function assertTwilioConfigured({ needTemplate = false } = {}) {
   }
   if (needTemplate && !c.templateContentSid) {
     throw new HttpError(503, 'Twilio template is not configured on the server.', 'TWILIO_NOT_CONFIGURED');
+  }
+  return c;
+}
+
+export function assertSmsConfigured() {
+  const c = assertTwilioConfigured();
+  if (!c.smsFrom) {
+    throw new HttpError(503, 'SMS is not configured on the server (TWILIO_PHONE_NUMBER).', 'TWILIO_NOT_CONFIGURED');
   }
   return c;
 }

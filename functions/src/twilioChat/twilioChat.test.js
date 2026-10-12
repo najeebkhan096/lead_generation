@@ -6,6 +6,7 @@ import {
   previewFor, validateMediaMeta,
 } from './validation.js';
 import { templateMediaVariable, validateReaction } from './messageService.js';
+import { buildSmsBody, channelForTemplate, describeTwilioError, isUsNumber } from './validation.js';
 
 test('phone normalisation + E.164', () => {
   assert.equal(normalizePhone('whatsapp:+971 50-123 (4567)'), '+971501234567');
@@ -79,4 +80,26 @@ test('reaction validation accepts one emoji (incl. ZWJ / skin tones) and removal
   for (const bad of ['a', 'hi 👍', '<script>', '12', '👍'.repeat(20)]) {
     assert.throws(() => validateReaction(bad), (e) => e.code === 'BAD_REACTION', bad);
   }
+});
+
+test('US (+1) numbers are routed to SMS, others stay on WhatsApp', () => {
+  assert.equal(isUsNumber('+19715447121'), true);
+  assert.equal(isUsNumber('+971501234567'), false); // UAE: +971 is not +1
+  assert.equal(isUsNumber('+442071234567'), false);
+  assert.equal(channelForTemplate('+19715447121'), 'sms');
+  assert.equal(channelForTemplate('+971501234567'), 'whatsapp');
+  assert.equal(channelForTemplate('+19715447121', 'whatsapp'), 'whatsapp');
+  assert.equal(channelForTemplate('+971501234567', 'sms'), 'sms');
+});
+
+test('SMS body appends the WhatsApp link only when the number is configured', () => {
+  assert.equal(
+    buildSmsBody(' Hello ', '+1 (555) 123-4567'),
+    'Hello\n\nPrefer WhatsApp? Reply directly or tap here to chat: https://wa.me/15551234567',
+  );
+  assert.equal(buildSmsBody('Hello', undefined), 'Hello');
+});
+
+test('error 63049 explains the US restriction', () => {
+  assert.match(describeTwilioError(63049, null), /US \(\+1\)/);
 });

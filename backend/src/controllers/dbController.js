@@ -15,6 +15,13 @@ import {
   getWebsiteLeadCount,
   clearAllWebsiteLeads,
 } from '../services/websiteLeadStore.js';
+import {
+  listEmailLeads,
+  deleteEmailLead,
+  deleteEmailLeadsByCategory,
+  getEmailLeadCount,
+  clearAllEmailLeads,
+} from '../services/emailLeadStore.js';
 import { getFirebaseStatus } from '../firebase/admin.js';
 
 const CLEAR_CONFIRM_PHRASE = 'DELETE ALL DATA';
@@ -152,6 +159,56 @@ export async function deleteSavedWebsiteLeadsByCategory(req, res) {
 }
 
 /**
+ * GET /api/db/email-leads — list businesses the email validator found and
+ * verified a contact email for, from Firestore's `emailLeads` collection.
+ */
+export async function getSavedEmailLeads(req, res) {
+  try {
+    const result = await listEmailLeads({ limit: req.query.limit });
+    return res.json(result);
+  } catch (err) {
+    const status = err.status || 500;
+    return res.status(status).json({ error: err.message || 'Failed to load email leads' });
+  }
+}
+
+/**
+ * DELETE /api/db/email-leads/:id — deletes a single saved email lead.
+ * `:id` is the Firestore document id (`dbId` in the API response shape).
+ */
+export async function deleteSavedEmailLead(req, res) {
+  try {
+    await deleteEmailLead(req.params.id);
+    return res.json({ success: true });
+  } catch (err) {
+    const status = err.status || 500;
+    return res.status(status).json({ error: err.message || 'Failed to delete email lead' });
+  }
+}
+
+/**
+ * DELETE /api/db/email-leads?category=... — deletes every saved email lead
+ * in an exact category.
+ */
+export async function deleteSavedEmailLeadsByCategory(req, res) {
+  try {
+    const category = String(req.query.category || '').trim();
+    if (!category) {
+      return res.status(400).json({ error: 'category query param is required' });
+    }
+    const result = await deleteEmailLeadsByCategory(category);
+    return res.json({
+      success: true,
+      ...result,
+      message: `Deleted ${result.deleted} email lead(s) in category "${category}".`,
+    });
+  } catch (err) {
+    const status = err.status || 500;
+    return res.status(status).json({ error: err.message || 'Failed to delete email leads' });
+  }
+}
+
+/**
  * GET /api/db/searches — list save batches from Firestore.
  */
 export async function getSavedSearches(_req, res) {
@@ -177,11 +234,18 @@ export async function getDbStats(_req, res) {
         leadCount: 0,
       });
     }
-    const [leadCount, websiteLeadCount] = await Promise.all([
+    const [leadCount, websiteLeadCount, emailLeadCount] = await Promise.all([
       getFirebaseLeadCount(),
       getWebsiteLeadCount(),
+      getEmailLeadCount(),
     ]);
-    return res.json({ provider: 'firebase', configured: true, leadCount, websiteLeadCount });
+    return res.json({
+      provider: 'firebase',
+      configured: true,
+      leadCount,
+      websiteLeadCount,
+      emailLeadCount,
+    });
   } catch (err) {
     const status = err.status || 500;
     return res.status(status).json({ error: err.message || 'Failed to load stats' });
@@ -200,15 +264,22 @@ export async function clearDatabase(req, res) {
         error: `Confirmation required. Send { "confirm": "${CLEAR_CONFIRM_PHRASE}" } to proceed.`,
       });
     }
-    const [result, websiteLeadsResult] = await Promise.all([
+    const [result, websiteLeadsResult, emailLeadsResult] = await Promise.all([
       clearAllData(),
       clearAllWebsiteLeads(),
+      clearAllEmailLeads(),
     ]);
     return res.json({
       success: true,
       ...result,
-      deleted: { ...result.deleted, websiteLeads: websiteLeadsResult.deleted },
-      message: `${result.message} Also cleared ${websiteLeadsResult.deleted} website lead(s).`,
+      deleted: {
+        ...result.deleted,
+        websiteLeads: websiteLeadsResult.deleted,
+        emailLeads: emailLeadsResult.deleted,
+      },
+      message:
+        `${result.message} Also cleared ${websiteLeadsResult.deleted} website lead(s)` +
+        ` and ${emailLeadsResult.deleted} email lead(s).`,
     });
   } catch (err) {
     const status = err.status || 500;

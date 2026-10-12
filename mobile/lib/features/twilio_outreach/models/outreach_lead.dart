@@ -41,6 +41,10 @@ class OutreachLead {
     return name.trim().isNotEmpty ? name.trim() : phoneNumber;
   }
 
+  /// US/Canada (+1) numbers: Meta blocks WhatsApp marketing templates to the US,
+  /// so templates to them go out by SMS (see the backend's `channelForTemplate`).
+  bool get isUsNumber => RegExp(r'^\+1\d{10}$').hasMatch(phoneNumber);
+
   String get initial {
     final s = displayName;
     return String.fromCharCode(s.runes.first).toUpperCase();

@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import '../entities/email_validation_snapshot.dart';
 import '../entities/lead.dart';
 import '../entities/multi_search_snapshot.dart';
 import '../entities/state_city_scan_snapshot.dart';
@@ -30,6 +31,49 @@ abstract class LeadRepository {
   /// Deletes every saved website lead in an exact category. Irreversible.
   /// Returns how many were deleted.
   Future<int> deleteWebsiteLeadsByCategory(String category);
+
+  /// Every business the email validator found and verified a contact email
+  /// for — a third, independent lead signal alongside
+  /// [getSavedBusinesses] and [getWebsiteLeads].
+  Future<List<Lead>> getEmailLeads();
+
+  /// Deletes a single saved email lead from Firestore. Irreversible.
+  /// `leadId` must be [Lead.dbId].
+  Future<void> deleteEmailLead(String leadId);
+
+  /// Deletes every saved email lead in an exact category. Irreversible.
+  /// Returns how many were deleted.
+  Future<int> deleteEmailLeadsByCategory(String category);
+
+  /// Starts the email validator over an explicit list of businesses (each
+  /// map needs `id` and `website`). Poll [getEmailValidationStatus] for
+  /// progress; verified businesses are also saved to the Email Leads list.
+  Future<void> validateEmailLeads(List<Map<String, dynamic>> leads);
+
+  /// Starts the email validator over saved website leads, by Firestore id
+  /// ([Lead.dbId]). They have no website, so the backend finds emails by
+  /// web search instead; leads that already have an email are skipped.
+  Future<void> validateWebsiteLeadEmails(List<String> ids);
+
+  Future<EmailValidationSnapshot> getEmailValidationStatus();
+
+  Future<void> cancelEmailValidation();
+
+  /// Uploads email-verified businesses (grouped by category, one sheet
+  /// each) as an archive of their own, separate from the source scan.
+  Future<ExcelArchive> uploadEmailVerifiedArchive({
+    required List<Map<String, dynamic>> sheets,
+    String? sourceArchiveId,
+    String? sourceFileName,
+    List<String>? countries,
+  });
+
+  Future<List<ExcelArchive>> listEmailVerifiedArchives();
+
+  /// Businesses in an email-verified archive, with `email`/`emails` set.
+  Future<List<Lead>> getEmailVerifiedArchiveLeads(String id);
+
+  Future<void> deleteEmailVerifiedArchive(String id);
 
   /// Records a manually-checked WhatsApp result for one lead — for
   /// checking by hand (e.g. on a phone) instead of the automated

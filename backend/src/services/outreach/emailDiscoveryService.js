@@ -134,7 +134,7 @@ export function originFromWebsite(website) {
   }
 }
 
-async function fetchHtml(url) {
+export async function fetchHtml(url) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {

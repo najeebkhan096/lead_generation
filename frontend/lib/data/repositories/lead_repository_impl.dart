@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import '../../domain/entities/email_validation_snapshot.dart';
 import '../../domain/entities/lead.dart';
 import '../../domain/entities/multi_search_snapshot.dart';
 import '../../domain/entities/state_city_scan_snapshot.dart';
@@ -33,6 +34,54 @@ class LeadRepositoryImpl implements LeadRepository {
   @override
   Future<int> deleteWebsiteLeadsByCategory(String category) =>
       _remote.deleteWebsiteLeadsByCategory(category);
+
+  @override
+  Future<List<Lead>> getEmailLeads() => _remote.getEmailLeads();
+
+  @override
+  Future<void> deleteEmailLead(String leadId) => _remote.deleteEmailLead(leadId);
+
+  @override
+  Future<int> deleteEmailLeadsByCategory(String category) =>
+      _remote.deleteEmailLeadsByCategory(category);
+
+  @override
+  Future<void> validateEmailLeads(List<Map<String, dynamic>> leads) =>
+      _remote.validateEmailLeads(leads);
+
+  @override
+  Future<void> validateWebsiteLeadEmails(List<String> ids) =>
+      _remote.validateWebsiteLeadEmails(ids);
+
+  @override
+  Future<EmailValidationSnapshot> getEmailValidationStatus() => _remote.getEmailValidationStatus();
+
+  @override
+  Future<void> cancelEmailValidation() => _remote.cancelEmailValidation();
+
+  @override
+  Future<ExcelArchive> uploadEmailVerifiedArchive({
+    required List<Map<String, dynamic>> sheets,
+    String? sourceArchiveId,
+    String? sourceFileName,
+    List<String>? countries,
+  }) =>
+      _remote.uploadEmailVerifiedArchive(
+        sheets: sheets,
+        sourceArchiveId: sourceArchiveId,
+        sourceFileName: sourceFileName,
+        countries: countries,
+      );
+
+  @override
+  Future<List<ExcelArchive>> listEmailVerifiedArchives() => _remote.listEmailVerifiedArchives();
+
+  @override
+  Future<List<Lead>> getEmailVerifiedArchiveLeads(String id) =>
+      _remote.getEmailVerifiedArchiveLeads(id);
+
+  @override
+  Future<void> deleteEmailVerifiedArchive(String id) => _remote.deleteEmailVerifiedArchive(id);
 
   @override
   Future<void> markLeadWhatsAppStatus(String leadId, bool hasWhatsApp) =>

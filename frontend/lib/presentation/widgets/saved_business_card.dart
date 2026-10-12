@@ -119,6 +119,8 @@ class SavedBusinessCard extends StatelessWidget {
                 ),
               if (lead.phone != null && lead.phone!.isNotEmpty)
                 _InfoRow(icon: AppIcons.phone, text: lead.phone!),
+              if (lead.email != null && lead.email!.isNotEmpty)
+                _InfoRow(icon: AppIcons.mail, text: lead.email!),
               if (lead.address != null && lead.address!.isNotEmpty)
                 _InfoRow(icon: AppIcons.mapPin, text: lead.address!),
               const Spacer(),

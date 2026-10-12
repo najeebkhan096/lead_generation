@@ -130,6 +130,8 @@ function docToWebsiteLead(doc) {
     badReview: { stars: 1, text: '', date: 'Unknown' },
     savedAt: d.updatedAt?.toDate?.()?.toISOString?.() || null,
     email: d.email || null,
+    emailSource: d.emailSource || null,
+    emailFoundOn: d.emailFoundOn || null,
     emailOutreachStatus: d.emailOutreachStatus || null,
     emailSentAt: d.emailSentAt?.toDate?.()?.toISOString?.() || null,
   };
@@ -146,6 +148,35 @@ export async function listWebsiteLeads({ limit = 500 } = {}) {
 
   const leads = snap.docs.map(docToWebsiteLead);
   return { total: leads.length, leads, provider: 'firebase' };
+}
+
+/** Raw website-lead docs for the given Firestore ids, as the plain objects
+ * `docToWebsiteLead` returns. Ids that no longer exist are simply absent. */
+export async function getWebsiteLeadsByIds(ids) {
+  const unique = [...new Set((ids || []).map(String).filter(Boolean))];
+  if (!unique.length) return [];
+  const db = getFirestore();
+  const snaps = await db.getAll(...unique.map((id) => db.collection(COLLECTION).doc(id)));
+  return snaps.filter((s) => s.exists).map(docToWebsiteLead);
+}
+
+/**
+ * Records a verified email on the website lead itself — outreach enrolls a
+ * lead using the `email` on its source doc, so this is what makes a
+ * website lead outreach-ready. Never touches `emailOutreachStatus`.
+ */
+export async function setWebsiteLeadEmail(leadId, { email, emails, emailSource, emailFoundOn }) {
+  const db = getFirestore();
+  const patch = {
+    email,
+    emails: emails || [],
+    emailSource: emailSource || null,
+    emailFoundOn: emailFoundOn || null,
+    emailVerified: true,
+    emailCheckedAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
+  };
+  await db.collection(COLLECTION).doc(leadId).set(patch, { merge: true });
 }
 
 export async function deleteWebsiteLead(leadId) {

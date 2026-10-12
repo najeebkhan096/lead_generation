@@ -7,6 +7,7 @@ import '../services/outreach_repository.dart';
 import '../services/template_image.dart';
 import '../widgets/message_bubble.dart';
 import 'chat_page.dart';
+import 'send_test_page.dart';
 
 class LeadListPage extends StatefulWidget {
   const LeadListPage({super.key, this.onExit});
@@ -196,8 +197,10 @@ class _LeadListPageState extends State<LeadListPage> {
             tooltip: 'More',
             onSelected: (v) {
               if (v == 'import') _importFromTwilio();
+              if (v == 'test') Navigator.push(context, MaterialPageRoute(builder: (_) => const SendTestPage()));
             },
             itemBuilder: (_) => const [
+              PopupMenuItem(value: 'test', child: Text('Send a test message')),
               PopupMenuItem(value: 'import', child: Text('Import contacts from Twilio history')),
             ],
           ),

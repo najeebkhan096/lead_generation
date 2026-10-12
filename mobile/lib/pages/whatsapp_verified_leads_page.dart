@@ -80,8 +80,8 @@ class _WhatsAppVerifiedLeadsPageState extends State<WhatsAppVerifiedLeadsPage> w
     super.dispose();
   }
 
-  Future<void> _load() async {
-    setState(() => _loading = true);
+  Future<void> _load({bool force = false}) async {
+    setState(() => _loading = !force || _rows.isEmpty);
     final salesmanId = FirebaseAuth.instance.currentUser?.uid ?? '';
 
     final approved = await _auth.isCurrentUserApproved();
@@ -97,7 +97,7 @@ class _WhatsAppVerifiedLeadsPageState extends State<WhatsAppVerifiedLeadsPage> w
     }
 
     final cached = salesmanId.isEmpty ? null : await _cache.read(salesmanId: salesmanId);
-    if (cached != null && cached.isFresh) {
+    if (!force && cached != null && cached.isFresh) {
       if (!mounted) return;
       setState(() {
         _rows = cached.rows.map(_BusinessRow.fromCacheJson).toList();
@@ -177,8 +177,18 @@ class _WhatsAppVerifiedLeadsPageState extends State<WhatsAppVerifiedLeadsPage> w
   /// already opened them on WhatsApp (a claim) — see [WhatsAppClaimsMixin].
   List<_BusinessRow> get _visibleRows => _rows.where((r) => claimVisible(r.row)).toList();
 
+  /// The sheet's `Contacted Before` flag (bool, or "true"/"yes"/"1" text).
+  bool _contactedBefore(Map<String, dynamic> row) {
+    final v = row['Contacted Before'];
+    if (v is bool) return v;
+    final s = v?.toString().trim().toLowerCase();
+    return s == 'true' || s == 'yes' || s == '1';
+  }
+
+  bool _isContacted(_BusinessRow r) => claimIsMine(r.row) || _contactedBefore(r.row);
+
   List<_BusinessRow> _forTab(List<_BusinessRow> visible, int tab) =>
-      visible.where((r) => claimIsMine(r.row) == (tab == 1)).toList();
+      visible.where((r) => _isContacted(r) == (tab == 1)).toList();
 
   List<String> _categoriesOf(List<_BusinessRow> rows) {
     final present = <String>{};
@@ -302,7 +312,9 @@ class _WhatsAppVerifiedLeadsPageState extends State<WhatsAppVerifiedLeadsPage> w
                 ),
               ),
             Expanded(
-              child: _loading
+              child: RefreshIndicator(
+                onRefresh: () => _load(force: true),
+                child: _loading
                   ? const Center(child: CircularProgressIndicator())
                   : _error != null
                       ? _ScrollableCenter(
@@ -346,6 +358,7 @@ class _WhatsAppVerifiedLeadsPageState extends State<WhatsAppVerifiedLeadsPage> w
                               ),
                             )
                           : ListView.builder(
+                              physics: const AlwaysScrollableScrollPhysics(),
                               padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
                               itemCount: filtered.length,
                               itemBuilder: (context, i) => _BusinessCard(
@@ -360,6 +373,7 @@ class _WhatsAppVerifiedLeadsPageState extends State<WhatsAppVerifiedLeadsPage> w
                                 )),
                               ),
                             ),
+              ),
             ),
           ],
         ),

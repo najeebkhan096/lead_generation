@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/theme/app_theme.dart';
 import '../../domain/entities/excel_archive.dart';
 import '../../domain/repositories/lead_repository.dart';
+import 'email_validator_page.dart';
 import 'excel_archive_leads_page.dart';
 
 String _timeAgo(DateTime? when) {
@@ -206,101 +207,134 @@ class _ArchiveCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(AppTheme.radius),
         child: Padding(
           padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: const BoxDecoration(color: AppTheme.sage100, shape: BoxShape.circle),
-                child: const Icon(AppIcons.download, size: 18, color: AppTheme.sage700),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Flexible(
-                          child: Text(
-                            archive.categories.isNotEmpty ? archive.categories.join(', ') : archive.fileName,
-                            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        if (archive.status == 'partial') ...[
-                          const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                            decoration:
-                                BoxDecoration(color: AppTheme.accent100, borderRadius: BorderRadius.circular(AppTheme.radiusPill)),
-                            child: const Text(
-                              'In progress',
-                              style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: AppTheme.accent700),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final info = <Widget>[
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: const BoxDecoration(color: AppTheme.sage100, shape: BoxShape.circle),
+                  child: const Icon(AppIcons.download, size: 18, color: AppTheme.sage700),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              archive.categories.isNotEmpty ? archive.categories.join(', ') : archive.fileName,
+                              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
+                          if (archive.status == 'partial') ...[
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                              decoration:
+                                  BoxDecoration(color: AppTheme.accent100, borderRadius: BorderRadius.circular(AppTheme.radiusPill)),
+                              child: const Text(
+                                'In progress',
+                                style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: AppTheme.accent700),
+                              ),
+                            ),
+                          ],
                         ],
-                      ],
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      '${archive.totalLeads} leads · ${archive.countries.join(', ')} · ${_timeAgo(archive.createdAt)}',
-                      style: const TextStyle(fontSize: 12, color: AppTheme.faint),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ),
-              ),
-              if (archive.resumable) ...[
-                resuming
-                    ? const Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 12),
-                        child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
-                      )
-                    : OutlinedButton.icon(
-                        onPressed: onResume,
-                        icon: const Icon(AppIcons.refresh, size: 15),
-                        label: const Text('Resume'),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: AppTheme.accent700,
-                          side: const BorderSide(color: AppTheme.accent300),
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                          minimumSize: Size.zero,
-                          textStyle: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700),
-                        ),
                       ),
-                const SizedBox(width: 4),
-              ],
-              IconButton(
-                tooltip: 'View as leads',
-                icon: const Icon(AppIcons.leads, size: 18, color: AppTheme.faint),
-                onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => ExcelArchiveLeadsPage(archive: archive)),
-                ),
-              ),
-              if (archive.totalLeads > 0)
-                IconButton(
-                  tooltip: 'Validate WhatsApp',
-                  icon: const Icon(AppIcons.chat, size: 18, color: AppTheme.sage700),
-                  onPressed: () => Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => ExcelArchiveLeadsPage(archive: archive, autoValidate: true),
-                    ),
+                      const SizedBox(height: 3),
+                      Text(
+                        '${archive.totalLeads} leads · ${archive.countries.join(', ')} · ${_timeAgo(archive.createdAt)}',
+                        style: const TextStyle(fontSize: 12, color: AppTheme.faint),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
                   ),
                 ),
-              IconButton(
-                tooltip: 'Download .xlsx',
-                icon: const Icon(AppIcons.download, size: 18, color: AppTheme.faint),
-                onPressed: () => launchUrl(Uri.parse(archive.downloadUrl)),
-              ),
-              IconButton(
-                tooltip: 'Delete',
-                icon: const Icon(AppIcons.trash, size: 18, color: AppTheme.faint),
-                onPressed: onDelete,
-              ),
-            ],
+              ];
+              final actions = <Widget>[
+                if (archive.resumable) ...[
+                  resuming
+                      ? const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 12),
+                          child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+                        )
+                      : OutlinedButton.icon(
+                          onPressed: onResume,
+                          icon: const Icon(AppIcons.refresh, size: 15),
+                          label: const Text('Resume'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: AppTheme.accent700,
+                            side: const BorderSide(color: AppTheme.accent300),
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            minimumSize: Size.zero,
+                            textStyle: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700),
+                          ),
+                        ),
+                  const SizedBox(width: 4),
+                ],
+                IconButton(
+                  tooltip: 'View as leads',
+                  icon: const Icon(AppIcons.leads, size: 18, color: AppTheme.faint),
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => ExcelArchiveLeadsPage(archive: archive)),
+                  ),
+                ),
+                if (archive.totalLeads > 0)
+                  IconButton(
+                    tooltip: 'Validate WhatsApp',
+                    icon: const Icon(AppIcons.chat, size: 18, color: AppTheme.sage700),
+                    onPressed: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => ExcelArchiveLeadsPage(archive: archive, autoValidate: true),
+                      ),
+                    ),
+                  ),
+                if (archive.totalLeads > 0)
+                  IconButton(
+                    tooltip: 'Validate emails',
+                    icon: const Icon(AppIcons.mail, size: 18, color: AppTheme.sage700),
+                    onPressed: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => ExcelArchiveEmailValidatorPage(archive: archive, autoValidate: true),
+                      ),
+                    ),
+                  ),
+                IconButton(
+                  tooltip: 'Download .xlsx',
+                  icon: const Icon(AppIcons.download, size: 18, color: AppTheme.faint),
+                  onPressed: () => launchUrl(Uri.parse(archive.downloadUrl)),
+                ),
+                IconButton(
+                  tooltip: 'Delete',
+                  icon: const Icon(AppIcons.trash, size: 18, color: AppTheme.faint),
+                  onPressed: onDelete,
+                ),
+              ];
+              // Five-plus action buttons don't fit beside the title on a
+              // phone-width window — drop them to their own row there.
+              if (constraints.maxWidth >= 560) {
+                return Row(children: [...info, ...actions]);
+              }
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(children: info),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    alignment: WrapAlignment.end,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    spacing: 4,
+                    runSpacing: 4,
+                    children: actions,
+                  ),
+                ],
+              );
+            },
           ),
         ),
       ),
