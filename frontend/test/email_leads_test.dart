@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lead_generation_app/domain/entities/email_validation_snapshot.dart';
 import 'package:lead_generation_app/domain/entities/excel_archive.dart';
 import 'package:lead_generation_app/domain/entities/lead.dart';
+import 'package:lead_generation_app/domain/entities/whatsapp_web_status.dart';
 import 'package:lead_generation_app/domain/repositories/lead_repository.dart';
 import 'package:lead_generation_app/presentation/bloc/email_leads/email_leads_bloc.dart';
 import 'package:lead_generation_app/presentation/bloc/email_leads/email_leads_event.dart';
@@ -14,7 +15,7 @@ import 'package:lead_generation_app/presentation/pages/email_validator_page.dart
 import 'package:lead_generation_app/presentation/pages/excel_archive_page.dart';
 import 'package:lead_generation_app/presentation/pages/website_leads_page.dart';
 import 'package:lead_generation_app/presentation/widgets/saved_business_card.dart';
-import 'package:lead_generation_app/presentation/widgets/website_lead_email_validator.dart';
+import 'package:lead_generation_app/presentation/widgets/lead_validation_bar.dart';
 import 'package:lead_generation_app/presentation/widgets/email_lead_card.dart';
 
 /// Only the email-related methods are implemented; anything else the code
@@ -35,6 +36,15 @@ class _FakeRepository implements LeadRepository {
   List<Lead> websiteLeads = [];
   int websiteLeadLoads = 0;
   List<String>? validatedWebsiteLeadIds;
+  String? validatedCollection;
+  List<String>? whatsAppValidatedIds;
+  WhatsAppWebStatus whatsAppStatus = const WhatsAppWebStatus(
+    status: WhatsAppWebConnectionStatus.ready,
+    safety: WhatsAppSafetyStatus(dailyCap: 100, remainingToday: 100),
+  );
+  WhatsAppValidationSnapshot whatsAppSnapshot =
+      const WhatsAppValidationSnapshot(active: false, status: 'idle');
+  List<Lead> whatsAppLeads = [];
 
   // Archive validator flow.
   final List<Lead> archiveLeads;
@@ -59,7 +69,31 @@ class _FakeRepository implements LeadRepository {
   }
 
   @override
-  Future<void> validateWebsiteLeadEmails(List<String> ids) async => validatedWebsiteLeadIds = ids;
+  Future<void> validateSavedLeadEmails(String collection, List<String> ids) async {
+    validatedCollection = collection;
+    validatedWebsiteLeadIds = ids;
+  }
+
+  @override
+  Future<void> validateSavedLeadWhatsApp(String collection, List<String> ids) async {
+    validatedCollection = collection;
+    whatsAppValidatedIds = ids;
+  }
+
+  @override
+  Future<WhatsAppWebStatus> getWhatsAppWebStatus() async => whatsAppStatus;
+
+  @override
+  Future<WhatsAppValidationSnapshot> getWhatsAppValidationStatus() async => whatsAppSnapshot;
+
+  @override
+  Future<void> cancelWhatsAppValidation() async {}
+
+  @override
+  Future<List<Lead>> getWhatsAppLeads({String? sourceType}) async => whatsAppLeads;
+
+  @override
+  Future<void> deleteWhatsAppLead(String leadId) async => deleted.add(leadId);
 
   @override
   Future<int> deleteEmailLeadsByCategory(String category) async =>
@@ -479,7 +513,7 @@ void main() {
     }
   });
 
-  group('Website Leads email validation', () {
+  group('Lead validation bar (No-website leads)', () {
     Lead websiteLead(String id, String name, {String? email, String category = 'Cafe'}) => Lead(
           id: id,
           dbId: id,
@@ -523,19 +557,22 @@ void main() {
       await pumpPage(tester, repo);
 
       expect(tester.takeException(), isNull);
-      expect(find.textContaining('2 without an email · 1 with one'), findsOneWidget);
+      expect(find.textContaining('2 of 3 without a verified email'), findsOneWidget);
       expect(find.text('hi@beta.example'), findsOneWidget); // shown on the card
       final loadsBefore = repo.websiteLeadLoads;
 
-      await tester.tap(find.widgetWithText(FilledButton, 'Validate emails'));
+      await tester.tap(find.widgetWithText(FilledButton, 'Email'));
       await tester.pumpAndSettle();
-      expect(find.textContaining('have no website'), findsOneWidget);
+      expect(find.text('Validate emails?'), findsOneWidget);
+      // None of these have a website, so both are looked up on the web.
+      expect(find.textContaining('0 by reading their website, 2 by searching the web'), findsOneWidget);
 
       await tester.tap(find.widgetWithText(TextButton, 'Validate'));
       await tester.pump(); // start request
       await tester.pump(); // first poll — the fake job is already done
       await tester.pumpAndSettle();
 
+      expect(repo.validatedCollection, 'websiteLeads');
       expect(repo.validatedWebsiteLeadIds, ['a', 'c']);
       expect(repo.websiteLeadLoads, greaterThan(loadsBefore), reason: 'list reloads when the run ends');
       expect(find.text('1 verified'), findsOneWidget);
@@ -558,17 +595,72 @@ void main() {
       expect(find.text('Beta Cafe'), findsOneWidget);
     });
 
-    testWidgets('disables the action when every lead already has an email', (tester) async {
+    testWidgets('disables Email when every lead already has one', (tester) async {
       final repo = _FakeRepository()
         ..websiteLeads = [websiteLead('b', 'Beta Cafe', email: 'hi@beta.example')];
       await pumpPage(tester, repo);
 
-      expect(find.text('Every lead in this list already has an email.'), findsOneWidget);
-      final button = tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'Validate emails'));
+      expect(find.textContaining('0 of 1 without a verified email'), findsOneWidget);
+      final button = tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'Email'));
       expect(button.onPressed, isNull);
     });
 
-    testWidgets('the validator card reflows on a phone-width window', (tester) async {
+    testWidgets('WhatsApp validates only never-checked leads with a phone and reports the outcome',
+        (tester) async {
+      final repo = _FakeRepository()
+        ..websiteLeads = [
+          websiteLead('a', 'Alpha Cafe'),
+          websiteLead('b', 'Beta Cafe'),
+          Lead(
+            id: 'c',
+            dbId: 'c',
+            business: 'Gamma Cafe',
+            category: 'Cafe',
+            location: 'TX',
+            phone: '+1 512 555 0101',
+            whatsAppCheckedAt: DateTime(2026, 10, 1), // already checked
+            badReview: const BadReview(stars: 1, text: '', date: 'Unknown'),
+          ),
+        ]
+        ..whatsAppSnapshot = const WhatsAppValidationSnapshot(
+          active: false,
+          status: 'done',
+          total: 2,
+          checked: 2,
+          validCount: 1,
+          invalidCount: 1,
+        );
+      await pumpPage(tester, repo);
+
+      await tester.tap(find.widgetWithText(OutlinedButton, 'WhatsApp'));
+      await tester.pumpAndSettle();
+      expect(find.text('Validate WhatsApp numbers?'), findsOneWidget);
+
+      await tester.tap(find.widgetWithText(TextButton, 'Validate'));
+      await tester.pump();
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      expect(repo.validatedCollection, 'websiteLeads');
+      expect(repo.whatsAppValidatedIds, ['a', 'b']);
+      expect(find.text('1 on WhatsApp'), findsOneWidget);
+      expect(find.text('1 not on WhatsApp'), findsOneWidget);
+    });
+
+    testWidgets('WhatsApp asks to connect first when no session is linked', (tester) async {
+      final repo = _FakeRepository()
+        ..websiteLeads = [websiteLead('a', 'Alpha Cafe')]
+        ..whatsAppStatus = const WhatsAppWebStatus(status: WhatsAppWebConnectionStatus.disconnected);
+      await pumpPage(tester, repo);
+
+      await tester.tap(find.widgetWithText(OutlinedButton, 'WhatsApp'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('WhatsApp Web not connected'), findsOneWidget);
+      expect(repo.whatsAppValidatedIds, isNull);
+    });
+
+    testWidgets('the validation bar reflows on a phone-width window', (tester) async {
       tester.view.physicalSize = const Size(340, 800);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.reset);
@@ -577,17 +669,19 @@ void main() {
           home: Scaffold(
             body: Padding(
               padding: const EdgeInsets.all(28),
-              child: WebsiteLeadEmailValidator(
+              child: LeadValidationBar(
+                collection: 'websiteLeads',
                 leads: [websiteLead('a', 'Alpha'), websiteLead('b', 'Beta', email: 'b@b.example')],
                 onFinished: () {},
-                onEmailOnlyChanged: (_) {},
+                filters: [FilterChip(label: const Text('Has email (1)'), selected: false, onSelected: (_) {})],
               ),
             ),
           ),
         ),
       );
       expect(tester.takeException(), isNull);
-      expect(find.text('Validate emails'), findsOneWidget);
+      expect(find.text('Email'), findsOneWidget);
+      expect(find.text('WhatsApp'), findsOneWidget);
     });
 
     testWidgets('a lead card with every field, including email, fits the 248px grid cell', (tester) async {

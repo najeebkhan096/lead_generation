@@ -6,11 +6,11 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../domain/entities/lead.dart';
-import '../../domain/entities/whatsapp_web_status.dart';
 import '../../domain/repositories/lead_repository.dart';
 import '../bloc/saved_businesses/saved_businesses_bloc.dart';
 import '../bloc/saved_businesses/saved_businesses_event.dart';
 import '../bloc/saved_businesses/saved_businesses_state.dart';
+import '../widgets/lead_validation_bar.dart';
 import '../widgets/saved_business_card.dart';
 import 'business_details_page.dart' show LeadDetailsArgs;
 
@@ -73,114 +73,6 @@ class _SavedBusinessesViewState extends State<_SavedBusinessesView> {
     }
     final sorted = present.toList()..sort();
     return [_allCategories, ...sorted];
-  }
-
-  Future<void> _startValidation(List<Lead> candidates) async {
-    final repo = context.read<LeadRepository>();
-
-    WhatsAppWebStatus webStatus;
-    try {
-      webStatus = await repo.getWhatsAppWebStatus();
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
-      );
-      return;
-    }
-    if (!mounted) return;
-
-    if (!webStatus.isReady) {
-      final goConnect = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('WhatsApp Web not connected'),
-          content: const Text(
-            'Real WhatsApp validation needs a linked WhatsApp Web session. '
-            'Connect it from the WhatsApp Tool page, then come back here.',
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-            TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Go connect')),
-          ],
-        ),
-      );
-      if (goConnect == true && mounted) {
-        context.go('/whatsapp');
-      }
-      return;
-    }
-
-    final blockedReason = webStatus.safety.blockedReason;
-    if (blockedReason != null) {
-      await showDialog<void>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('WhatsApp checks paused'),
-          content: Text(
-            '$blockedReason\n\nThis keeps the linked WhatsApp account from getting '
-            'flagged for automated-looking activity — it resets on its own.',
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK')),
-          ],
-        ),
-      );
-      return;
-    }
-
-    // whatsAppCheckedAt == null means "never checked" — hasWhatsApp alone
-    // can't tell "never checked" apart from "checked, not registered", and
-    // re-checking already-answered numbers just burns safety budget for
-    // nothing.
-    final unchecked = candidates
-        .where((l) => l.dbId != null && (l.phone?.trim().isNotEmpty ?? false) && l.whatsAppCheckedAt == null)
-        .toList();
-    if (unchecked.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Nothing to check — every visible lead has already been checked or has no phone number.')),
-      );
-      return;
-    }
-
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Validate WhatsApp numbers?'),
-        content: Text(
-          'Checks ${unchecked.length} unverified lead${unchecked.length == 1 ? '' : 's'} '
-          'against your connected WhatsApp Web session (${(unchecked.length * 5 / 60).ceil()}-${(unchecked.length * 7 / 60).ceil()} min). '
-          'This only looks up whether each number is on WhatsApp — no messages are sent.',
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Validate')),
-        ],
-      ),
-    );
-    if (confirm != true || !mounted) return;
-
-    try {
-      await repo.startWhatsAppValidation([
-        for (final l in unchecked)
-          {'id': l.dbId!, 'phone': l.phone!, 'business': l.business},
-      ]);
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
-      );
-      return;
-    }
-    if (!mounted) return;
-
-    await showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const _ValidationProgressDialog(),
-    );
-    if (!mounted) return;
-    context.read<SavedBusinessesBloc>().add(const SavedBusinessesRequested());
   }
 
   Future<void> _confirmDelete(BuildContext context, Lead lead) async {
@@ -290,7 +182,7 @@ class _SavedBusinessesViewState extends State<_SavedBusinessesView> {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _Header(total: 0, onValidate: null, locked: widget.lockToVerified),
+          _Header(total: 0, locked: widget.lockToVerified),
           const SizedBox(height: 24),
           _ErrorState(
             message: state.error ?? 'Something went wrong.',
@@ -304,7 +196,7 @@ class _SavedBusinessesViewState extends State<_SavedBusinessesView> {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _Header(total: 0, onValidate: null, locked: widget.lockToVerified),
+          _Header(total: 0, locked: widget.lockToVerified),
           const SizedBox(height: 24),
           _EmptyState(locked: widget.lockToVerified),
         ],
@@ -331,10 +223,18 @@ class _SavedBusinessesViewState extends State<_SavedBusinessesView> {
       children: [
         _Header(
           total: widget.lockToVerified ? verifiedCount : state.businesses.length,
-          onValidate: widget.lockToVerified ? null : () => _startValidation(categoryFiltered),
           locked: widget.lockToVerified,
         ),
         const SizedBox(height: 24),
+        // Both validations — WhatsApp and email — for the list as filtered.
+        if (!widget.lockToVerified) ...[
+          LeadValidationBar(
+            collection: 'leads',
+            leads: categoryFiltered,
+            onFinished: () => context.read<SavedBusinessesBloc>().add(const SavedBusinessesRequested()),
+          ),
+          const SizedBox(height: 16),
+        ],
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -516,147 +416,10 @@ class _VerifiedFilterChip extends StatelessWidget {
   }
 }
 
-/// Polls the bulk-validation job started from [_SavedBusinessesViewState]
-/// and shows live counts until it finishes or is cancelled.
-class _ValidationProgressDialog extends StatefulWidget {
-  const _ValidationProgressDialog();
-
-  @override
-  State<_ValidationProgressDialog> createState() => _ValidationProgressDialogState();
-}
-
-class _ValidationProgressDialogState extends State<_ValidationProgressDialog> {
-  Timer? _timer;
-  WhatsAppValidationSnapshot? _snapshot;
-  bool _cancelling = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _poll();
-    _timer = Timer.periodic(const Duration(milliseconds: 1500), (_) => _poll());
-  }
-
-  @override
-  void dispose() {
-    _timer?.cancel();
-    super.dispose();
-  }
-
-  Future<void> _poll() async {
-    try {
-      final snap = await context.read<LeadRepository>().getWhatsAppValidationStatus();
-      if (!mounted) return;
-      setState(() => _snapshot = snap);
-      if (snap.status == 'done' || snap.status == 'cancelled') {
-        _timer?.cancel();
-      }
-    } catch (_) {
-      // keep last-known snapshot on a transient error
-    }
-  }
-
-  Future<void> _cancel() async {
-    setState(() => _cancelling = true);
-    try {
-      await context.read<LeadRepository>().cancelWhatsAppValidation();
-    } catch (_) {
-      // the next poll will reflect reality either way
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final snap = _snapshot;
-    final finished = snap != null && (snap.status == 'done' || snap.status == 'cancelled');
-    final progress = snap != null && snap.total > 0 ? snap.checked / snap.total : 0.0;
-
-    return AlertDialog(
-      title: Text(finished ? 'Validation complete' : 'Validating WhatsApp numbers…'),
-      content: SizedBox(
-        width: 360,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(AppTheme.radiusPill),
-              child: LinearProgressIndicator(value: progress, minHeight: 8),
-            ),
-            const SizedBox(height: 12),
-            Text(snap == null ? 'Starting…' : '${snap.checked} / ${snap.total} checked'),
-            if (snap?.currentLeadBusiness != null && !finished) ...[
-              const SizedBox(height: 4),
-              Text(
-                'Checking "${snap!.currentLeadBusiness}"…',
-                style: Theme.of(context).textTheme.bodySmall,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
-            const SizedBox(height: 16),
-            Wrap(
-              spacing: 10,
-              runSpacing: 8,
-              children: [
-                _ResultChip(label: 'On WhatsApp', value: snap?.validCount ?? 0, color: AppTheme.sage700, background: AppTheme.sage100),
-                _ResultChip(label: 'Not found', value: snap?.invalidCount ?? 0, color: AppTheme.subtle, background: AppTheme.neutral100),
-                if ((snap?.errorCount ?? 0) > 0)
-                  _ResultChip(label: 'Errors', value: snap!.errorCount, color: AppTheme.accent700, background: AppTheme.accent100),
-              ],
-            ),
-            if (snap?.stoppedReason != null && snap!.stoppedReason!.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              Text(
-                snap.stoppedReason!,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppTheme.accent700),
-              ),
-            ],
-          ],
-        ),
-      ),
-      actions: [
-        if (!finished)
-          TextButton(
-            onPressed: _cancelling ? null : _cancel,
-            child: Text(_cancelling ? 'Cancelling…' : 'Cancel'),
-          )
-        else
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Done'),
-          ),
-      ],
-    );
-  }
-}
-
-class _ResultChip extends StatelessWidget {
-  const _ResultChip({required this.label, required this.value, required this.color, required this.background});
-
-  final String label;
-  final int value;
-  final Color color;
-  final Color background;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(color: background, borderRadius: BorderRadius.circular(AppTheme.radiusPill)),
-      child: Text(
-        '$value $label',
-        style: TextStyle(color: color, fontWeight: FontWeight.w700, fontSize: 12),
-      ),
-    );
-  }
-}
-
 class _Header extends StatelessWidget {
-  const _Header({required this.total, required this.onValidate, required this.locked});
+  const _Header({required this.total, required this.locked});
 
   final int total;
-  final VoidCallback? onValidate;
   final bool locked;
 
   @override
@@ -668,7 +431,7 @@ class _Header extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(locked ? 'WhatsApp Business' : 'Leads', style: Theme.of(context).textTheme.displaySmall),
+              Text(locked ? 'WhatsApp Business' : 'Review leads', style: Theme.of(context).textTheme.displaySmall),
               const SizedBox(height: 6),
               Text(
                 locked
@@ -676,21 +439,13 @@ class _Header extends StatelessWidget {
                         ? 'Businesses with a confirmed WhatsApp number will show up here.'
                         : '$total business${total == 1 ? '' : 'es'} with a validated WhatsApp number.')
                     : (total == 0
-                        ? 'Every business you save lands here.'
-                        : '$total business${total == 1 ? '' : 'es'} saved to Firebase.'),
+                        ? 'Businesses with a recent 1-star review land here.'
+                        : '$total business${total == 1 ? '' : 'es'} with a recent 1-star review.'),
                 style: Theme.of(context).textTheme.bodyLarge,
               ),
             ],
           ),
         ),
-        if (onValidate != null) ...[
-          OutlinedButton.icon(
-            onPressed: onValidate,
-            icon: const Icon(AppIcons.checkCircle, size: 17),
-            label: const Text('Validate WhatsApp'),
-          ),
-          const SizedBox(width: 12),
-        ],
         IconButton(
           tooltip: 'Refresh',
           onPressed: () => context.read<SavedBusinessesBloc>().add(const SavedBusinessesRequested()),

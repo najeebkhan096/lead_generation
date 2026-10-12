@@ -50,10 +50,22 @@ abstract class LeadRepository {
   /// progress; verified businesses are also saved to the Email Leads list.
   Future<void> validateEmailLeads(List<Map<String, dynamic>> leads);
 
-  /// Starts the email validator over saved website leads, by Firestore id
-  /// ([Lead.dbId]). They have no website, so the backend finds emails by
-  /// web search instead; leads that already have an email are skipped.
-  Future<void> validateWebsiteLeadEmails(List<String> ids);
+  /// Starts the email validator over saved leads, by Firestore id
+  /// ([Lead.dbId]). [collection] is `leads` or `websiteLeads`. A lead with a
+  /// website has it crawled, one without is looked up on the web; leads that
+  /// already have an email are skipped.
+  Future<void> validateSavedLeadEmails(String collection, List<String> ids);
+
+  /// Starts the WhatsApp validator over saved leads, by Firestore id.
+  /// [collection] is `leads` or `websiteLeads`. Verified numbers are copied
+  /// into the WhatsApp leads collection.
+  Future<void> validateSavedLeadWhatsApp(String collection, List<String> ids);
+
+  /// Leads whose number a real WhatsApp check confirmed (`whatsappLeads`).
+  /// [sourceType] narrows to `review` or `website` leads.
+  Future<List<Lead>> getWhatsAppLeads({String? sourceType});
+
+  Future<void> deleteWhatsAppLead(String leadId);
 
   Future<EmailValidationSnapshot> getEmailValidationStatus();
 
@@ -175,7 +187,7 @@ abstract class LeadRepository {
   /// to Firestore (e.g. extracted from an Excel archive) — results are
   /// read back from [getWhatsAppValidationStatus] and correlated by the
   /// `id` each lead was sent with, not written to any document.
-  Future<void> validateExternalLeads(List<Map<String, String>> leads);
+  Future<void> validateExternalLeads(List<Map<String, dynamic>> leads);
 
   /// Automatically discovers and validates unchecked leads from Firestore.
   /// Pass [states] to limit the run to those state names; omit for every

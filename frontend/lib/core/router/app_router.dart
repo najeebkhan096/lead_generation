@@ -11,31 +11,50 @@ import '../../presentation/pages/excel_scan_page.dart';
 import '../../presentation/pages/multi_scan_page.dart';
 import '../../presentation/pages/sales_page.dart';
 import '../../presentation/pages/outreach_page.dart';
+import '../../presentation/pages/lead_hubs.dart';
 import '../../presentation/pages/saved_businesses_page.dart';
 import '../../presentation/pages/settings_page.dart';
 import '../../presentation/pages/users_page.dart';
 import '../../presentation/pages/state_scan_page.dart';
 import '../../presentation/pages/watchlist_page.dart';
-import '../../presentation/pages/website_leads_page.dart';
 import '../../presentation/pages/whatsapp_checker_page.dart';
 import '../../presentation/pages/whatsapp_validated_archive_page.dart';
 import '../../presentation/widgets/admin_shell.dart';
 
-/// Every top-level section gets its own URL (`/leads`, `/settings`, …)
-/// instead of the whole app living behind one address — back/forward,
-/// refresh, and bookmarking all work per-page now.
+/// The app is organized around one flow: **Scan → Archive → Leads →
+/// Verified**, with everything else behind **More**.
 ///
-/// The primary sections (Dashboard/Leads/Website Leads/Email Leads/
-/// WhatsApp Tool/Sales/Outreach/Settings) are [StatefulShellRoute]
-/// branches — [AdminShell] wraps them with the persistent
-/// sidebar/bottom-nav, and each branch keeps its own
-/// state (scroll position, in-flight loads) when you switch away and back,
-/// exactly like the `IndexedStack` this replaced. Everything reached one
-/// level down (Excel Scan, Scan Progress, Excel Archive, Watchlist,
-/// WhatsApp Verified) still gets a real URL, just outside the shell so it
-/// opens full-screen with its own back button.
+///  * `/scan`     start a scan (and `/scan-progress` to watch it)
+///  * `/archive`  finished scans as Excel workbooks — validate from here
+///  * `/leads`    saved leads: 1-star review leads | no-website leads
+///  * `/verified` the output: WhatsApp-verified | email-verified leads
+///  * `/more`     WhatsApp connection, outreach, sales, watchlist, users
+///
+/// These are [StatefulShellRoute] branches — [AdminShell] wraps them with
+/// the persistent sidebar/bottom-nav and each branch keeps its own state
+/// when you switch away and back. Branches 6+ (Sales, Outreach, WhatsApp
+/// tool) are reached from More: they live in the shell so they keep the
+/// navigation, but have no nav item of their own.
 final GoRouter appRouter = GoRouter(
   initialLocation: '/',
+  redirect: (context, state) {
+    // Old URLs from before the navigation was simplified.
+    switch (state.uri.path) {
+      case '/excel-scan':
+        return '/scan';
+      case '/excel-archive':
+        return '/archive';
+      case '/website-leads':
+        return '/leads?tab=website';
+      case '/email-leads':
+        return '/verified?tab=email';
+      case '/whatsapp-verified-leads':
+        return '/verified';
+      case '/settings':
+        return '/more';
+    }
+    return null;
+  },
   routes: [
     StatefulShellRoute.indexedStack(
       builder: (context, state, navigationShell) => AdminShell(navigationShell: navigationShell),
@@ -44,17 +63,27 @@ final GoRouter appRouter = GoRouter(
           GoRoute(path: '/', builder: (context, state) => const DashboardPage()),
         ]),
         StatefulShellBranch(routes: [
-          GoRoute(path: '/leads', builder: (context, state) => const SavedBusinessesPage()),
+          GoRoute(path: '/scan', builder: (context, state) => const ExcelScanPage()),
         ]),
         StatefulShellBranch(routes: [
-          GoRoute(path: '/website-leads', builder: (context, state) => const WebsiteLeadsPage()),
+          GoRoute(path: '/archive', builder: (context, state) => const ExcelArchivePage()),
         ]),
         StatefulShellBranch(routes: [
-          GoRoute(path: '/email-leads', builder: (context, state) => const EmailLeadsPage()),
+          GoRoute(
+            path: '/leads',
+            builder: (context, state) => LeadsHubPage(tab: state.uri.queryParameters['tab']),
+          ),
         ]),
         StatefulShellBranch(routes: [
-          GoRoute(path: '/whatsapp', builder: (context, state) => const WhatsAppCheckerPage()),
+          GoRoute(
+            path: '/verified',
+            builder: (context, state) => VerifiedHubPage(tab: state.uri.queryParameters['tab']),
+          ),
         ]),
+        StatefulShellBranch(routes: [
+          GoRoute(path: '/more', builder: (context, state) => const SettingsPage()),
+        ]),
+        // Reached from More — in the shell, but not in the nav.
         StatefulShellBranch(routes: [
           GoRoute(path: '/sales', builder: (context, state) => const SalesPage()),
         ]),
@@ -62,13 +91,11 @@ final GoRouter appRouter = GoRouter(
           GoRoute(path: '/outreach', builder: (context, state) => const OutreachPage()),
         ]),
         StatefulShellBranch(routes: [
-          GoRoute(path: '/settings', builder: (context, state) => const SettingsPage()),
+          GoRoute(path: '/whatsapp', builder: (context, state) => const WhatsAppCheckerPage()),
         ]),
       ],
     ),
-    GoRoute(path: '/excel-scan', builder: (context, state) => const ExcelScanPage()),
     GoRoute(path: '/scan-progress', builder: (context, state) => const StateScanPage()),
-    GoRoute(path: '/excel-archive', builder: (context, state) => const ExcelArchivePage()),
     GoRoute(path: '/watchlist', builder: (context, state) => const WatchlistPage()),
     GoRoute(path: '/users', builder: (context, state) => const UsersPage()),
     GoRoute(path: '/whatsapp-verified', builder: (context, state) => const WhatsAppValidatedArchivePage()),

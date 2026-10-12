@@ -3,10 +3,10 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/theme/app_theme.dart';
 
-/// Home for secondary tools that don't need to be one click away from
-/// every session — daily-review tracking and archived scan browsing.
-/// Frequent-use pages (Dashboard, Leads, WhatsApp Tool, Sales) stay in the
-/// main sidebar; everything here is a deliberate visit, not a glance.
+/// Everything that isn't the core flow (Scan → Leads → Validate →
+/// Verified). Kept one tap away but out of the main navigation:
+/// the WhatsApp connection the validator needs, the extra business tools,
+/// and access management.
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
 
@@ -20,57 +20,69 @@ class SettingsPage extends StatelessWidget {
             child: ListView(
               padding: const EdgeInsets.fromLTRB(20, 24, 20, 40),
               children: [
-                Text('Settings', style: Theme.of(context).textTheme.headlineMedium),
+                Text('More', style: Theme.of(context).textTheme.headlineMedium),
                 const SizedBox(height: 6),
                 Text(
-                  'Users, watchlist tracking, and archived scan data live here.',
+                  'Connections, extra tools and access. The main flow lives in the sidebar.',
                   style: Theme.of(context).textTheme.bodyMedium,
                 ),
                 const SizedBox(height: 24),
                 _SettingsSection(
-                  title: 'Access',
+                  title: 'Validation',
                   items: [
                     _SettingsItem(
-                      icon: AppIcons.users,
-                      title: 'Users',
-                      subtitle: 'Approve or revoke mobile app accounts',
-                      onTap: () => context.push('/users'),
+                      icon: AppIcons.chat,
+                      title: 'WhatsApp connection',
+                      subtitle: 'Link WhatsApp Web (QR) — needed to check numbers',
+                      onTap: () => context.go('/whatsapp'),
+                    ),
+                    _SettingsItem(
+                      icon: AppIcons.shieldCheck,
+                      title: 'WhatsApp Verified archives',
+                      subtitle: 'Workbooks uploaded after validating an Excel Archive',
+                      onTap: () => context.push('/whatsapp-verified'),
+                    ),
+                    _SettingsItem(
+                      icon: AppIcons.mail,
+                      title: 'Email Verified archives',
+                      subtitle: 'Workbooks uploaded after validating emails from an Excel Archive',
+                      onTap: () => context.push('/email-verified'),
                     ),
                   ],
                 ),
                 const SizedBox(height: 20),
                 _SettingsSection(
-                  title: 'Client tracking',
+                  title: 'Business tools',
                   items: [
                     _SettingsItem(
-                      icon: AppIcons.eye,
+                      icon: AppIcons.mail,
+                      title: 'Email outreach',
+                      subtitle: 'Campaigns, drafts and sending to verified emails',
+                      onTap: () => context.go('/outreach'),
+                    ),
+                    _SettingsItem(
+                      icon: AppIcons.tag,
+                      title: 'Sales',
+                      subtitle: 'Orders, payouts and client review scans',
+                      onTap: () => context.go('/sales'),
+                    ),
+                    _SettingsItem(
+                      icon: AppIcons.target,
                       title: 'Watchlist',
-                      subtitle: 'Manually-tracked client businesses, re-scanned on demand for new reviews',
+                      subtitle: 'Re-scan chosen businesses for new 1-star reviews',
                       onTap: () => context.push('/watchlist'),
                     ),
                   ],
                 ),
                 const SizedBox(height: 20),
                 _SettingsSection(
-                  title: 'Archived scans',
+                  title: 'Access',
                   items: [
                     _SettingsItem(
-                      icon: AppIcons.inbox,
-                      title: 'Excel Archive',
-                      subtitle: 'Browse and extract businesses from every Excel-only scan',
-                      onTap: () => context.push('/excel-archive'),
-                    ),
-                    _SettingsItem(
-                      icon: AppIcons.shieldCheck,
-                      title: 'WhatsApp Verified',
-                      subtitle: 'Businesses uploaded after real WhatsApp number validation',
-                      onTap: () => context.push('/whatsapp-verified'),
-                    ),
-                    _SettingsItem(
-                      icon: AppIcons.mail,
-                      title: 'Email Verified',
-                      subtitle: 'Businesses uploaded after their contact email was found and verified',
-                      onTap: () => context.push('/email-verified'),
+                      icon: AppIcons.users,
+                      title: 'Users',
+                      subtitle: 'Approve salespeople for the mobile app',
+                      onTap: () => context.push('/users'),
                     ),
                   ],
                 ),

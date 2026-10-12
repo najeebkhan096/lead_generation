@@ -50,8 +50,19 @@ class LeadRepositoryImpl implements LeadRepository {
       _remote.validateEmailLeads(leads);
 
   @override
-  Future<void> validateWebsiteLeadEmails(List<String> ids) =>
-      _remote.validateWebsiteLeadEmails(ids);
+  Future<void> validateSavedLeadEmails(String collection, List<String> ids) =>
+      _remote.validateSavedLeadEmails(collection, ids);
+
+  @override
+  Future<void> validateSavedLeadWhatsApp(String collection, List<String> ids) =>
+      _remote.validateSavedLeadWhatsApp(collection, ids);
+
+  @override
+  Future<List<Lead>> getWhatsAppLeads({String? sourceType}) =>
+      _remote.getWhatsAppLeads(sourceType: sourceType);
+
+  @override
+  Future<void> deleteWhatsAppLead(String leadId) => _remote.deleteWhatsAppLead(leadId);
 
   @override
   Future<EmailValidationSnapshot> getEmailValidationStatus() => _remote.getEmailValidationStatus();
@@ -190,7 +201,7 @@ class LeadRepositoryImpl implements LeadRepository {
       _remote.startWhatsAppValidation(leads);
 
   @override
-  Future<void> validateExternalLeads(List<Map<String, String>> leads) =>
+  Future<void> validateExternalLeads(List<Map<String, dynamic>> leads) =>
       _remote.validateExternalLeads(leads);
 
   @override

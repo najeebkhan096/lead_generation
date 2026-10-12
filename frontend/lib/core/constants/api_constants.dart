@@ -28,6 +28,8 @@ class ApiConstants {
   static String leadDelete(String leadId) => '/api/db/leads/$leadId';
   static const String websiteLeads = '/api/db/website-leads';
   static String websiteLeadDelete(String leadId) => '/api/db/website-leads/$leadId';
+  static const String whatsappLeads = '/api/db/whatsapp-leads';
+  static String whatsappLeadDelete(String leadId) => '/api/db/whatsapp-leads/$leadId';
   static const String emailLeads = '/api/db/email-leads';
   static String emailLeadDelete(String leadId) => '/api/db/email-leads/$leadId';
   static const String clearDb = '/api/db/clear';
@@ -38,6 +40,7 @@ class ApiConstants {
   static const String whatsAppWebDisconnect = '/api/whatsapp-web/disconnect';
   static const String whatsAppWebValidate = '/api/whatsapp-web/validate';
   static const String whatsAppWebValidateList = '/api/whatsapp-web/validate-list';
+  static const String whatsAppWebValidateSaved = '/api/whatsapp-web/validate-saved';
   static const String whatsAppWebValidateAuto = '/api/whatsapp-web/validate-auto';
   static const String whatsAppWebUnvalidated = '/api/whatsapp-web/unvalidated';
   static const String whatsAppWebValidateStatus = '/api/whatsapp-web/validate/status';
@@ -63,7 +66,7 @@ class ApiConstants {
   static String whatsappValidatedDelete(String id) => '/api/whatsapp-validated-scans/$id';
 
   static const String emailValidateList = '/api/email-validation/validate-list';
-  static const String emailValidateWebsiteLeads = '/api/email-validation/validate-website-leads';
+  static const String emailValidateSaved = '/api/email-validation/validate-saved';
   static const String emailValidateStatus = '/api/email-validation/status';
   static const String emailValidateCancel = '/api/email-validation/cancel';
 

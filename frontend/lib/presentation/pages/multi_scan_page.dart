@@ -528,7 +528,7 @@ class _ArchiveStatusSection extends StatelessWidget {
               Text('Excel archives', style: Theme.of(context).textTheme.titleMedium),
               const Spacer(),
               FilledButton.icon(
-                onPressed: () => context.push('/excel-archive'),
+                onPressed: () => context.go('/archive'),
                 icon: const Icon(AppIcons.inbox, size: 16),
                 label: const Text('View Archive'),
               ),

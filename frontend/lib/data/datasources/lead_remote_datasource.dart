@@ -419,7 +419,7 @@ class LeadRemoteDataSource {
   /// leads that were never saved to Firestore (e.g. extracted from an
   /// Excel archive) — `id` here is just a correlation key for reading
   /// back [WhatsAppValidationSnapshot.results], not a real document id.
-  Future<void> validateExternalLeads(List<Map<String, String>> leads) async {
+  Future<void> validateExternalLeads(List<Map<String, dynamic>> leads) async {
     final response = await _client.post(
       _uri(ApiConstants.whatsAppWebValidateList),
       headers: {'Content-Type': 'application/json'},
@@ -428,6 +428,49 @@ class LeadRemoteDataSource {
     if (response.statusCode >= 400) {
       final body = _tryDecode(response.body);
       throw Exception(body['error'] ?? 'Failed to start WhatsApp validation');
+    }
+  }
+
+  /// Starts the WhatsApp validator over saved leads by Firestore id.
+  /// [collection] is `leads` or `websiteLeads`; verified numbers are copied
+  /// into the WhatsApp leads collection.
+  Future<void> validateSavedLeadWhatsApp(String collection, List<String> ids) async {
+    final response = await _client
+        .post(
+          _uri(ApiConstants.whatsAppWebValidateSaved),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'collection': collection, 'ids': ids}),
+        )
+        .timeout(const Duration(minutes: 2));
+    if (response.statusCode >= 400) {
+      final body = _tryDecode(response.body);
+      throw Exception(body['error'] ?? 'Failed to start WhatsApp validation');
+    }
+  }
+
+  /// Every lead whose number a real WhatsApp check confirmed — the
+  /// `whatsappLeads` collection. [sourceType] narrows to `review` or
+  /// `website` leads.
+  Future<List<Lead>> getWhatsAppLeads({String? sourceType}) async {
+    final response = await _client.get(
+      _uri(ApiConstants.whatsappLeads).replace(
+        queryParameters: {'limit': '5000', 'sourceType': ?sourceType},
+      ),
+    );
+    if (response.statusCode >= 400) {
+      final body = _tryDecode(response.body);
+      throw Exception(body['error'] ?? 'Failed to load WhatsApp leads');
+    }
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    final leadsJson = (body['leads'] as List<dynamic>? ?? []);
+    return leadsJson.map((e) => Lead.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  Future<void> deleteWhatsAppLead(String leadId) async {
+    final response = await _client.delete(_uri(ApiConstants.whatsappLeadDelete(leadId)));
+    if (response.statusCode >= 400) {
+      final body = _tryDecode(response.body);
+      throw Exception(body['error'] ?? 'Failed to delete WhatsApp lead');
     }
   }
 
@@ -733,15 +776,16 @@ class LeadRemoteDataSource {
     }
   }
 
-  /// Starts the email validator over saved website leads (businesses with no
-  /// website) by Firestore id — the backend looks each one up on the web
-  /// instead of crawling a site, and skips leads that already have an email.
-  Future<void> validateWebsiteLeadEmails(List<String> ids) async {
+  /// Starts the email validator over saved leads by Firestore id.
+  /// [collection] is `leads` (review leads) or `websiteLeads`. The backend
+  /// crawls a lead's site when it has one, otherwise looks the business up
+  /// on the web, and skips leads that already have an email.
+  Future<void> validateSavedLeadEmails(String collection, List<String> ids) async {
     final response = await _client
         .post(
-          _uri(ApiConstants.emailValidateWebsiteLeads),
+          _uri(ApiConstants.emailValidateSaved),
           headers: {'Content-Type': 'application/json'},
-          body: jsonEncode({'ids': ids}),
+          body: jsonEncode({'collection': collection, 'ids': ids}),
         )
         .timeout(const Duration(minutes: 2));
     if (response.statusCode >= 400) {

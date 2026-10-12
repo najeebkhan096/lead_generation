@@ -5,50 +5,45 @@ import '../../core/theme/app_theme.dart';
 
 const _wideBreakpoint = 900.0;
 
-/// The admin console's persistent frame: a sidebar (or bottom bar on
-/// narrow windows) around the frequent-use sections, with Excel Scan as
-/// the one permanent entry point for starting a scan (the classic
-/// single-search flow was retired — Excel Scan covers every case now).
+/// One navigation item of the admin console.
+typedef _Destination = ({IconData icon, String label, String hint});
+
+/// The console's persistent frame: a sidebar (bottom bar on narrow
+/// windows) that follows the work in the order it happens —
 ///
-/// Kept deliberately short — everything reached less than daily (Watchlist,
-/// Excel Archive, WhatsApp Verified) lives one level down in Settings
-/// instead of competing for a slot here. "WhatsApp Business" was folded
-/// into Leads' existing verified-only filter switch rather than kept as a
-/// separate destination, and Sales Dashboard/Sales merged into one page
-/// with an Overview/Manage tab switch — same data, fewer places to look.
-/// Website Leads earns its own slot despite that bar: it's populated by
-/// every scan exactly like Leads is, just filtered on the opposite signal
-/// (no website instead of a bad review), so it's just as frequent-use. Email
-/// Leads is the third of those — populated by the same scans, filtered on
-/// "website lists a contact email".
+///   Scan → Archive → Leads → Verified
 ///
-/// [navigationShell] comes from `app_router.dart`'s `StatefulShellRoute` —
-/// each branch (Dashboard/Leads/Website Leads/Email Leads/WhatsApp Tool/
-/// Sales/Outreach/Settings)
-/// has its own URL and keeps its own state when you switch away and back,
-/// the same way the old `IndexedStack` did, just addressable now.
+/// — plus Dashboard (overview) first and More (connections, outreach,
+/// sales, watchlist, users) last. Everything beyond the core flow lives
+/// behind More instead of competing for a slot here.
+///
+/// [navigationShell] comes from `app_router.dart`'s `StatefulShellRoute`;
+/// branches past [moreIndex] (Sales, Outreach, WhatsApp tool) are opened
+/// from More and light up More while they're open.
 class AdminShell extends StatelessWidget {
   const AdminShell({super.key, required this.navigationShell});
 
   final StatefulNavigationShell navigationShell;
 
-  static const _destinations = [
-    (icon: AppIcons.dashboard, label: 'Dashboard'),
-    (icon: AppIcons.leads, label: 'Leads'),
-    (icon: AppIcons.globe, label: 'Website Leads'),
-    (icon: AppIcons.mail, label: 'Email Leads'),
-    (icon: AppIcons.chat, label: 'WhatsApp Tool'),
-    (icon: AppIcons.tag, label: 'Sales'),
-    (icon: AppIcons.mail, label: 'Outreach'),
-    (icon: AppIcons.settings, label: 'Settings'),
+  static const _destinations = <_Destination>[
+    (icon: AppIcons.dashboard, label: 'Dashboard', hint: 'Overview'),
+    (icon: AppIcons.search, label: 'Scan', hint: 'Find leads'),
+    (icon: AppIcons.inbox, label: 'Archive', hint: 'Finished scans'),
+    (icon: AppIcons.leads, label: 'Leads', hint: '1-star & no-website'),
+    (icon: AppIcons.shieldCheck, label: 'Verified', hint: 'WhatsApp & email'),
+    (icon: AppIcons.settings, label: 'More', hint: 'Tools & access'),
   ];
 
-  void _openExcelScan(BuildContext context) => context.push('/excel-scan');
-  void _openExcelArchive(BuildContext context) => context.push('/excel-archive');
+  /// Index of "More" — also the nav item shown selected for every shell
+  /// branch after it.
+  static const moreIndex = 5;
+
+  int get _selected =>
+      navigationShell.currentIndex > moreIndex ? moreIndex : navigationShell.currentIndex;
 
   void _select(int index) => navigationShell.goBranch(
         index,
-        // Tapping the already-active tab pops it back to its own root
+        // Tapping the already-active item pops it back to its own root
         // instead of a no-op — matches Material's usual bottom-nav feel.
         initialLocation: index == navigationShell.currentIndex,
       );
@@ -62,13 +57,7 @@ class AdminShell extends StatelessWidget {
           body: SafeArea(
             child: Row(
               children: [
-                if (wide)
-                  _Sidebar(
-                    index: navigationShell.currentIndex,
-                    onSelect: _select,
-                    onExcelScan: () => _openExcelScan(context),
-                    onExcelArchive: () => _openExcelArchive(context),
-                  ),
+                if (wide) _Sidebar(index: _selected, onSelect: _select),
                 Expanded(child: navigationShell),
               ],
             ),
@@ -76,32 +65,13 @@ class AdminShell extends StatelessWidget {
           bottomNavigationBar: wide
               ? null
               : NavigationBar(
-                  selectedIndex: navigationShell.currentIndex,
-                  onDestinationSelected: (i) {
-                    if (i == _destinations.length) {
-                      _openExcelScan(context);
-                    } else if (i == _destinations.length + 1) {
-                      _openExcelArchive(context);
-                    } else {
-                      _select(i);
-                    }
-                  },
+                  selectedIndex: _selected,
+                  onDestinationSelected: _select,
                   backgroundColor: AppTheme.surface,
                   indicatorColor: AppTheme.accent100,
                   destinations: [
                     for (final d in _destinations)
-                      NavigationDestination(
-                        icon: Icon(d.icon),
-                        label: d.label,
-                      ),
-                    const NavigationDestination(
-                      icon: Icon(AppIcons.download),
-                      label: 'Excel Scan',
-                    ),
-                    const NavigationDestination(
-                      icon: Icon(AppIcons.inbox),
-                      label: 'Archive',
-                    ),
+                      NavigationDestination(icon: Icon(d.icon), label: d.label),
                   ],
                 ),
         );
@@ -111,22 +81,15 @@ class AdminShell extends StatelessWidget {
 }
 
 class _Sidebar extends StatelessWidget {
-  const _Sidebar({
-    required this.index,
-    required this.onSelect,
-    required this.onExcelScan,
-    required this.onExcelArchive,
-  });
+  const _Sidebar({required this.index, required this.onSelect});
 
   final int index;
   final ValueChanged<int> onSelect;
-  final VoidCallback onExcelScan;
-  final VoidCallback onExcelArchive;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 240,
+      width: 232,
       padding: const EdgeInsets.symmetric(vertical: 24),
       decoration: const BoxDecoration(
         color: AppTheme.surface,
@@ -143,12 +106,8 @@ class _Sidebar extends StatelessWidget {
                   Container(
                     width: 38,
                     height: 38,
-                    decoration: const BoxDecoration(
-                      color: AppTheme.accent100,
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(AppIcons.target,
-                        size: 18, color: AppTheme.accent700),
+                    decoration: const BoxDecoration(color: AppTheme.accent100, shape: BoxShape.circle),
+                    child: const Icon(AppIcons.target, size: 18, color: AppTheme.accent700),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -157,18 +116,11 @@ class _Sidebar extends StatelessWidget {
                       children: [
                         Text(
                           'LeadFinder',
-                          style: Theme.of(context)
-                              .textTheme
-                              .titleMedium
-                              ?.copyWith(fontSize: 16),
+                          style: Theme.of(context).textTheme.titleMedium?.copyWith(fontSize: 16),
                         ),
                         const Text(
                           'Admin console',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            color: AppTheme.faint,
-                          ),
+                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppTheme.faint),
                         ),
                       ],
                     ),
@@ -176,75 +128,10 @@ class _Sidebar extends StatelessWidget {
                 ],
               ),
             ),
-            const SizedBox(height: 20),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: Material(
-                color: AppTheme.accent500,
-                borderRadius: BorderRadius.circular(AppTheme.radiusPill),
-                child: InkWell(
-                  onTap: onExcelScan,
-                  borderRadius: BorderRadius.circular(AppTheme.radiusPill),
-                  child: const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 13),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(AppIcons.download, size: 18, color: AppTheme.surface),
-                        SizedBox(width: 8),
-                        Text(
-                          'Excel Scan',
-                          style: TextStyle(
-                            color: AppTheme.surface,
-                            fontWeight: FontWeight.w700,
-                            fontSize: 14,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 10),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: Material(
-                color: Colors.transparent,
-                borderRadius: BorderRadius.circular(AppTheme.radiusPill),
-                child: InkWell(
-                  onTap: onExcelArchive,
-                  borderRadius: BorderRadius.circular(AppTheme.radiusPill),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(AppTheme.radiusPill),
-                      border: Border.all(color: AppTheme.neutral200),
-                    ),
-                    child: const Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(AppIcons.inbox, size: 17, color: AppTheme.subtle),
-                        SizedBox(width: 8),
-                        Text(
-                          'Excel Archive',
-                          style: TextStyle(
-                            color: AppTheme.ink,
-                            fontWeight: FontWeight.w700,
-                            fontSize: 13.5,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 28),
             for (var i = 0; i < AdminShell._destinations.length; i++)
               _SidebarItem(
-                icon: AdminShell._destinations[i].icon,
-                label: AdminShell._destinations[i].label,
+                destination: AdminShell._destinations[i],
                 selected: i == index,
                 onTap: () => onSelect(i),
               ),
@@ -256,15 +143,9 @@ class _Sidebar extends StatelessWidget {
 }
 
 class _SidebarItem extends StatelessWidget {
-  const _SidebarItem({
-    required this.icon,
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
+  const _SidebarItem({required this.destination, required this.selected, required this.onTap});
 
-  final IconData icon;
-  final String label;
+  final _Destination destination;
   final bool selected;
   final VoidCallback onTap;
 
@@ -282,16 +163,25 @@ class _SidebarItem extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             child: Row(
               children: [
-                Icon(icon,
-                    size: 19,
-                    color: selected ? AppTheme.accent700 : AppTheme.subtle),
+                Icon(destination.icon, size: 19, color: selected ? AppTheme.accent700 : AppTheme.subtle),
                 const SizedBox(width: 12),
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
-                    color: selected ? AppTheme.accent800 : AppTheme.ink,
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        destination.label,
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
+                          color: selected ? AppTheme.accent800 : AppTheme.ink,
+                        ),
+                      ),
+                      Text(
+                        destination.hint,
+                        style: const TextStyle(fontSize: 11, color: AppTheme.faint),
+                      ),
+                    ],
                   ),
                 ),
               ],

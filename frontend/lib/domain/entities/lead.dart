@@ -51,6 +51,7 @@ class Lead extends Equatable {
     this.emails = const [],
     this.emailSource,
     this.emailFoundOn,
+    this.sourceType,
     this.savedAt,
     this.whatsAppCheckedAt,
     this.emailOutreachStatus,
@@ -93,6 +94,10 @@ class Lead extends Equatable {
   /// The page [email] was read from, when it came from a web search — so
   /// the address's origin can be eyeballed.
   final String? emailFoundOn;
+
+  /// Which signal produced a verified lead: `review` (1-star) or
+  /// `website` (no website). Only set on WhatsApp/email lead documents.
+  final String? sourceType;
   final DateTime? savedAt;
 
   /// When [hasWhatsApp] was last determined by an actual check. `null`
@@ -128,6 +133,7 @@ class Lead extends Equatable {
           .toList(),
       emailSource: json['emailSource'] as String?,
       emailFoundOn: json['emailFoundOn'] as String?,
+      sourceType: json['sourceType'] as String?,
       savedAt: DateTime.tryParse((json['savedAt'] as String?) ?? ''),
       whatsAppCheckedAt: DateTime.tryParse((json['whatsAppCheckedAt'] as String?) ?? ''),
       emailOutreachStatus: json['emailOutreachStatus'] is String
@@ -164,6 +170,7 @@ class Lead extends Equatable {
       emails: emails ?? this.emails,
       emailSource: emailSource ?? this.emailSource,
       emailFoundOn: emailFoundOn ?? this.emailFoundOn,
+      sourceType: sourceType,
       savedAt: savedAt,
       whatsAppCheckedAt: whatsAppCheckedAt ?? this.whatsAppCheckedAt,
       emailOutreachStatus: emailOutreachStatus,

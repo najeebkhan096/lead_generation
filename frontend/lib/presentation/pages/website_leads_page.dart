@@ -9,7 +9,7 @@ import '../bloc/website_leads/website_leads_bloc.dart';
 import '../bloc/website_leads/website_leads_event.dart';
 import '../bloc/website_leads/website_leads_state.dart';
 import '../widgets/saved_business_card.dart';
-import '../widgets/website_lead_email_validator.dart';
+import '../widgets/lead_validation_bar.dart';
 import 'business_details_page.dart' show LeadDetailsArgs;
 
 const _allCategories = 'All categories';
@@ -208,11 +208,20 @@ class _WebsiteLeadsViewState extends State<_WebsiteLeadsView> {
         const SizedBox(height: 24),
         // Validates the list as filtered by search + category (not the
         // "has email" toggle — that only narrows what's shown).
-        WebsiteLeadEmailValidator(
+        LeadValidationBar(
+          collection: 'websiteLeads',
           leads: inCategory,
-          emailOnly: _emailOnly,
-          onEmailOnlyChanged: (v) => setState(() => _emailOnly = v),
           onFinished: () => context.read<WebsiteLeadsBloc>().add(const WebsiteLeadsRequested()),
+          filters: [
+            if (inCategory.any((b) => b.email != null && b.email!.isNotEmpty))
+              FilterChip(
+                label: Text(
+                  'Has email (${inCategory.where((b) => b.email != null && b.email!.isNotEmpty).length})',
+                ),
+                selected: _emailOnly,
+                onSelected: (v) => setState(() => _emailOnly = v),
+              ),
+          ],
         ),
         const SizedBox(height: 16),
         Row(
@@ -344,7 +353,7 @@ class _Header extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Website Leads', style: Theme.of(context).textTheme.displaySmall),
+              Text('No-website leads', style: Theme.of(context).textTheme.displaySmall),
               const SizedBox(height: 6),
               Text(
                 total == 0

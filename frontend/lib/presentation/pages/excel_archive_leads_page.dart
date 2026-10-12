@@ -234,8 +234,24 @@ class _ExcelArchiveLeadsPageState extends State<ExcelArchiveLeadsPage> {
     if (confirm != true || !mounted) return;
 
     try {
+      // The whole lead, not just its phone: a verified number is copied
+      // into the WhatsApp leads collection with these details.
       await _repo.validateExternalLeads([
-        for (final l in eligible) {'id': l.id, 'phone': l.phone!, 'business': l.business},
+        for (final l in eligible)
+          {
+            'id': l.id,
+            'phone': l.phone!,
+            'business': l.business,
+            'category': l.category,
+            'location': l.location,
+            'address': l.address,
+            'website': l.website,
+            'mapsUrl': l.mapsUrl,
+            'rating': l.rating,
+            'totalReviews': l.totalReviews,
+            'sourceType': l.badReview.text.trim().isNotEmpty ? 'review' : 'website',
+            'badReview': {'text': l.badReview.text, 'date': l.badReview.date},
+          },
       ]);
     } catch (e) {
       if (!mounted) return;

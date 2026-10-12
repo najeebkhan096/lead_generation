@@ -543,7 +543,7 @@ class _CategoryArchiveCard extends StatelessWidget {
             ),
             const SizedBox(width: 8),
             FilledButton.icon(
-              onPressed: () => context.push('/excel-archive'),
+              onPressed: () => context.go('/archive'),
               icon: const Icon(AppIcons.inbox, size: 16),
               label: const Text('View Archive'),
             ),

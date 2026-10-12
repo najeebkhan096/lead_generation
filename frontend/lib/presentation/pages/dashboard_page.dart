@@ -854,7 +854,7 @@ class _EmptyDashboard extends StatelessWidget {
           ),
           const SizedBox(height: 24),
           ElevatedButton.icon(
-            onPressed: () => context.push('/excel-scan'),
+            onPressed: () => context.go('/scan'),
             icon: const Icon(AppIcons.download, size: 19),
             label: const Text('Start Excel scan'),
           ),
