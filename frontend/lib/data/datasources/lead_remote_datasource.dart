@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../../core/constants/api_constants.dart';
@@ -25,10 +26,14 @@ class LeadRemoteDataSource {
   final http.Client _client;
 
   Uri _uri(String path) {
-    final base = ApiConstants.baseUrl.trim();
+    var base = ApiConstants.baseUrl.trim();
     if (base.isEmpty) {
-      final p = path.startsWith('/') ? path : '/$path';
-      return Uri.parse(p);
+      if (kIsWeb && Uri.base.host != 'localhost' && Uri.base.host != '127.0.0.1') {
+        base = 'http://localhost:3001';
+      } else {
+        final p = path.startsWith('/') ? path : '/$path';
+        return Uri.parse(p);
+      }
     }
     return Uri.parse('$base$path');
   }
