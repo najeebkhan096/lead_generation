@@ -13,6 +13,8 @@ import '../entities/watchlist_entry.dart';
 import '../entities/whatsapp_check_result.dart';
 import '../entities/whatsapp_web_status.dart';
 import '../entities/outreach.dart';
+import '../entities/twilio_test_lead.dart';
+import '../entities/twilio_test_message.dart';
 
 abstract class LeadRepository {
   /// The most recent multi-category (and/or multi-country) scan as one
@@ -331,6 +333,30 @@ abstract class LeadRepository {
   /// Google reviews in the last [dateRange] days. Optional [salesmanId]
   /// matches the Sales page filter.
   Future<List<SaleReviewScanResult>> scanSaleReviews({String dateRange = '30', String? salesmanId, bool dedupe = false});
+
+  /// Twilio test leads (see the Twilio test page), newest first.
+  Future<List<TwilioTestLead>> listTwilioTestLeads();
+  Future<TwilioTestLeadResult> createTwilioTestLead({
+    required String phoneNumber,
+    String name = '',
+    String businessName = '',
+    String? ownerId,
+  });
+  Future<void> deleteTwilioTestLead(String id);
+
+  // Conversation with a test lead.
+  Future<TwilioTestChat> getTwilioTestChat(String leadId);
+  Future<TwilioTestMessage> sendTwilioTestText(String leadId, {required String body, required bool sms});
+  Future<TwilioTestMessage> sendTwilioTestTemplate(
+    String leadId, {
+    required Uint8List image,
+    required String mimeType,
+    String channel = 'auto',
+  });
+  Future<TwilioTestMessage> retryTwilioTestMessage(String leadId, String messageId);
+
+  /// Pulls delivery receipts and replies from Twilio; returns new replies stored.
+  Future<int> syncTwilioTestChat(String leadId);
 
   Future<OutreachDashboard> getOutreachDashboard();
   Future<OutreachAnalytics> getOutreachAnalytics();

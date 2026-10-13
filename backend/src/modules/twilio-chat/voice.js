@@ -6,8 +6,16 @@ import { spawn } from 'node:child_process';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import ffmpegPath from 'ffmpeg-static';
 import { HttpError } from './validation.js';
+
+/** ffmpeg-static is optional in this package; without it voice notes answer 503 FFMPEG_MISSING. */
+async function ffmpegBinary() {
+  try {
+    return (await import('ffmpeg-static')).default;
+  } catch {
+    return null;
+  }
+}
 
 export const VOICE_SOURCE_MIMES = ['audio/mp4', 'audio/x-m4a', 'audio/m4a', 'audio/aac'];
 export const VOICE_SOURCE_EXTS = ['m4a', 'aac'];
@@ -16,7 +24,8 @@ export const VOICE_SOURCE_EXTS = ['m4a', 'aac'];
  * Returns an OGG/Opus buffer (mono, 32 kbps voice profile). The input goes through a
  * temp file because MP4 containers often have their index at the end and cannot be piped.
  */
-export async function transcodeToOggOpus(input, { bin = ffmpegPath, timeoutMs = 60_000, ext = 'm4a' } = {}) {
+export async function transcodeToOggOpus(input, { bin, timeoutMs = 60_000, ext = 'm4a' } = {}) {
+  bin ??= await ffmpegBinary();
   if (!bin) throw new HttpError(503, 'Voice transcoding is not available on this server.', 'FFMPEG_MISSING');
   const dir = await mkdtemp(path.join(tmpdir(), 'voice-'));
   try {

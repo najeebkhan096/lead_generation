@@ -51,6 +51,28 @@ export function isValidE164(phone) {
   return /^\+[1-9]\d{7,14}$/.test(phone);
 }
 
+/**
+ * Meta blocks WhatsApp marketing templates to US numbers (Twilio error 63049),
+ * so those leads are reached by SMS. Matches the whole +1 (NANP) prefix.
+ */
+export function isUsNumber(phone) {
+  return /^\+1\d{10}$/.test(String(phone ?? ''));
+}
+
+/** 'whatsapp' | 'sms' for an outreach template. `requested` may force one ('auto' = by country). */
+export function channelForTemplate(phone, requested = 'auto') {
+  if (requested === 'sms' || requested === 'whatsapp') return requested;
+  return isUsNumber(phone) ? 'sms' : 'whatsapp';
+}
+
+/** SMS text = the pitch plus a tap-to-chat WhatsApp link (omitted when the number is not configured). */
+export function buildSmsBody(pitch, whatsappNumber) {
+  const text = String(pitch ?? '').trim();
+  const digits = String(whatsappNumber ?? '').replace(/\D/g, '');
+  if (!digits) return text;
+  return `${text}\n\nPrefer WhatsApp? Reply directly or tap here to chat: https://wa.me/${digits}`;
+}
+
 export function phoneDigits(phone) {
   return phone.replace(/\D/g, '');
 }
@@ -144,6 +166,13 @@ export function nextStatus(current, incoming) {
 const FRIENDLY_ERRORS = {
   21620: 'Twilio could not fetch the media URL.',
   21610: 'The recipient has opted out of messages.',
+  21612: 'Twilio cannot send SMS from this number to that country (a US number only reaches US/Canada). Send on WhatsApp instead, or use a sender that supports this country.',
+  21211: 'That phone number is not valid.',
+  21408: 'SMS to this country is not enabled in Twilio Geo Permissions.',
+  21614: 'That number cannot receive SMS.',
+  30007: 'The carrier filtered this SMS.',
+  30032: 'The toll-free number is not verified for SMS yet.',
+  30034: 'US SMS blocked: the sender number has no approved 10DLC registration.',
   63003: 'WhatsApp could not find this number.',
   63007: 'The WhatsApp sender is not configured correctly.',
   63015: 'Sandbox recipients must opt in first.',
@@ -151,7 +180,7 @@ const FRIENDLY_ERRORS = {
   63018: 'WhatsApp rate limit reached. Try again later.',
   63024: 'Invalid WhatsApp recipient.',
   63032: 'WhatsApp could not deliver to this user (policy restriction).',
-  63049: 'WhatsApp blocked this marketing message for this user.',
+  63049: 'WhatsApp marketing is blocked for US (+1) numbers by Meta. US leads are sent by SMS instead.',
   63051: 'The recipient could not be reached for this message.',
   63112: 'WhatsApp Business account is restricted.',
   63013: 'Message violates WhatsApp policy.',

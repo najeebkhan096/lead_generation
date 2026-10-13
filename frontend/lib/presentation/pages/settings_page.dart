@@ -61,6 +61,12 @@ class SettingsPage extends StatelessWidget {
                       onTap: () => context.go('/outreach'),
                     ),
                     _SettingsItem(
+                      icon: AppIcons.chat,
+                      title: 'Twilio test leads',
+                      subtitle: 'Add throwaway leads to try WhatsApp / SMS outreach',
+                      onTap: () => context.push('/twilio-test'),
+                    ),
+                    _SettingsItem(
                       icon: AppIcons.tag,
                       title: 'Sales',
                       subtitle: 'Orders, payouts and client review scans',

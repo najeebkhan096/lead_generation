@@ -6,16 +6,17 @@
  *   outreachConversations/{leadId}               ownerId, leadId, phoneNumber, lastInboundAt, lastOutboundAt
  *   outreachConversations/{leadId}/messages/{id}
  */
+import { randomUUID } from 'node:crypto';
 import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 import { getFirestore, getStorageBucket } from '../../firebase/admin.js';
 import {
-  HttpError, MAX_MEDIA_BYTES, MAX_TEXT_LENGTH, baseMime, describeTwilioError, extForMime, isValidE164,
+  HttpError, MAX_MEDIA_BYTES, MAX_TEXT_LENGTH, baseMime, buildSmsBody, channelForTemplate, describeTwilioError, extForMime, isValidE164,
   isWindowOpen, leadIdFor, mapTwilioStatus, messageTypeForMime, nextStatus, normalizePhone, previewFor,
   validateMediaMeta,
 } from './validation.js';
 import { VOICE_SOURCE_EXTS, VOICE_SOURCE_MIMES, transcodeToOggOpus } from './voice.js';
 import {
-  assertTwilioConfigured, basicAuth, createTwilioMessage, fetchTwilioMessage, listTwilioMedia, listTwilioMessages,
+  assertSmsConfigured, assertTwilioConfigured, basicAuth, createTwilioMessage, fetchTemplateBody, fetchTwilioMessage, listTwilioMedia, listTwilioMessages,
   twilioConfig,
 } from './twilioClient.js';
 
@@ -43,18 +44,40 @@ async function loadConversation(conversationId) {
 }
 
 /** Creates the lead + conversation docs if missing. Idempotent. */
-export async function ensureLead({ ownerId, name, businessName = '', phoneNumber }) {
+/** Free-form facts about the business (category, address, ...): short strings only. */
+function cleanDetails(details) {
+  const out = {};
+  if (!details || typeof details !== 'object' || Array.isArray(details)) return out;
+  for (const [k, v] of Object.entries(details).slice(0, 12)) {
+    const key = String(k).trim().slice(0, 40);
+    const val = String(v ?? '').trim().slice(0, 500);
+    if (key && val && !key.includes('.')) out[key] = val;
+  }
+  return out;
+}
+
+export async function ensureLead({ ownerId, name, businessName = '', phoneNumber, details }) {
   const phone = normalizePhone(phoneNumber);
   if (!isValidE164(phone)) throw new HttpError(400, 'Phone must be E.164 (+countrycode…).', 'INVALID_PHONE');
   const id = leadIdFor(ownerId, phone);
   const leadRef = db().collection(LEADS).doc(id);
   const convRef = db().collection(CONVS).doc(id);
+  const clean = cleanDetails(details);
   const created = await db().runTransaction(async (tx) => {
     const snap = await tx.get(leadRef);
-    if (snap.exists) return false;
+    if (snap.exists) {
+      // Fill in what an earlier import (phone number only) could not know.
+      const cur = snap.data();
+      const patch = {};
+      if (businessName && !cur.businessName) patch.businessName = businessName;
+      if (name && (!cur.name || cur.name === cur.phoneNumber)) patch.name = name;
+      if (Object.keys(clean).length && !cur.details) patch.details = clean;
+      if (Object.keys(patch).length) tx.update(leadRef, patch);
+      return false;
+    }
     const now = FieldValue.serverTimestamp();
     tx.set(leadRef, {
-      id, ownerId, name: name || phone, businessName, phoneNumber: phone, profileImage: null,
+      id, ownerId, name: name || phone, businessName, phoneNumber: phone, profileImage: null, details: clean,
       createdAt: now, updatedAt: now, lastMessage: '', lastMessageType: null, lastMessageAt: null, unreadCount: 0,
     });
     tx.set(convRef, { id, ownerId, leadId: id, phoneNumber: phone, lastInboundAt: null, lastOutboundAt: null, createdAt: now }, { merge: true });
@@ -135,9 +158,18 @@ async function voiceNote({ file, storagePath, prefix, mimeType, fileName, size, 
   };
 }
 
+/**
+ * A URL Twilio can fetch. Uses Firebase's download-token URL instead of an IAM-signed URL:
+ * Cloud Functions' default service account cannot sign without extra IAM roles.
+ */
 async function signedUrlFor(file) {
-  const [url] = await file.getSignedUrl({ action: 'read', version: 'v4', expires: Date.now() + 24 * 3600 * 1000 });
-  return url;
+  const [meta] = await file.getMetadata();
+  let token = String(meta.metadata?.firebaseStorageDownloadTokens ?? '').split(',')[0];
+  if (!token) {
+    token = randomUUID();
+    await file.setMetadata({ metadata: { firebaseStorageDownloadTokens: token } });
+  }
+  return `https://firebasestorage.googleapis.com/v0/b/${file.bucket.name}/o/${encodeURIComponent(file.name)}?alt=media&token=${token}`;
 }
 
 function leadUpdateForOutbound(type, body, now) {
@@ -147,11 +179,11 @@ function leadUpdateForOutbound(type, body, now) {
 }
 
 /**
- * kind: 'text' | 'media' | 'template'. Creates the message doc (status
+ * kind: 'text' | 'media' | 'template' | 'sms'. Creates the message doc (status
  * `sending`), calls Twilio, records the SID — or `failed` + error. Idempotent
  * on messageId.
  */
-export async function sendOutbound({ uid, leadId, messageId, kind, body, media, mediaUrl, replyToMessageId }) {
+export async function sendOutbound({ uid, leadId, messageId, kind, body, media, mediaUrl, replyToMessageId, channel: requestedChannel }) {
   assertMessageId(messageId);
   const lead = await loadOwnedLead(uid, leadId);
   const conversationId = lead.id;
@@ -161,6 +193,7 @@ export async function sendOutbound({ uid, leadId, messageId, kind, body, media, 
   if (existing.exists) return { id: messageId, duplicate: true, status: existing.data().status };
 
   let type; let text = ''; let mediaDoc = null; let template = null; let storageFile = null;
+  let channel = 'whatsapp';
 
   if (kind === 'text') {
     text = assertText(body);
@@ -172,13 +205,23 @@ export async function sendOutbound({ uid, leadId, messageId, kind, body, media, 
     type = v.type; mediaDoc = v.doc; storageFile = v.file;
     text = type === 'audio' || type === 'document' ? '' : assertText(body); // Twilio: no caption on audio/docs
     await assertWindowOpen(conversationId);
+  } else if (kind === 'sms') {
+    // Plain SMS to any country: no 24-hour window and no template involved.
+    assertSmsConfigured();
+    text = assertText(body);
+    if (!text) throw new HttpError(400, 'Message is empty.', 'EMPTY');
+    type = 'text';
+    channel = 'sms';
   } else if (kind === 'template') {
     const c = assertTwilioConfigured({ needTemplate: true });
+    channel = channelForTemplate(lead.phoneNumber, requestedChannel);
+    if (channel === 'sms') assertSmsConfigured();
     const variable = templateMediaVariable(uid, mediaUrl, c.templateMediaPrefix);
     type = 'template';
     const storagePath = decodeURIComponent(variable.split('?')[0]);
     mediaDoc = { storagePath, mimeType: 'image/jpeg', fileName: storagePath.split('/').pop() };
     template = { contentSid: c.templateContentSid, variables: { 1: variable } };
+    text = await fetchTemplateBody(c.templateContentSid);
   } else {
     throw new HttpError(400, 'Unknown message kind.', 'BAD_KIND');
   }
@@ -191,7 +234,7 @@ export async function sendOutbound({ uid, leadId, messageId, kind, body, media, 
 
   const now = FieldValue.serverTimestamp();
   const doc = {
-    id: messageId, conversationId, leadId: lead.id, direction: 'outbound', type, body: text,
+    id: messageId, conversationId, leadId: lead.id, direction: 'outbound', type, channel, body: text,
     media: mediaDoc, template, twilioSid: null, status: 'sending', senderId: uid,
     createdAt: now, sentAt: null, deliveredAt: null, readAt: null, failedAt: null,
     errorCode: null, errorMessage: null, replyToMessageId: replyTo, deletedAt: null,
@@ -220,14 +263,23 @@ export function templateMediaVariable(uid, mediaUrl, prefix) {
 
 async function dispatchToTwilio({ conversationId, messageId, lead, doc, storageFile, kind }) {
   const c = twilioConfig();
-  const params = { To: `whatsapp:${lead.phoneNumber}`, MessagingServiceSid: c.messagingServiceSid };
+  const sms = doc.channel === 'sms';
+  // SMS goes out from the US 10DLC number; WhatsApp from the messaging service.
+  const params = sms
+    ? { To: lead.phoneNumber, From: c.smsFrom }
+    : { To: `whatsapp:${lead.phoneNumber}`, MessagingServiceSid: c.messagingServiceSid };
   if (c.publicBaseUrl) {
-    params.StatusCallback = `${c.publicBaseUrl}/api/twilio/webhooks/status?c=${encodeURIComponent(conversationId)}&m=${encodeURIComponent(messageId)}`;
+    params.StatusCallback = `${c.publicBaseUrl}/twilioStatus?c=${encodeURIComponent(conversationId)}&m=${encodeURIComponent(messageId)}`;
   } else {
     log('PUBLIC_BASE_URL not set: no StatusCallback, status will stay "sending" until refreshed');
   }
   try {
-    if (doc.type === 'template') {
+    if (sms) {
+      if (!c.whatsappNumber) log('TWILIO_WHATSAPP_NUMBER not set: SMS sent without the WhatsApp link');
+      params.Body = buildSmsBody(doc.body, c.whatsappNumber);
+      // The template's image goes as MMS.
+      if (doc.media?.storagePath) params.MediaUrl = await signedUrlFor(storageFile ?? getStorageBucket().file(doc.media.storagePath));
+    } else if (doc.type === 'template') {
       params.ContentSid = doc.template.contentSid;
       params.ContentVariables = JSON.stringify(doc.template.variables);
     } else {
@@ -265,8 +317,13 @@ export async function retryOutbound({ uid, leadId, messageId }) {
   let storageFile = null;
   if (m.type === 'template') {
     assertTwilioConfigured({ needTemplate: true });
+    const channel = channelForTemplate(lead.phoneNumber, m.channel);
+    if (channel === 'sms') assertSmsConfigured();
+    m.channel = channel;
+    await ref.update({ channel });
   } else {
-    await assertWindowOpen(lead.id);
+    if (m.channel !== 'sms') await assertWindowOpen(lead.id);
+    if (m.channel === 'sms') assertSmsConfigured();
     if (m.media) {
       storageFile = getStorageBucket().file(m.media.storagePath);
       const [exists] = await storageFile.exists();
@@ -375,6 +432,8 @@ async function resolveOwnerLead(phone) {
  */
 export async function ingestInbound({ sid, from, body, media = [], createdAt = null }, { awaitMedia = true, bumpUnread = true } = {}) {
   const phone = normalizePhone(from);
+  // A reply by SMS must not open the 24-hour WhatsApp window.
+  const channel = /^whatsapp:/i.test(String(from ?? '')) ? 'whatsapp' : 'sms';
   const target = await resolveOwnerLead(phone);
   if (!target) {
     log('inbound from unknown number dropped (set OUTREACH_DEFAULT_OWNER_UID to keep these)', phone);
@@ -392,7 +451,7 @@ export async function ingestInbound({ sid, from, body, media = [], createdAt = n
     const type = m ? messageTypeForMime(m.contentType) : 'text';
     lastType = type;
     batch.create(msgsOf(conversationId).doc(id), {
-      id, conversationId, leadId: conversationId, direction: 'inbound', type, body: i === 0 ? (body ?? '') : '',
+      id, conversationId, leadId: conversationId, direction: 'inbound', channel, type, body: i === 0 ? (body ?? '') : '',
       media: m ? { storagePath: null, mimeType: baseMime(m.contentType), fileName: `media_${i}.${extForMime(m.contentType)}`, size: null } : null,
       twilioSid: sid, status: 'delivered', senderId: `lead:${conversationId}`, createdAt: created,
       sentAt: created, deliveredAt: created, readAt: null, failedAt: null, errorCode: null, errorMessage: null,
@@ -405,7 +464,7 @@ export async function ingestInbound({ sid, from, body, media = [], createdAt = n
     updatedAt: FieldValue.serverTimestamp(),
     ...(bumpUnread ? { unreadCount: FieldValue.increment(parts.length) } : {}),
   });
-  if (bumpUnread) batch.set(db().collection(CONVS).doc(conversationId), { lastInboundAt: created }, { merge: true });
+  if (bumpUnread && channel === 'whatsapp') batch.set(db().collection(CONVS).doc(conversationId), { lastInboundAt: created }, { merge: true });
   try {
     await batch.commit();
   } catch (err) {

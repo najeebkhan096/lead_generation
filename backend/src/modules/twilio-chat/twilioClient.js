@@ -3,14 +3,17 @@
  * from environment variables and never leaves the backend.
  */
 import { HttpError } from './validation.js';
-import { TWILIO_DEFAULTS as D } from './twilioDefaults.js';
 
 export function twilioConfig() {
   const c = {
-    accountSid: process.env.TWILIO_ACCOUNT_SID?.trim() || D.accountSid,
-    authToken: process.env.TWILIO_AUTH_TOKEN?.trim() || D.authToken,
-    messagingServiceSid: process.env.TWILIO_MESSAGING_SERVICE_SID?.trim() || D.messagingServiceSid,
-    templateContentSid: process.env.TWILIO_TEMPLATE_CONTENT_SID?.trim() || D.templateContentSid,
+    accountSid: process.env.TWILIO_ACCOUNT_SID?.trim(),
+    authToken: process.env.TWILIO_AUTH_TOKEN?.trim(),
+    messagingServiceSid: process.env.TWILIO_MESSAGING_SERVICE_SID?.trim(),
+    templateContentSid: process.env.TWILIO_TEMPLATE_CONTENT_SID?.trim(),
+    // SMS sender for US leads (a US 10DLC-registered number) and the WhatsApp
+    // number the SMS links to (wa.me). Both E.164, e.g. +15551234567.
+    smsFrom: process.env.TWILIO_PHONE_NUMBER?.trim(),
+    whatsappNumber: process.env.TWILIO_WHATSAPP_NUMBER?.trim(),
     // The template's media URL is `<prefix>{{1}}`; variable 1 is only the part after it.
     templateMediaPrefix:
       process.env.TWILIO_TEMPLATE_MEDIA_PREFIX?.trim() ||
@@ -27,6 +30,14 @@ export function assertTwilioConfigured({ needTemplate = false } = {}) {
   }
   if (needTemplate && !c.templateContentSid) {
     throw new HttpError(503, 'Twilio template is not configured on the server.', 'TWILIO_NOT_CONFIGURED');
+  }
+  return c;
+}
+
+export function assertSmsConfigured() {
+  const c = assertTwilioConfigured();
+  if (!c.smsFrom) {
+    throw new HttpError(503, 'SMS is not configured on the server (TWILIO_PHONE_NUMBER).', 'TWILIO_NOT_CONFIGURED');
   }
   return c;
 }
@@ -76,4 +87,21 @@ export async function listTwilioMedia(messageSid) {
     url: `https://api.twilio.com${m.uri.replace(/\.json$/, '')}`,
     contentType: m.content_type,
   }));
+}
+
+const templateBodies = new Map();
+
+/** Text of an approved Content template (best effort: '' when it cannot be read). */
+export async function fetchTemplateBody(contentSid) {
+  if (templateBodies.has(contentSid)) return templateBodies.get(contentSid);
+  try {
+    const res = await fetch(`https://content.twilio.com/v1/Content/${contentSid}`, { headers: { Authorization: basicAuth() } });
+    if (!res.ok) return '';
+    const t = (await res.json()).types || {};
+    const body = String(t['twilio/media']?.body || t['twilio/text']?.body || t['twilio/card']?.title || '').trim();
+    if (body) templateBodies.set(contentSid, body);
+    return body;
+  } catch {
+    return '';
+  }
 }

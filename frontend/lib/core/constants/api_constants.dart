@@ -82,6 +82,15 @@ class ApiConstants {
   static String saleUpdate(String id) => '/api/sales/$id';
   static String saleDelete(String id) => '/api/sales/$id';
 
+  static const String twilioTestLeads = '/api/twilio-test/leads';
+  static String twilioTestLead(String id) => '/api/twilio-test/leads/$id';
+  static String twilioTestChat(String id) => '/api/twilio-test/leads/$id/chat';
+  static String twilioTestMessages(String id) => '/api/twilio-test/leads/$id/messages';
+  static String twilioTestTemplate(String id) => '/api/twilio-test/leads/$id/template';
+  static String twilioTestSync(String id) => '/api/twilio-test/leads/$id/sync';
+  static String twilioTestRetry(String id, String messageId) =>
+      '/api/twilio-test/leads/$id/messages/$messageId/retry';
+
   static const String outreachDashboard = '/api/outreach/dashboard';
   static const String outreachAnalytics = '/api/outreach/analytics';
   static const String outreachSettings = '/api/outreach/settings';

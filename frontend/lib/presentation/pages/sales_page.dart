@@ -8,6 +8,7 @@ import '../../domain/entities/sales_user.dart';
 import '../../domain/entities/watchlist_entry.dart';
 import '../../domain/repositories/lead_repository.dart';
 import 'client_review_scan_page.dart';
+import '../widgets/user_avatar.dart';
 
 const _allSalesmen = 'All salesmen';
 
@@ -894,18 +895,7 @@ class _Avatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final hasPhoto = salesman.photoURL != null && salesman.photoURL!.isNotEmpty;
-    return CircleAvatar(
-      radius: radius,
-      backgroundColor: AppTheme.accent100,
-      backgroundImage: hasPhoto ? NetworkImage(salesman.photoURL!) : null,
-      child: hasPhoto
-          ? null
-          : Text(
-              salesman.name.trim().isEmpty ? '?' : salesman.name.trim()[0].toUpperCase(),
-              style: const TextStyle(fontWeight: FontWeight.w800, color: AppTheme.accent700),
-            ),
-    );
+    return UserAvatar(name: salesman.name, photoUrl: salesman.photoURL, radius: radius);
   }
 }
 

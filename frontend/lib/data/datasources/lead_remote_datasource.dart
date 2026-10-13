@@ -18,6 +18,8 @@ import '../../domain/entities/watchlist_entry.dart';
 import '../../domain/entities/whatsapp_check_result.dart';
 import '../../domain/entities/whatsapp_web_status.dart';
 import '../../domain/entities/outreach.dart';
+import '../../domain/entities/twilio_test_lead.dart';
+import '../../domain/entities/twilio_test_message.dart';
 
 class LeadRemoteDataSource {
   LeadRemoteDataSource({http.Client? client})
@@ -604,6 +606,152 @@ class LeadRemoteDataSource {
         .map((e) => SalesUser.fromJson(e as Map<String, dynamic>))
         .where((u) => u.approved)
         .toList();
+  }
+
+  static const _twilioTestTimeout = Duration(seconds: 20);
+
+  /// The backend's own message; or, for a 404 without one (a server started
+  /// before the Twilio test routes existed), what to do about it.
+  String _twilioTestError(http.Response response, Map<String, dynamic> body, String fallback) {
+    final message = body['error'];
+    if (message is String && message.isNotEmpty) return message;
+    if (response.statusCode == 404) {
+      return 'The backend has no Twilio test endpoint yet — restart it (cd backend && npm run dev).';
+    }
+    return fallback;
+  }
+
+  Future<T> _withTwilioTestTimeout<T>(Future<T> request, [Duration timeout = _twilioTestTimeout]) => request.timeout(
+        timeout,
+        onTimeout: () => throw Exception('The backend did not respond in time. Is it running?'),
+      );
+
+  /// Test leads created from the Twilio test page, newest first.
+  Future<List<TwilioTestLead>> listTwilioTestLeads() async {
+    final response = await _withTwilioTestTimeout(_client.get(_uri(ApiConstants.twilioTestLeads)));
+    final body = _tryDecode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(_twilioTestError(response, body, 'Failed to load test leads'));
+    }
+    return ((body['leads'] as List<dynamic>?) ?? const [])
+        .map((e) => TwilioTestLead.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// Adds a test lead for [phoneNumber] (international format). [ownerId] is
+  /// the mobile user's uid whose Outreach inbox should show it; omit to use
+  /// the backend's default test owner.
+  Future<TwilioTestLeadResult> createTwilioTestLead({
+    required String phoneNumber,
+    String name = '',
+    String businessName = '',
+    String? ownerId,
+  }) async {
+    final response = await _withTwilioTestTimeout(
+      _client.post(
+        _uri(ApiConstants.twilioTestLeads),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'phoneNumber': phoneNumber,
+          'name': name,
+          'businessName': businessName,
+          if (ownerId != null && ownerId.isNotEmpty) 'ownerId': ownerId,
+        }),
+      ),
+    );
+    final body = _tryDecode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(_twilioTestError(response, body, 'Failed to add the test lead'));
+    }
+    return TwilioTestLeadResult.fromJson(body);
+  }
+
+  Future<void> deleteTwilioTestLead(String id) async {
+    final response = await _withTwilioTestTimeout(_client.delete(_uri(ApiConstants.twilioTestLead(id))));
+    if (response.statusCode >= 400) {
+      final body = _tryDecode(response.body);
+      throw Exception(_twilioTestError(response, body, 'Failed to delete the test lead'));
+    }
+  }
+
+  // ---- chat with a Twilio test lead -------------------------------------------
+
+  Future<Map<String, dynamic>> _twilioTestChatCall(
+    Future<http.Response> request,
+    String fallback, {
+    Duration timeout = _twilioTestTimeout,
+  }) async {
+    final response = await _withTwilioTestTimeout(request, timeout);
+    final body = _tryDecode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(_twilioTestError(response, body, fallback));
+    }
+    return body;
+  }
+
+  static const _jsonHeaders = {'Content-Type': 'application/json'};
+
+  Future<TwilioTestChat> getTwilioTestChat(String leadId) async {
+    final body = await _twilioTestChatCall(
+      _client.get(_uri(ApiConstants.twilioTestChat(leadId))),
+      'Failed to load the conversation',
+    );
+    return TwilioTestChat.fromJson(body);
+  }
+
+  /// [sms] sends a plain SMS; otherwise WhatsApp free text (needs an open
+  /// 24-hour window — the backend answers with the reason when it is closed).
+  Future<TwilioTestMessage> sendTwilioTestText(String leadId, {required String body, required bool sms}) async {
+    final json = await _twilioTestChatCall(
+      _client.post(
+        _uri(ApiConstants.twilioTestMessages(leadId)),
+        headers: _jsonHeaders,
+        body: jsonEncode({'kind': sms ? 'sms' : 'text', 'body': body}),
+      ),
+      'Failed to send the message',
+      timeout: const Duration(seconds: 40),
+    );
+    return TwilioTestMessage.fromJson(json['message'] as Map<String, dynamic>);
+  }
+
+  /// Sends the approved outreach template with [image] as its header.
+  /// [channel]: `auto` (US numbers by SMS, others WhatsApp), `whatsapp`, `sms`.
+  Future<TwilioTestMessage> sendTwilioTestTemplate(
+    String leadId, {
+    required Uint8List image,
+    required String mimeType,
+    String channel = 'auto',
+  }) async {
+    final json = await _twilioTestChatCall(
+      _client.post(
+        _uri(ApiConstants.twilioTestTemplate(leadId)),
+        headers: _jsonHeaders,
+        body: jsonEncode({'imageBase64': base64Encode(image), 'mimeType': mimeType, 'channel': channel}),
+      ),
+      'Failed to send the template',
+      timeout: const Duration(seconds: 90),
+    );
+    return TwilioTestMessage.fromJson(json['message'] as Map<String, dynamic>);
+  }
+
+  Future<TwilioTestMessage> retryTwilioTestMessage(String leadId, String messageId) async {
+    final json = await _twilioTestChatCall(
+      _client.post(_uri(ApiConstants.twilioTestRetry(leadId, messageId))),
+      'Failed to retry the message',
+      timeout: const Duration(seconds: 40),
+    );
+    return TwilioTestMessage.fromJson(json['message'] as Map<String, dynamic>);
+  }
+
+  /// Pulls delivery receipts and replies from Twilio (this server has no
+  /// public webhook URL). Returns how many new replies were stored.
+  Future<int> syncTwilioTestChat(String leadId) async {
+    final body = await _twilioTestChatCall(
+      _client.post(_uri(ApiConstants.twilioTestSync(leadId))),
+      'Failed to refresh from Twilio',
+      timeout: const Duration(seconds: 40),
+    );
+    return (body['ingested'] as num?)?.toInt() ?? 0;
   }
 
   Future<List<SalesUser>> listUsers() async {

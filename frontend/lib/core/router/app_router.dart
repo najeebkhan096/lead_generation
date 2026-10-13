@@ -1,6 +1,7 @@
 import 'package:go_router/go_router.dart';
 
 import '../../domain/entities/lead.dart';
+import '../../domain/entities/twilio_test_lead.dart';
 import '../../presentation/pages/business_details_page.dart';
 import '../../presentation/pages/dashboard_page.dart';
 import '../../presentation/pages/email_lead_details_page.dart';
@@ -16,6 +17,8 @@ import '../../presentation/pages/saved_businesses_page.dart';
 import '../../presentation/pages/settings_page.dart';
 import '../../presentation/pages/users_page.dart';
 import '../../presentation/pages/state_scan_page.dart';
+import '../../presentation/pages/twilio_test_chat_page.dart';
+import '../../presentation/pages/twilio_test_leads_page.dart';
 import '../../presentation/pages/watchlist_page.dart';
 import '../../presentation/pages/whatsapp_checker_page.dart';
 import '../../presentation/pages/whatsapp_validated_archive_page.dart';
@@ -98,6 +101,16 @@ final GoRouter appRouter = GoRouter(
     GoRoute(path: '/scan-progress', builder: (context, state) => const StateScanPage()),
     GoRoute(path: '/watchlist', builder: (context, state) => const WatchlistPage()),
     GoRoute(path: '/users', builder: (context, state) => const UsersPage()),
+    GoRoute(path: '/twilio-test', builder: (context, state) => const TwilioTestLeadsPage()),
+    // The lead comes via `extra`; a refreshed tab (no extra) goes back to the list.
+    GoRoute(
+      path: '/twilio-test/chat',
+      builder: (context, state) {
+        final extra = state.extra;
+        if (extra is TwilioTestLead) return TwilioTestChatPage(lead: extra);
+        return const TwilioTestLeadsPage();
+      },
+    ),
     GoRoute(path: '/whatsapp-verified', builder: (context, state) => const WhatsAppValidatedArchivePage()),
     GoRoute(path: '/email-verified', builder: (context, state) => const EmailVerifiedArchivePage()),
     // Legacy/dormant multi-country scan dashboard — still reachable from

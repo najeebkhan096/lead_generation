@@ -13,6 +13,8 @@ import '../../domain/entities/watchlist_entry.dart';
 import '../../domain/entities/whatsapp_check_result.dart';
 import '../../domain/entities/whatsapp_web_status.dart';
 import '../../domain/entities/outreach.dart';
+import '../../domain/entities/twilio_test_lead.dart';
+import '../../domain/entities/twilio_test_message.dart';
 import '../../domain/repositories/lead_repository.dart';
 import '../datasources/lead_remote_datasource.dart';
 
@@ -405,6 +407,49 @@ class LeadRepositoryImpl implements LeadRepository {
   @override
   Future<List<SaleReviewScanResult>> scanSaleReviews({String dateRange = '30', String? salesmanId, bool dedupe = false}) =>
       _remote.scanSaleReviews(dateRange: dateRange, salesmanId: salesmanId, dedupe: dedupe);
+
+  @override
+  Future<List<TwilioTestLead>> listTwilioTestLeads() => _remote.listTwilioTestLeads();
+
+  @override
+  Future<TwilioTestLeadResult> createTwilioTestLead({
+    required String phoneNumber,
+    String name = '',
+    String businessName = '',
+    String? ownerId,
+  }) =>
+      _remote.createTwilioTestLead(
+        phoneNumber: phoneNumber,
+        name: name,
+        businessName: businessName,
+        ownerId: ownerId,
+      );
+
+  @override
+  Future<void> deleteTwilioTestLead(String id) => _remote.deleteTwilioTestLead(id);
+
+  @override
+  Future<TwilioTestChat> getTwilioTestChat(String leadId) => _remote.getTwilioTestChat(leadId);
+
+  @override
+  Future<TwilioTestMessage> sendTwilioTestText(String leadId, {required String body, required bool sms}) =>
+      _remote.sendTwilioTestText(leadId, body: body, sms: sms);
+
+  @override
+  Future<TwilioTestMessage> sendTwilioTestTemplate(
+    String leadId, {
+    required Uint8List image,
+    required String mimeType,
+    String channel = 'auto',
+  }) =>
+      _remote.sendTwilioTestTemplate(leadId, image: image, mimeType: mimeType, channel: channel);
+
+  @override
+  Future<TwilioTestMessage> retryTwilioTestMessage(String leadId, String messageId) =>
+      _remote.retryTwilioTestMessage(leadId, messageId);
+
+  @override
+  Future<int> syncTwilioTestChat(String leadId) => _remote.syncTwilioTestChat(leadId);
 
   @override
   Future<OutreachDashboard> getOutreachDashboard() => _remote.getOutreachDashboard();

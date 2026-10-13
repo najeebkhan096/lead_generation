@@ -19,6 +19,7 @@ import userRoutes from './modules/users/userRoutes.js';
 import saleRoutes from './modules/sales/saleRoutes.js';
 import stateCityScanRoutes from './modules/scan/stateCityScanRoutes.js';
 import outreachRoutes from './modules/outreach/outreachRoutes.js';
+import twilioTestRoutes from './modules/twilio-test/testLeadRoutes.js';
 import { initFirebase, getFirebaseStatus } from './firebase/admin.js';
 import { startQueueWorker } from './modules/outreach/outreachOrchestrator.js';
 
@@ -75,6 +76,7 @@ app.use('/api/users', userRoutes);
 app.use('/api/sales', saleRoutes);
 app.use('/api/state-scan', stateCityScanRoutes);
 app.use('/api/outreach', outreachRoutes);
+app.use('/api/twilio-test', twilioTestRoutes);
 
 if (fs.existsSync(path.join(webRoot, 'index.html'))) {
   app.use(express.static(webRoot, { index: false }));

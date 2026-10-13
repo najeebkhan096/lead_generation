@@ -4,6 +4,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../core/theme/app_theme.dart';
 import '../../domain/entities/sales_user.dart';
 import '../../domain/repositories/lead_repository.dart';
+import '../widgets/user_avatar.dart';
 
 /// Approve or revoke mobile app accounts. Unapproved users can sign in
 /// but see no lead data — the phone shows a generic error, not this flag.
@@ -169,17 +170,7 @@ class _UserCard extends StatelessWidget {
       ),
       child: Row(
         children: [
-          CircleAvatar(
-            radius: 20,
-            backgroundColor: AppTheme.accent100,
-            backgroundImage: (user.photoURL != null && user.photoURL!.isNotEmpty) ? NetworkImage(user.photoURL!) : null,
-            child: (user.photoURL == null || user.photoURL!.isEmpty)
-                ? Text(
-                    user.name.trim().isEmpty ? '?' : user.name.trim()[0].toUpperCase(),
-                    style: const TextStyle(fontWeight: FontWeight.w800, color: AppTheme.accent700),
-                  )
-                : null,
-          ),
+          UserAvatar(name: user.name, photoUrl: user.photoURL),
           const SizedBox(width: 14),
           Expanded(
             child: Column(
