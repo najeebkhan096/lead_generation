@@ -83,6 +83,8 @@ class ApiConstants {
   static String saleDelete(String id) => '/api/sales/$id';
 
   static const String twilioTestLeads = '/api/twilio-test/leads';
+  static const String twilioInbox = '/api/twilio-test/inbox';
+  static const String twilioInboxSync = '/api/twilio-test/inbox/sync';
   static String twilioTestLead(String id) => '/api/twilio-test/leads/$id';
   static String twilioTestChat(String id) => '/api/twilio-test/leads/$id/chat';
   static String twilioTestMessages(String id) => '/api/twilio-test/leads/$id/messages';

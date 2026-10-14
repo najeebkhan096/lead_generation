@@ -429,6 +429,12 @@ class LeadRepositoryImpl implements LeadRepository {
   Future<void> deleteTwilioTestLead(String id) => _remote.deleteTwilioTestLead(id);
 
   @override
+  Future<List<TwilioTestLead>> listWhatsAppReplies() => _remote.listWhatsAppReplies();
+
+  @override
+  Future<List<TwilioTestLead>> syncWhatsAppReplies() => _remote.syncWhatsAppReplies();
+
+  @override
   Future<TwilioTestChat> getTwilioTestChat(String leadId) => _remote.getTwilioTestChat(leadId);
 
   @override
@@ -467,6 +473,7 @@ class LeadRepositoryImpl implements LeadRepository {
     String? senderName,
     String? senderEmail,
     int? defaultDailyLimit,
+    bool? whatsappLinkEnabled,
   }) {
     return _remote.updateOutreachSettings({
       if (testMode != null) 'testMode': testMode,
@@ -474,6 +481,7 @@ class LeadRepositoryImpl implements LeadRepository {
       if (senderName != null) 'senderName': senderName,
       if (senderEmail != null) 'senderEmail': senderEmail,
       if (defaultDailyLimit != null) 'defaultDailyLimit': defaultDailyLimit,
+      'whatsappLinkEnabled': ?whatsappLinkEnabled,
     });
   }
 

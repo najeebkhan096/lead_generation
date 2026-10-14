@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../services/paged_query.dart';
 import '../theme/app_theme.dart';
+import '../utils/date_groups.dart';
 import 'page_header.dart';
 import 'search_field.dart';
 
@@ -47,6 +48,8 @@ class LeadCollectionPage<T> extends StatefulWidget {
     required this.categoryOf,
     required this.loadCategories,
     this.filters = const [],
+    this.dateOf,
+    this.groupWhen,
   });
 
   final String title;
@@ -73,6 +76,14 @@ class LeadCollectionPage<T> extends StatefulWidget {
   /// what's loaded.
   final Future<List<String>> Function() loadCategories;
   final List<LeadFilter> filters;
+
+  /// The date a lead is grouped under ("Today", "Yesterday", ...). Items must
+  /// be loaded newest-first by that same date, so null disables grouping.
+  final DateTime? Function(T item)? dateOf;
+
+  /// Whether the list for this filter value is in [dateOf] order and so can be
+  /// grouped (null = always). A list read in some other order must not be.
+  final bool Function(String? filter)? groupWhen;
 
   @override
   State<LeadCollectionPage<T>> createState() => _LeadCollectionPageState<T>();
@@ -134,6 +145,8 @@ class _LeadCollectionPageState<T> extends State<LeadCollectionPage<T>> {
     await _controller.refresh(category: category);
   }
 
+  bool get _grouped => widget.dateOf != null && (widget.groupWhen?.call(_filter) ?? true);
+
   List<T> _visible() {
     final items = _controller.items;
     final q = _query.trim().toLowerCase();
@@ -185,15 +198,27 @@ class _LeadCollectionPageState<T> extends State<LeadCollectionPage<T>> {
     final capped = searching && c.hasMore && c.documentsRead >= _searchReadCap;
     final selected = c.category ?? allCategories;
 
+    /// Leads found today. They sort first, so they are always among what's
+    /// loaded; a trailing '+' would only matter if today alone overflowed a page.
+    int newToday() {
+      final dateOf = widget.dateOf;
+      if (!_grouped || dateOf == null) return 0;
+      return visible.where((l) {
+        final d = dateOf(l);
+        return d != null && daysAgo(d) <= 0;
+      }).length;
+    }
+
     String subtitle() {
       if (c.loading && c.items.isEmpty) return 'Loading…';
       if (c.items.isEmpty && !searching && c.category == null) return widget.emptySubtitle;
       final n = visible.length;
       final more = c.hasMore && !searching ? '+' : '';
       final noun = n == 1 ? widget.noun : '${widget.noun}es';
-      return searching && c.hasMore && !capped
-          ? 'Searching… $n found so far'
-          : '$n$more $noun${capped ? ' found in the newest ${c.documentsRead}' : ''}';
+      if (searching && c.hasMore && !capped) return 'Searching… $n found so far';
+      final base = '$n$more $noun${capped ? ' found in the newest ${c.documentsRead}' : ''}';
+      final today = newToday();
+      return today > 0 ? '$base · $today new today' : base;
     }
 
     Widget body;
@@ -231,15 +256,23 @@ class _LeadCollectionPageState<T> extends State<LeadCollectionPage<T>> {
               ),
             );
     } else {
+      final dateOf = widget.dateOf;
+      final rows = _grouped && dateOf != null
+          ? groupByDay<T>(visible, dateOf)
+          : [for (final item in visible) DateGroupRow<T>.item(item)];
       body = RefreshIndicator(
         onRefresh: () => c.refresh(keepCategory: true),
         child: ListView.builder(
           controller: _scroll,
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
-          itemCount: visible.length + 1,
+          itemCount: rows.length + 1,
           itemBuilder: (context, i) {
-            if (i < visible.length) return widget.itemBuilder(context, visible[i]);
+            if (i < rows.length) {
+              final row = rows[i];
+              if (row.header != null) return _DateHeader(label: row.header!, first: i == 0);
+              return widget.itemBuilder(context, row.item as T);
+            }
             // Footer: the paging state, so the end of the list is never a mystery.
             if (c.loadingMore) {
               return const Padding(
@@ -329,6 +362,26 @@ class _LeadCollectionPageState<T> extends State<LeadCollectionPage<T>> {
             Expanded(child: body),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Day heading above a run of leads found that day.
+class _DateHeader extends StatelessWidget {
+  const _DateHeader({required this.label, required this.first});
+
+  final String label;
+  final bool first;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    return Padding(
+      padding: EdgeInsets.only(top: first ? 0 : 10, bottom: 10, left: 4),
+      child: Text(
+        label,
+        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, letterSpacing: 0.3, color: t.subtle),
       ),
     );
   }

@@ -5,8 +5,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lead_mobile/pages/main_navigation_page.dart';
 import 'package:lead_mobile/theme/app_theme.dart';
 
-// Firebase core is mocked so pages that create Firestore streams can build;
-// the streams themselves surface errors, which the pages render as states.
+// Firebase core is mocked so pages that create Firestore reads can build;
+// the reads surface errors, which the pages render as states.
 
 void main() {
   setUpAll(() async {
@@ -15,40 +15,55 @@ void main() {
     await Firebase.initializeApp();
   });
 
-  testWidgets('MainNavigationPage follows the core flow: Leads, WhatsApp, Email, More', (tester) async {
-    await tester.pumpWidget(MaterialApp(
-      theme: AppTheme.light(),
-      home: const MainNavigationPage(),
-    ));
+  /// Plain pumps: pumpAndSettle never settles while list spinners animate.
+  /// The first pump starts the tab/route animation, the second runs it out.
+  Future<void> animate(WidgetTester tester) async {
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+  }
 
-    // Four destinations, in flow order (see main_navigation_page.dart).
-    // `findsWidgets` for 'Leads': the tab label and the page's own tab bar.
-    expect(find.text('Leads'), findsWidgets);
-    expect(find.text('WhatsApp'), findsWidgets);
-    expect(find.text('Email'), findsWidgets);
-    expect(find.text('More'), findsWidgets);
+  Future<void> pumpApp(WidgetTester tester) => tester.pumpWidget(MaterialApp(
+        theme: AppTheme.light(),
+        home: const MainNavigationPage(),
+      ));
 
-    // The extras are no longer in the main bar.
-    expect(find.text('Outreach'), findsNothing);
-    expect(find.text('Sales'), findsNothing);
-    expect(find.text('Profile'), findsNothing);
+  testWidgets('the app is one page with two tabs: WhatsApp and Email', (tester) async {
+    await pumpApp(tester);
 
-    NavigationBar navBar() => tester.widget<NavigationBar>(find.byType(NavigationBar));
-    expect(navBar().destinations, hasLength(4));
-    expect(navBar().selectedIndex, 0);
+    // Exactly two tabs, no bottom bar, and none of the unvalidated lead views.
+    expect(find.byType(NavigationBar), findsNothing);
+    expect(tester.widget<TabBar>(find.byType(TabBar)).tabs, hasLength(2));
+    expect(find.widgetWithText(Tab, 'WhatsApp'), findsOneWidget);
+    expect(find.widgetWithText(Tab, 'Email'), findsOneWidget);
+    expect(find.text('Leads'), findsNothing);
+    expect(find.text('Discover leads'), findsNothing);
+    expect(find.text('Website leads'), findsNothing);
 
-    // Tap through the tabs and verify selection follows. Plain pump():
-    // pumpAndSettle never settles while stream spinners are animating.
-    await tester.tap(find.byIcon(AppIcons.chat));
-    await tester.pump(const Duration(milliseconds: 400));
-    expect(navBar().selectedIndex, 1);
+    // WhatsApp is first.
+    expect(find.text('WhatsApp leads'), findsOneWidget);
 
-    await tester.tap(find.byIcon(AppIcons.mail));
-    await tester.pump(const Duration(milliseconds: 400));
-    expect(navBar().selectedIndex, 2);
+    await tester.tap(find.widgetWithText(Tab, 'Email'));
+    await animate(tester);
+    expect(find.text('Email leads'), findsOneWidget);
 
-    await tester.tap(find.byIcon(AppIcons.more));
-    await tester.pump(const Duration(milliseconds: 400));
-    expect(navBar().selectedIndex, 3);
+    await tester.tap(find.widgetWithText(Tab, 'WhatsApp'));
+    await animate(tester);
+    expect(find.text('WhatsApp leads'), findsOneWidget);
+  });
+
+  testWidgets('the account button opens More, with Sign out, and goes back', (tester) async {
+    await pumpApp(tester);
+
+    expect(find.text('Sign Out'), findsNothing);
+    await tester.tap(find.byTooltip('More'));
+    await animate(tester);
+
+    expect(find.text('Sign Out'), findsOneWidget);
+    expect(find.text('Outreach chat'), findsOneWidget);
+
+    await tester.pageBack();
+    await animate(tester);
+    expect(find.text('Sign Out'), findsNothing);
+    expect(find.widgetWithText(Tab, 'Email'), findsOneWidget);
   });
 }

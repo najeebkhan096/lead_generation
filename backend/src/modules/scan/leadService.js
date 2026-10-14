@@ -51,7 +51,12 @@ function dedupeLeads(leads) {
   return out;
 }
 
-/** Normalize phone + build wa.me link. WhatsApp is NOT verified — user checks manually. */
+/**
+ * Normalize phone + build the wa.me link. Nothing here (or anywhere in the
+ * scan) checks WhatsApp: `waLink` is only a click-to-chat link, never proof
+ * that the number is registered, and `hasWhatsApp` stays false until the
+ * user runs WhatsApp validation from the Leads page.
+ */
 function enrichLeadContacts(leads, country = 'US') {
   return leads.map((lead) => {
     const e164 = normalizePhone(lead.phone, country);

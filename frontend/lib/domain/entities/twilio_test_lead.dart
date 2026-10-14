@@ -10,6 +10,9 @@ class TwilioTestLead extends Equatable {
     required this.phoneNumber,
     required this.ownerId,
     this.createdAt,
+    this.lastMessage = '',
+    this.lastMessageAt,
+    this.unreadCount = 0,
   });
 
   final String id;
@@ -23,8 +26,14 @@ class TwilioTestLead extends Equatable {
   final String ownerId;
   final DateTime? createdAt;
 
+  /// Preview of the latest message, its time, and how many are unread.
+  final String lastMessage;
+  final DateTime? lastMessageAt;
+  final int unreadCount;
+
   factory TwilioTestLead.fromJson(Map<String, dynamic> json) {
     final created = json['createdAt'];
+    final last = json['lastMessageAt'];
     return TwilioTestLead(
       id: json['id'] as String,
       name: (json['name'] as String?) ?? '',
@@ -32,11 +41,15 @@ class TwilioTestLead extends Equatable {
       phoneNumber: (json['phoneNumber'] as String?) ?? '',
       ownerId: (json['ownerId'] as String?) ?? '',
       createdAt: created is num ? DateTime.fromMillisecondsSinceEpoch(created.toInt()) : null,
+      lastMessage: (json['lastMessage'] as String?) ?? '',
+      lastMessageAt: last is num ? DateTime.fromMillisecondsSinceEpoch(last.toInt()) : null,
+      unreadCount: (json['unreadCount'] as num?)?.toInt() ?? 0,
     );
   }
 
   @override
-  List<Object?> get props => [id, name, businessName, phoneNumber, ownerId, createdAt];
+  List<Object?> get props =>
+      [id, name, businessName, phoneNumber, ownerId, createdAt, lastMessage, lastMessageAt, unreadCount];
 }
 
 /// Outcome of adding a test lead. [created] is false when the owner already

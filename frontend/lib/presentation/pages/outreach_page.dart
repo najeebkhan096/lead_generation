@@ -137,6 +137,19 @@ class _OutreachPageState extends State<OutreachPage> {
     }
   }
 
+  Future<void> _toggleWhatsAppLink(bool value) async {
+    try {
+      final settings = await _repo.updateOutreachSettings(whatsappLinkEnabled: value);
+      if (!mounted) return;
+      setState(() => _dashboard = _dashboard?.copyWith(settings: settings));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+      );
+    }
+  }
+
   Future<void> _toggleTest(bool value) async {
     try {
       final settings = await _repo.updateOutreachSettings(testMode: value);
@@ -271,6 +284,19 @@ class _OutreachPageState extends State<OutreachPage> {
                                     subtitle: const Text('Test mode — messages go to your inbox, not the lead.'),
                                     value: _dashboard!.settings.testMode,
                                     onChanged: _toggleTest,
+                                  ),
+                                  SwitchListTile(
+                                    contentPadding: EdgeInsets.zero,
+                                    title: const Text('Add a WhatsApp chat link to emails'),
+                                    subtitle: Text(
+                                      _dashboard!.settings.whatsappNumber.isEmpty
+                                          ? 'Set TWILIO_WHATSAPP_NUMBER in the backend .env to enable this.'
+                                          : 'People who message ${_dashboard!.settings.whatsappNumber} open a 24-hour '
+                                              'chat — works for US numbers too. Replies appear under More → Twilio test leads.',
+                                    ),
+                                    value: _dashboard!.settings.whatsappLinkEnabled &&
+                                        _dashboard!.settings.whatsappNumber.isNotEmpty,
+                                    onChanged: _dashboard!.settings.whatsappNumber.isEmpty ? null : _toggleWhatsAppLink,
                                   ),
                                   if (_dashboard!.settings.testMode) ...[
                                     TextField(

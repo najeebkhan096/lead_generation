@@ -13,8 +13,9 @@ import 'business_details_page.dart';
 /// Businesses a scan found with no website at all (`websiteLeads`).
 ///
 /// This is the big collection — tens of thousands of documents — so it is
-/// only ever read a page at a time, newest first, with the next page
-/// fetched as you scroll (see [LeadCollectionPage]).
+/// only ever read a page at a time, newest first (by the date the scan found
+/// the business) and grouped by day, with the next page fetched as you scroll
+/// (see [LeadCollectionPage]).
 class WebsiteLeadsPage extends StatelessWidget {
   const WebsiteLeadsPage({super.key});
 
@@ -35,11 +36,12 @@ class WebsiteLeadsPage extends StatelessWidget {
           (category) {
             Query<Map<String, dynamic>> q = FirebaseFirestore.instance.collection('websiteLeads');
             if (category != null) q = q.where('category', isEqualTo: category);
-            return q.orderBy('updatedAt', descending: true);
+            return q.orderBy('createdAt', descending: true);
           },
         ],
         map: Lead.fromDoc,
       ),
+      dateOf: (lead) => lead.dateAdded,
       searchText: (l) => '${l.business} ${l.location} ${l.phone ?? ''} ${l.category}'.toLowerCase(),
       categoryOf: (l) => l.category,
       // One document per scan batch — far cheaper than reading the leads.

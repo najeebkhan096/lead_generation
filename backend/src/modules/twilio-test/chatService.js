@@ -76,13 +76,18 @@ export function chatService(overrides = {}) {
   };
   const msgsOf = (id) => d.db().collection(CONVS).doc(id).collection('messages');
 
-  /** Only test leads are reachable from the web admin. */
+  /**
+   * Test leads, and leads that replied to an outreach email on WhatsApp
+   * (`repliedViaLink`), are reachable from the web admin; nothing else is.
+   */
   async function loadTestLead(leadId) {
     const id = String(leadId ?? '');
     const snap = id ? await d.db().collection(LEADS).doc(id).get() : null;
     if (!snap?.exists) throw new HttpError(404, 'Lead not found.', 'LEAD_NOT_FOUND');
     const lead = snap.data();
-    if (lead.isTest !== true) throw new HttpError(403, 'Only test leads can be used here.', 'NOT_A_TEST_LEAD');
+    if (lead.isTest !== true && lead.repliedViaLink !== true) {
+      throw new HttpError(403, 'Only test leads and WhatsApp replies can be used here.', 'NOT_A_TEST_LEAD');
+    }
     return { id, ...lead };
   }
 
@@ -104,6 +109,10 @@ export function chatService(overrides = {}) {
     /** Messages (oldest first) and when the WhatsApp free-text window closes (null = closed). */
     async getChat(leadId) {
       const lead = await loadTestLead(leadId);
+      // Opening the conversation reads it.
+      if (Number(lead.unreadCount) > 0) {
+        await d.db().collection(LEADS).doc(lead.id).update({ unreadCount: 0 });
+      }
       const [conv, messages] = await Promise.all([
         d.db().collection(CONVS).doc(lead.id).get(),
         recentMessages(lead.id),

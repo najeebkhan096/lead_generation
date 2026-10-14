@@ -322,6 +322,8 @@ class OutreachSettings extends Equatable {
     this.replyTo = '',
     this.defaultDailyLimit = 30,
     this.senderConfigured = false,
+    this.whatsappLinkEnabled = true,
+    this.whatsappNumber = '',
   });
 
   final bool testMode;
@@ -331,6 +333,13 @@ class OutreachSettings extends Equatable {
   final String replyTo;
   final int defaultDailyLimit;
   final bool senderConfigured;
+
+  /// Emails carry a wa.me link so a lead can start a WhatsApp chat (which
+  /// opens the 24-hour window for free text, even for US numbers).
+  final bool whatsappLinkEnabled;
+
+  /// The WhatsApp number that link points to; empty when not configured.
+  final String whatsappNumber;
 
   factory OutreachSettings.fromJson(Map<String, dynamic>? json) {
     final d = json ?? const {};
@@ -342,11 +351,14 @@ class OutreachSettings extends Equatable {
       replyTo: d['replyTo'] as String? ?? '',
       defaultDailyLimit: (d['defaultDailyLimit'] as num?)?.toInt() ?? 30,
       senderConfigured: d['senderConfigured'] == true,
+      whatsappLinkEnabled: d['whatsappLinkEnabled'] != false,
+      whatsappNumber: d['whatsappNumber'] as String? ?? '',
     );
   }
 
   @override
-  List<Object?> get props => [testMode, testEmail, senderName, senderEmail, senderConfigured];
+  List<Object?> get props =>
+      [testMode, testEmail, senderName, senderEmail, senderConfigured, whatsappLinkEnabled, whatsappNumber];
 }
 
 class OutreachStats extends Equatable {

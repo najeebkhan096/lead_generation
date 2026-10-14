@@ -11,8 +11,18 @@ import { analyzeWebsite } from './websiteAnalysisService.js';
 import { generateOutreachEmail } from './aiEmailGeneratorService.js';
 import { createEmailSenderService, isTemporarySendFailure } from './emailSenderService.js';
 import { outreachLog } from './logger.js';
+import { appendWhatsAppCta } from './whatsappCta.js';
 import { TERMINAL_NO_FOLLOW_UP } from './constants.js';
 import * as store from './outreachStore.js';
+
+/** Adds the WhatsApp chat link (see whatsappCta.js) when enabled and a number is configured. */
+function withWhatsAppLink(body, settings, business) {
+  return appendWhatsAppCta(body, {
+    number: settings.whatsappNumber,
+    business,
+    enabled: settings.whatsappLinkEnabled,
+  });
+}
 
 function appendUnsubscribeFooter(body, settings, token) {
   const base = (settings.publicBaseUrl || '').replace(/\/$/, '');
@@ -233,7 +243,7 @@ export async function approveAndQueue(recordId, { subject, body } = {}) {
     err.status = 400;
     throw err;
   }
-  finalBody = appendUnsubscribeFooter(finalBody, settings, token);
+  finalBody = appendUnsubscribeFooter(withWhatsAppLink(finalBody, settings, record.business), settings, token);
 
   const campaign = record.campaignId ? await store.getCampaign(record.campaignId).catch(() => null) : null;
   const testMode = settings.testMode || campaign?.testMode === true;
@@ -416,7 +426,11 @@ async function scheduleNextFollowUp(item, record, settings) {
     recipient: item.recipient,
     intendedRecipient: item.intendedRecipient,
     subject: followSubject,
-    body: appendUnsubscribeFooter(followBody, settings, (await store.getRecord(item.recordId)).unsubscribeToken),
+    body: appendUnsubscribeFooter(
+      withWhatsAppLink(followBody, settings, record.business),
+      settings,
+      (await store.getRecord(item.recordId)).unsubscribeToken,
+    ),
     kind: nextKind,
     scheduledAt: when,
     testMode: item.testMode,

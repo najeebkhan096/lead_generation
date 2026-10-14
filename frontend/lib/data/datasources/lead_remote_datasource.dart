@@ -674,6 +674,34 @@ class LeadRemoteDataSource {
     }
   }
 
+  List<TwilioTestLead> _repliedLeads(Map<String, dynamic> body) => ((body['leads'] as List<dynamic>?) ?? const [])
+      .map((e) => TwilioTestLead.fromJson(e as Map<String, dynamic>))
+      .toList();
+
+  /// Leads that answered an outreach email on WhatsApp.
+  Future<List<TwilioTestLead>> listWhatsAppReplies() async {
+    final response = await _withTwilioTestTimeout(_client.get(_uri(ApiConstants.twilioInbox)));
+    final body = _tryDecode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(_twilioTestError(response, body, 'Failed to load WhatsApp replies'));
+    }
+    return _repliedLeads(body);
+  }
+
+  /// Reads new inbound WhatsApp messages from Twilio (no webhook reaches the
+  /// backend), then returns the leads that replied.
+  Future<List<TwilioTestLead>> syncWhatsAppReplies() async {
+    final response = await _withTwilioTestTimeout(
+      _client.post(_uri(ApiConstants.twilioInboxSync)),
+      const Duration(seconds: 60),
+    );
+    final body = _tryDecode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(_twilioTestError(response, body, 'Failed to check WhatsApp replies'));
+    }
+    return _repliedLeads(body);
+  }
+
   // ---- chat with a Twilio test lead -------------------------------------------
 
   Future<Map<String, dynamic>> _twilioTestChatCall(

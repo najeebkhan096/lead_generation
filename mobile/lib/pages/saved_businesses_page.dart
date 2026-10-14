@@ -19,13 +19,29 @@ export '../widgets/lead_collection_page.dart' show StateBadge;
 /// Paged, not streamed: the collection is read a page at a time and the
 /// next page is fetched as you scroll (see [LeadCollectionPage]).
 ///
-/// Every salesman shares this one pool, and newest-first would put everyone
-/// onto the same businesses. So each salesman's reading starts at a point
-/// derived from their uid in the (uniformly spread) document-id order and
-/// wraps around — different salesmen work through different parts of the
-/// pool, without anyone downloading all of it to shuffle it.
+/// Two orders (the chips under the search box):
+///
+///  * **Newest** (default) — by the date the lead was found, grouped under
+///    "Today", "Yesterday", ... so fresh leads are obvious.
+///  * **My queue** — every salesman shares this one pool, and newest-first
+///    puts everyone onto the same businesses. So this order starts at a
+///    point derived from the salesman's uid in the (uniformly spread)
+///    document-id order and wraps around — different salesmen work through
+///    different parts of the pool, without downloading it all to shuffle it.
 class SavedBusinessesPage extends StatelessWidget {
   const SavedBusinessesPage({super.key});
+
+  static const _queue = 'queue';
+
+  /// Newest first by `createdAt` (when the scan found it — `updatedAt` also
+  /// moves on every re-scan and status change, so it can't mean "new").
+  static List<SegmentQuery> _newest() => [
+        (category) {
+          Query<Map<String, dynamic>> q = FirebaseFirestore.instance.collection('leads');
+          if (category != null) q = q.where('category', isEqualTo: category);
+          return q.orderBy('createdAt', descending: true);
+        },
+      ];
 
   static List<SegmentQuery> _segments(String? salesmanId) {
     Query<Map<String, dynamic>> base(String? category) {
@@ -55,8 +71,14 @@ class SavedBusinessesPage extends StatelessWidget {
       emptyTitle: 'No businesses saved yet',
       emptyBody: 'Run a search in the LeadFinder web console — businesses with a recent 1-star review land here.',
       emptySubtitle: 'New businesses will land here',
-      controllerFor: (_) => PagedQueryController<Lead>(
-        segments: _segments(salesmanId),
+      filters: const [
+        (label: 'Newest', value: null),
+        (label: 'My queue', value: _queue),
+      ],
+      dateOf: (lead) => lead.dateAdded,
+      groupWhen: (filter) => filter != _queue,
+      controllerFor: (filter) => PagedQueryController<Lead>(
+        segments: filter == _queue ? _segments(salesmanId) : _newest(),
         map: Lead.fromDoc,
         // Only leads nobody has started working ("New"). `status` is unset
         // on most documents, which Firestore can't filter for, so it's

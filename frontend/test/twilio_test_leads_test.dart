@@ -18,6 +18,21 @@ class _FakeRepository implements LeadRepository {
   final deleted = <String>[];
   bool createdNew = true;
   String? createError;
+  List<TwilioTestLead> replies = [];
+  List<TwilioTestLead> syncedReplies = [];
+  int syncs = 0;
+  String? syncError;
+
+  @override
+  Future<List<TwilioTestLead>> listWhatsAppReplies() async => List.of(replies);
+
+  @override
+  Future<List<TwilioTestLead>> syncWhatsAppReplies() async {
+    syncs++;
+    if (syncError != null) throw Exception(syncError);
+    replies = List.of(syncedReplies);
+    return replies;
+  }
 
   @override
   Future<List<TwilioTestLead>> listTwilioTestLeads() async => List.of(leads);
@@ -67,7 +82,7 @@ void _tall(WidgetTester tester) {
 
 Widget _app(_FakeRepository repo) => RepositoryProvider<LeadRepository>.value(
       value: repo,
-      child: const MaterialApp(home: TwilioTestLeadsPage()),
+      child: const MaterialApp(home: TwilioTestLeadsPage(replyPollInterval: null)),
     );
 
 void main() {
@@ -157,11 +172,11 @@ void _oldBackendTests() {
     final repo = LeadRepositoryImpl(LeadRemoteDataSource(client: client));
     await tester.pumpWidget(RepositoryProvider<LeadRepository>.value(
       value: repo,
-      child: const MaterialApp(home: TwilioTestLeadsPage()),
+      child: const MaterialApp(home: TwilioTestLeadsPage(replyPollInterval: null)),
     ));
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('restart it'), findsOneWidget);
+    expect(find.textContaining('restart it'), findsWidgets);
     expect(find.text('Test leads'), findsOneWidget); // no misleading "· 0"
 
     await tester.enterText(find.widgetWithText(TextFormField, 'Phone number'), '+971501234567');
@@ -170,6 +185,54 @@ void _oldBackendTests() {
 
     // Failed, but the button is usable again (not stuck on a spinner).
     expect(tester.widget<FilledButton>(find.byType(FilledButton)).enabled, isTrue);
-    expect(find.textContaining('restart it'), findsNWidgets(2));
+    expect(find.textContaining('restart it'), findsWidgets);
+  });
+
+  testWidgets('shows people who replied on WhatsApp, with unread count and preview', (tester) async {
+    _tall(tester);
+    final repo = _FakeRepository()
+      ..syncedReplies = const [
+        TwilioTestLead(
+          id: 'W1',
+          name: '+12089574765',
+          businessName: 'Acme Plumbing',
+          phoneNumber: '+12089574765',
+          ownerId: 'web-admin',
+          lastMessage: 'Yes, tell me more',
+          unreadCount: 2,
+        ),
+      ];
+    await tester.pumpWidget(_app(repo));
+    await tester.pumpAndSettle();
+
+    expect(repo.syncs, 1); // checked Twilio on open
+    expect(find.text('WhatsApp replies · 2 new'), findsOneWidget);
+    expect(find.text('Acme Plumbing'), findsOneWidget);
+    expect(find.text('Yes, tell me more'), findsOneWidget);
+  });
+
+  testWidgets('explains where replies come from when there are none, and Check now asks Twilio', (tester) async {
+    _tall(tester);
+    final repo = _FakeRepository();
+    await tester.pumpWidget(_app(repo));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Nobody has messaged your WhatsApp number yet'), findsOneWidget);
+    final before = repo.syncs;
+    await tester.tap(find.text('Check now'));
+    await tester.pumpAndSettle();
+    expect(repo.syncs, before + 1);
+  });
+
+  testWidgets('a problem checking replies does not hide the test leads', (tester) async {
+    _tall(tester);
+    final repo = _FakeRepository()
+      ..syncError = 'TWILIO_WHATSAPP_NUMBER is not configured on the server.'
+      ..leads.add(const TwilioTestLead(id: 'a', name: 'Ali', businessName: 'Cafe', phoneNumber: '+971501234567', ownerId: 'u1'));
+    await tester.pumpWidget(_app(repo));
+    await tester.pumpAndSettle();
+
+    expect(find.text('TWILIO_WHATSAPP_NUMBER is not configured on the server.'), findsOneWidget);
+    expect(find.text('Cafe'), findsOneWidget);
   });
 }

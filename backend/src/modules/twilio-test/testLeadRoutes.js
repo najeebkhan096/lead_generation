@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { HttpError } from '../twilio-chat/validation.js';
 import { chatService } from './chatService.js';
+import { inboxService } from './inboxService.js';
 import { createTestLead, deleteTestLead, listTestLeads } from './testLeadService.js';
 
 /**
@@ -25,6 +26,17 @@ router.post('/leads', wrap(async (req, res) => {
 router.delete('/leads/:leadId', wrap(async (req, res) => {
   await deleteTestLead(req.params.leadId);
   res.json({ deleted: true });
+}));
+
+// ---- people who replied on WhatsApp --------------------------------------------
+
+router.get('/inbox', wrap(async (_req, res) => {
+  res.json({ leads: await inboxService().list() });
+}));
+
+router.post('/inbox/sync', wrap(async (_req, res) => {
+  const result = await inboxService().sync();
+  res.json({ ...result, leads: await inboxService().list() });
 }));
 
 // ---- chat with a test lead ---------------------------------------------------

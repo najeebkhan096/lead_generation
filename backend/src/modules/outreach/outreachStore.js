@@ -155,6 +155,9 @@ export async function getSettings() {
     sendIntervalMs: Number(d.sendIntervalMs) || Number(process.env.OUTREACH_SEND_INTERVAL_MS) || 8000,
     publicBaseUrl: d.publicBaseUrl || process.env.OUTREACH_PUBLIC_BASE_URL || '',
     senderConfigured: Boolean(process.env.RESEND_API_KEY?.trim() || process.env.SMTP_HOST?.trim()),
+    // Emails carry a wa.me link to the Twilio WhatsApp number (on unless switched off).
+    whatsappLinkEnabled: d.whatsappLinkEnabled !== false,
+    whatsappNumber: process.env.TWILIO_WHATSAPP_NUMBER?.trim() || '',
   };
 }
 
@@ -168,6 +171,7 @@ export async function updateSettings(input = {}) {
   if (input.replyTo !== undefined) payload.replyTo = String(input.replyTo || '').trim();
   if (input.defaultDailyLimit !== undefined) payload.defaultDailyLimit = Math.max(1, Number(input.defaultDailyLimit) || DEFAULT_DAILY_LIMIT);
   if (input.sendIntervalMs !== undefined) payload.sendIntervalMs = Math.max(1000, Number(input.sendIntervalMs) || 8000);
+  if (input.whatsappLinkEnabled !== undefined) payload.whatsappLinkEnabled = Boolean(input.whatsappLinkEnabled);
   if (input.publicBaseUrl !== undefined) payload.publicBaseUrl = String(input.publicBaseUrl || '').trim();
   const ref = db.collection(COLLECTIONS.settings).doc(SETTINGS_DOC_ID);
   await ref.set(payload, { merge: true });

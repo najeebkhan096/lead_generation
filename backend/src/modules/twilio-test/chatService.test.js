@@ -9,6 +9,7 @@ function fakeDb(docs) {
   const store = new Map(Object.entries(docs));
   const docRef = (path) => ({
     get: async () => ({ exists: store.has(path), id: path.split('/').pop(), data: () => store.get(path) }),
+    update: async (patch) => { store.set(path, { ...store.get(path), ...patch }); },
     collection: (name) => collectionRef(`${path}/${name}`),
   });
   const collectionRef = (path) => ({
@@ -25,7 +26,7 @@ function fakeDb(docs) {
       }),
     }),
   });
-  return { collection: (name) => collectionRef(name) };
+  return { store, collection: (name) => collectionRef(name) };
 }
 
 const LEAD = { ownerId: 'uid1', phoneNumber: '+971501234567', isTest: true };
@@ -63,6 +64,16 @@ test('real leads and unknown ids are refused', async () => {
   await assert.rejects(svc.sendText('R1', { kind: 'sms', body: 'x' }), (e) => e.code === 'NOT_A_TEST_LEAD');
   await assert.rejects(svc.sync('R1'), (e) => e.code === 'NOT_A_TEST_LEAD');
   await assert.rejects(svc.getChat('nope'), (e) => e.code === 'LEAD_NOT_FOUND');
+});
+
+test('leads that replied on WhatsApp can be chatted with and are marked read when opened', async () => {
+  const db = fakeDb({
+    'outreachLeads/W1': { ownerId: 'uid1', phoneNumber: '+12089574765', repliedViaLink: true, unreadCount: 2 },
+    'outreachConversations/W1': { lastInboundAt: ts(Date.now() - 1000) },
+  });
+  const chat = await chatService({ db: () => db }).getChat('W1');
+  assert.ok(chat.windowClosesAt > Date.now());
+  assert.equal(db.store.get('outreachLeads/W1').unreadCount, 0);
 });
 
 test('sendText sends as the lead owner and rejects unknown kinds', async () => {

@@ -85,14 +85,6 @@ function newStateRecord(state, cities) {
     leadsCollected: 0,
     businessesProcessed: 0,
     firebaseLeadsSaved: 0,
-    // Of `firebaseLeadsSaved`, how many were confirmed on WhatsApp — a
-    // strict subset (only ever set when WhatsApp Web is connected), not a
-    // separate pool of leads.
-    waValidated: 0,
-    // How many of those saved leads were actually looked up against
-    // WhatsApp Web (valid or not). Distinguishes "0 on WhatsApp" from
-    // "never checked because WhatsApp Web wasn't connected."
-    waChecked: 0,
     // "No website found" is a completely separate signal from review
     // leads (see `captureWebsiteLeads`/`websiteLeadStore.js`) — tracked
     // here purely for the live scan-progress totals, not mixed into
@@ -103,27 +95,22 @@ function newStateRecord(state, cities) {
   };
 }
 
-/** Saves one just-found (and, if WhatsApp Web is connected, already WhatsApp-
- * checked) lead straight to Firestore — called the instant each business is
- * ready, before the scan moves on to the next one, so a lead is durable in
- * the live database right away instead of only living in the in-memory
- * Excel archive until the whole category finishes. Best-effort: a failure
- * here (e.g. Firestore not configured) is logged and swallowed so it never
- * stops or slows down the scrape itself. */
+/** Saves one just-found lead straight to Firestore — called the instant each
+ * business is ready, before the scan moves on to the next one, so a lead is
+ * durable in the live database right away instead of only living in the
+ * in-memory Excel archive until the whole category finishes. Best-effort: a
+ * failure here (e.g. Firestore not configured) is logged and swallowed so it
+ * never stops or slows down the scrape itself.
+ *
+ * Scanning never checks WhatsApp: a lead is saved with its `waLink` and no
+ * check result. WhatsApp validation only runs when the user starts it from
+ * the Leads page (or the WhatsApp connection page). */
 async function saveLeadLive(job, category, stateRec, city, lead) {
   const searchId = job.searchIds[category];
   try {
     await upsertLeadToFirebase(lead, { searchId, country: 'US' });
     job.firebaseLeadsSaved = (job.firebaseLeadsSaved || 0) + 1;
     stateRec.firebaseLeadsSaved = (stateRec.firebaseLeadsSaved || 0) + 1;
-    if (lead.whatsAppCheckedAt) {
-      job.waChecked = (job.waChecked || 0) + 1;
-      stateRec.waChecked = (stateRec.waChecked || 0) + 1;
-    }
-    if (lead.hasWhatsApp === true) {
-      job.waValidated = (job.waValidated || 0) + 1;
-      stateRec.waValidated += 1;
-    }
   } catch (err) {
     logActivity(
       job,
@@ -452,8 +439,6 @@ export async function startStateCityScan({
     // first time that category starts scanning (see `runJob`).
     searchIds: {},
     firebaseLeadsSaved: 0,
-    waValidated: 0,
-    waChecked: 0,
   };
 
   currentJob = thisJob;
@@ -572,8 +557,6 @@ export function getStateCityJobSnapshot() {
     const leadsCollected = states.reduce((sum, s) => sum + s.leadsCollected, 0);
     const businessesProcessed = states.reduce((sum, s) => sum + s.businessesProcessed, 0);
     const firebaseLeadsSaved = states.reduce((sum, s) => sum + (s.firebaseLeadsSaved || 0), 0);
-    const waValidated = states.reduce((sum, s) => sum + (s.waValidated || 0), 0);
-    const waChecked = states.reduce((sum, s) => sum + (s.waChecked || 0), 0);
     const websiteLeadsFound = states.reduce((sum, s) => sum + (s.websiteLeadsFound || 0), 0);
 
     return {
@@ -589,9 +572,6 @@ export function getStateCityJobSnapshot() {
       // see `saveLeadLive`. Distinct from `leadsCollected`, which counts
       // leads in the in-memory Excel archive regardless of Firestore.
       firebaseLeadsSaved,
-      // Of `firebaseLeadsSaved`, how many were confirmed on WhatsApp.
-      waValidated,
-      waChecked,
       // Separate lead type entirely (no website found) — never counted
       // in `leadsCollected`/`firebaseLeadsSaved`, which are review leads.
       websiteLeadsFound,
@@ -607,8 +587,6 @@ export function getStateCityJobSnapshot() {
         leadsCollected: s.leadsCollected,
         businessesProcessed: s.businessesProcessed,
         firebaseLeadsSaved: s.firebaseLeadsSaved || 0,
-        waValidated: s.waValidated || 0,
-        waChecked: s.waChecked || 0,
         websiteLeadsFound: s.websiteLeadsFound || 0,
         startedAt: s.startedAt,
         finishedAt: s.finishedAt,
@@ -622,8 +600,6 @@ export function getStateCityJobSnapshot() {
     concurrency: job.concurrency,
     currentCategory: job.currentCategory,
     firebaseLeadsSaved: job.firebaseLeadsSaved || 0,
-    waValidated: job.waValidated || 0,
-    waChecked: job.waChecked || 0,
     websiteLeadsFound: categories.reduce((sum, c) => sum + (c.websiteLeadsFound || 0), 0),
     startedAt: job.startedAt,
     finishedAt: job.finishedAt,

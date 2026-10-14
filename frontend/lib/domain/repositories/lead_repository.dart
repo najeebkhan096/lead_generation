@@ -344,6 +344,11 @@ abstract class LeadRepository {
   });
   Future<void> deleteTwilioTestLead(String id);
 
+  /// People who messaged the WhatsApp number after an outreach email,
+  /// most recent first. [syncWhatsAppReplies] first pulls new ones from Twilio.
+  Future<List<TwilioTestLead>> listWhatsAppReplies();
+  Future<List<TwilioTestLead>> syncWhatsAppReplies();
+
   // Conversation with a test lead.
   Future<TwilioTestChat> getTwilioTestChat(String leadId);
   Future<TwilioTestMessage> sendTwilioTestText(String leadId, {required String body, required bool sms});
@@ -367,6 +372,7 @@ abstract class LeadRepository {
     String? senderName,
     String? senderEmail,
     int? defaultDailyLimit,
+    bool? whatsappLinkEnabled,
   });
   Future<List<OutreachRecord>> listOutreachRecords({
     bool readyForReview = false,

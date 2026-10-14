@@ -78,6 +78,8 @@ class VerifiedLeadsPage extends StatelessWidget {
         ],
         map: (doc) => _Row(Lead.fromDoc(doc), doc.data()['sourceType'] as String?),
       ),
+      // Listed by `updatedAt` (when it was verified / last re-checked).
+      dateOf: (row) => row.lead.updatedAt ?? row.lead.createdAt,
       searchText: (r) =>
           '${r.lead.business} ${r.lead.location} ${r.lead.phone ?? ''} ${r.lead.email ?? ''} ${r.lead.category}'
               .toLowerCase(),
