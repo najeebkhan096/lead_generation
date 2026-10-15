@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
-/// Left-aligned page header used by the four tab screens: a Caprasimo
-/// title with a supporting line, and an optional tinted badge on the right.
+import '../theme/app_theme.dart';
+
+/// Left-aligned page header used by the tab screens: a bold title with a
+/// supporting line, and an optional tinted badge on the right.
 class PageHeader extends StatelessWidget {
   const PageHeader({
     super.key,
@@ -16,17 +18,18 @@ class PageHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 20, 24, 18),
+      padding: const EdgeInsets.fromLTRB(20, 14, 20, 12),
       child: Row(
         children: [
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: Theme.of(context).textTheme.displaySmall),
-                const SizedBox(height: 6),
-                Text(subtitle, style: Theme.of(context).textTheme.bodyMedium),
+                Text(title, style: text.headlineMedium, maxLines: 1, overflow: TextOverflow.ellipsis),
+                const SizedBox(height: 4),
+                Text(subtitle, style: text.bodyMedium, maxLines: 1, overflow: TextOverflow.ellipsis),
               ],
             ),
           ),
@@ -40,7 +43,7 @@ class PageHeader extends StatelessWidget {
   }
 }
 
-/// Round tinted icon badge for [PageHeader.trailing].
+/// Tinted rounded-square icon badge for [PageHeader.trailing].
 class HeaderBadge extends StatelessWidget {
   const HeaderBadge({
     super.key,
@@ -56,10 +59,13 @@ class HeaderBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 52,
-      height: 52,
-      decoration: BoxDecoration(color: background, shape: BoxShape.circle),
-      child: Icon(icon, size: 22, color: foreground),
+      width: 44,
+      height: 44,
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(AppTheme.radius),
+      ),
+      child: Icon(icon, size: 21, color: foreground),
     );
   }
 }

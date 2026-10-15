@@ -1,219 +1,158 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
 import '../models/lead.dart';
-import '../services/lead_repository.dart';
-import '../services/open_links.dart';
 import '../services/paged_query.dart';
+import '../services/verified_lead_repository.dart';
 import '../theme/app_theme.dart';
+import '../utils/outreach_email.dart';
 import '../widgets/lead_collection_page.dart';
+import '../widgets/verified_lead_card.dart';
 
 /// Which validation a verified-leads list is the output of.
 enum VerifiedKind {
-  whatsapp(
-    collection: 'whatsappLeads',
-    title: 'WhatsApp',
-    emptyHint: 'Businesses with a confirmed WhatsApp number will land here',
-  ),
-  email(
-    collection: 'emailLeads',
-    title: 'Email',
-    emptyHint: 'Businesses with a verified contact email will land here',
-  );
+  whatsapp(collection: 'whatsappLeads', title: 'WhatsApp'),
+  email(collection: 'emailLeads', title: 'Email');
 
-  const VerifiedKind({required this.collection, required this.title, required this.emptyHint});
+  const VerifiedKind({required this.collection, required this.title});
 
   /// Firestore collection the web console's validators write to.
   final String collection;
   final String title;
-  final String emptyHint;
 }
 
-class _Row {
-  const _Row(this.lead, this.sourceType);
+/// How a signal is stored on the verified documents (`sourceType`) and named
+/// on screen.
+extension LeadSignalLabels on LeadSignal {
+  String get sourceType => this == LeadSignal.review ? 'review' : 'website';
 
-  final Lead lead;
-
-  /// `review` (1-star) or `website` (no website) — which signal the lead
-  /// was found by. Absent on documents written before the field existed.
-  final String? sourceType;
+  String get title => this == LeadSignal.review ? '1-star reviews' : 'No website';
 }
 
-/// A verified lead list — the output of one of the two validators.
+/// The verified leads of one channel (WhatsApp or Email) for one signal
+/// (1-star review or no website) — e.g. "WhatsApp · 1-star reviews".
 ///
-/// Reads the dedicated collection straight from Firestore, a page at a time
-/// (see [LeadCollectionPage]), so a lead the web console validates shows up
-/// here after a pull-to-refresh, without any archive step.
-class VerifiedLeadsPage extends StatelessWidget {
-  const VerifiedLeadsPage({super.key, required this.kind});
+/// Two lists behind a small switch, **New** (not yet contacted) and
+/// **Contacted**. Both are live listeners (see [PagedQueryController]): a lead
+/// validated in the web console, or marked contacted here or on another
+/// phone, appears in the right list on its own.
+///
+/// Contacting a New lead (WhatsApp / Email / Call) marks it Contacted;
+/// "Move to New" puts it back.
+class VerifiedLeadsPage extends StatefulWidget {
+  const VerifiedLeadsPage({
+    super.key,
+    required this.kind,
+    required this.signal,
+    this.repository,
+    this.collectionQuery,
+    this.actions = const LeadActions(),
+  });
 
   final VerifiedKind kind;
+  final LeadSignal signal;
 
-  bool get _isWhatsApp => kind == VerifiedKind.whatsapp;
+  /// For tests; defaults to the Firestore-backed one.
+  final VerifiedLeadRepository? repository;
+
+  /// For tests: the query for a collection (default: Firestore's).
+  final Query<Map<String, dynamic>> Function(String collection)? collectionQuery;
+
+  /// For tests: how WhatsApp / email / dialer are opened.
+  final LeadActions actions;
+
+  @override
+  State<VerifiedLeadsPage> createState() => _VerifiedLeadsPageState();
+}
+
+class _VerifiedLeadsPageState extends State<VerifiedLeadsPage> {
+  late final VerifiedLeadRepository _repo = widget.repository ?? VerifiedLeadRepository();
+
+  static const _contacted = 'contacted';
+
+  bool get _isWhatsApp => widget.kind == VerifiedKind.whatsapp;
+
+  /// Writes the status; the lists follow through their listeners. The
+  /// snackbar shows at once — the local write already moved the lead, and a
+  /// rejected write moves it back and says why.
+  Future<void> _setContacted(VerifiedLead item, {required bool contacted, bool fromUndo = false}) async {
+    final messenger = ScaffoldMessenger.of(context);
+    unawaited(_repo.setContacted(widget.kind.collection, item.lead.id, contacted: contacted).catchError((Object _) {
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(const SnackBar(content: Text('Could not update the lead. Check your connection.')));
+    }));
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        content: Text(contacted ? 'Moved to Contacted' : 'Moved back to New'),
+        action: fromUndo
+            ? null
+            : SnackBarAction(
+                label: 'Undo',
+                onPressed: () => _setContacted(item, contacted: !contacted, fromUndo: true),
+              ),
+      ));
+  }
 
   @override
   Widget build(BuildContext context) {
-    return LeadCollectionPage<_Row>(
-      title: '${kind.title} leads',
+    final kind = widget.kind;
+    final signal = widget.signal;
+    final icon = _isWhatsApp ? AppIcons.chat : AppIcons.mail;
+    final channel = kind.title;
+    return LeadCollectionPage<VerifiedLead>(
+      title: '$channel · ${signal.title}',
       noun: 'business',
-      headerIcon: _isWhatsApp ? AppIcons.chat : AppIcons.mail,
-      searchHint: 'Search ${kind.title.toLowerCase()} leads...',
-      emptyIcon: _isWhatsApp ? AppIcons.chat : AppIcons.mail,
-      emptyTitle: 'No ${kind.title} leads yet',
-      emptyBody: 'Validate leads from the web console and they appear here.',
-      emptySubtitle: kind.emptyHint,
+      headerIcon: icon,
+      searchHint: 'Search ${channel.toLowerCase()} leads...',
+      emptyIcon: icon,
+      emptyTitle: 'No $channel leads here yet',
+      emptyBody: 'Leads you validate in the web console appear here, and move to Contacted once you reach out.',
+      emptySubtitle: 'Validated leads will land here',
       filters: const [
-        (label: 'All signals', value: null),
-        (label: '1-star', value: 'review'),
-        (label: 'No website', value: 'website'),
+        (label: 'New', value: null),
+        (label: 'Contacted', value: _contacted),
       ],
-      controllerFor: (sourceType) => PagedQueryController<_Row>(
-        segments: [
-          (category) {
-            Query<Map<String, dynamic>> q = FirebaseFirestore.instance.collection(kind.collection);
-            if (sourceType != null) q = q.where('sourceType', isEqualTo: sourceType);
-            if (category != null) q = q.where('category', isEqualTo: category);
-            return q.orderBy('updatedAt', descending: true);
-          },
-        ],
-        map: (doc) => _Row(Lead.fromDoc(doc), doc.data()['sourceType'] as String?),
-      ),
-      // Listed by `updatedAt` (when it was verified / last re-checked).
-      dateOf: (row) => row.lead.updatedAt ?? row.lead.createdAt,
+      controllerFor: (status) {
+        final contactedList = status == _contacted;
+        return PagedQueryController<VerifiedLead>(
+          segments: [
+            (category) {
+              Query<Map<String, dynamic>> q =
+                  (widget.collectionQuery ?? FirebaseFirestore.instance.collection)(kind.collection)
+                      .where('sourceType', isEqualTo: signal.sourceType);
+              if (category != null) q = q.where('category', isEqualTo: category);
+              // Contacted: ordering by `contactedAt` also leaves out every
+              // lead that has none, so this list is exactly the contacted
+              // ones, most recently contacted first. New: by verified date,
+              // with contacted leads dropped (`status` can be unset, which
+              // Firestore cannot filter for).
+              return contactedList ? q.orderBy('contactedAt', descending: true) : q.orderBy('updatedAt', descending: true);
+            },
+          ],
+          map: (doc) => VerifiedLead.fromData(
+            Lead.fromDoc(doc),
+            doc.data(),
+            _isWhatsApp ? VerifiedChannel.whatsapp : VerifiedChannel.email,
+          ),
+          include: contactedList ? null : (row) => !row.isContacted,
+        );
+      },
+      // Grouped by the date each list is ordered by.
+      dateOf: (row) => row.isContacted ? (row.contactedAt ?? row.shownDate) : row.shownDate,
       searchText: (r) =>
           '${r.lead.business} ${r.lead.location} ${r.lead.phone ?? ''} ${r.lead.email ?? ''} ${r.lead.category}'
               .toLowerCase(),
       categoryOf: (r) => r.lead.category,
-      loadCategories: LeadRepository().fetchCategoryNames,
-      itemBuilder: (context, row) => _VerifiedCard(row: row, kind: kind),
-    );
-  }
-}
-
-class _VerifiedCard extends StatelessWidget {
-  const _VerifiedCard({required this.row, required this.kind});
-
-  final _Row row;
-  final VerifiedKind kind;
-
-  String? get _waUrl {
-    final l = row.lead;
-    if (l.waLink != null && l.waLink!.isNotEmpty) return l.waLink;
-    final digits = (l.phone ?? '').replaceAll(RegExp(r'\D'), '');
-    return digits.isEmpty ? null : 'https://wa.me/$digits';
-  }
-
-  Future<void> _act(BuildContext context, Future<bool> Function() action, String failure) async {
-    final ok = await action();
-    if (!ok && context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(failure)));
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final t = context.tokens;
-    final l = row.lead;
-    final isWhatsApp = kind == VerifiedKind.whatsapp;
-    final contact = isWhatsApp ? l.phone : l.email;
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: t.surface,
-        borderRadius: const BorderRadius.all(Radius.circular(AppTheme.radiusCard)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  l.business,
-                  style: Theme.of(context).textTheme.titleMedium,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              if (row.sourceType != null)
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: t.accentTint,
-                    borderRadius: const BorderRadius.all(Radius.circular(AppTheme.radiusPill)),
-                  ),
-                  child: Text(
-                    row.sourceType == 'review' ? '1-star' : 'No website',
-                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: t.accentTextStrong),
-                  ),
-                ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Text(l.category, style: Theme.of(context).textTheme.bodySmall, maxLines: 1, overflow: TextOverflow.ellipsis),
-          const SizedBox(height: 10),
-          if (contact != null && contact.isNotEmpty)
-            Row(
-              children: [
-                Icon(isWhatsApp ? AppIcons.chat : AppIcons.mail, size: 15, color: t.subtle),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    contact,
-                    style: const TextStyle(fontWeight: FontWeight.w700),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-            ),
-          if (l.address != null && l.address!.isNotEmpty) ...[
-            const SizedBox(height: 6),
-            Row(
-              children: [
-                Icon(AppIcons.mapPin, size: 15, color: t.subtle),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(l.address!, style: Theme.of(context).textTheme.bodySmall, maxLines: 2,
-                      overflow: TextOverflow.ellipsis),
-                ),
-              ],
-            ),
-          ],
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              if (isWhatsApp)
-                FilledButton.icon(
-                  onPressed: () => _act(context, () => openWhatsApp(_waUrl), 'Could not open WhatsApp'),
-                  icon: const Icon(AppIcons.chat, size: 16),
-                  label: const Text('WhatsApp'),
-                )
-              else
-                FilledButton.icon(
-                  onPressed: () => _act(context, () => openEmail(l.email), 'Could not open your email app'),
-                  icon: const Icon(AppIcons.mail, size: 16),
-                  label: const Text('Email'),
-                ),
-              if (l.phone != null && l.phone!.isNotEmpty)
-                OutlinedButton.icon(
-                  onPressed: () => _act(context, () => openPhone(l.phone), 'Could not open the dialer'),
-                  icon: const Icon(AppIcons.phone, size: 16),
-                  label: const Text('Call'),
-                ),
-              if (l.mapsUrl != null && l.mapsUrl!.isNotEmpty)
-                OutlinedButton.icon(
-                  onPressed: () => _act(context, () => openGoogleMaps(l.mapsUrl), 'Could not open Maps'),
-                  icon: const Icon(AppIcons.mapPin, size: 16),
-                  label: const Text('Maps'),
-                ),
-            ],
-          ),
-        ],
+      itemBuilder: (context, row) => VerifiedLeadCard(
+        key: ValueKey(row.lead.id),
+        item: row,
+        actions: widget.actions,
+        onContacted: row.isContacted ? null : () => _setContacted(row, contacted: true),
+        onMoveToNew: row.isContacted ? () => _setContacted(row, contacted: false) : null,
       ),
     );
   }

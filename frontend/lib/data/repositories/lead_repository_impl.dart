@@ -288,6 +288,10 @@ class LeadRepositoryImpl implements LeadRepository {
       _remote.setUserApproved(id, approved: approved);
 
   @override
+  Future<SalesUser> setUserRole(String id, {required String role}) =>
+      _remote.setUserRole(id, role: role);
+
+  @override
   Future<List<WatchlistScanResult>> scanWatchlist({String dateRange = '30'}) =>
       _remote.scanWatchlist(dateRange: dateRange);
 

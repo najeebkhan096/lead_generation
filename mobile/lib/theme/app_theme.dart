@@ -2,111 +2,123 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
-/// Warm, rounded "organic" design language.
+/// "Clean modern" design language: cool white surfaces on a soft slate
+/// ground, one indigo accent, an emerald for success, hairline borders
+/// instead of shadows, Inter throughout.
 ///
-/// All colors come from three OKLCH tonal ramps (neutral, accent, sage)
-/// generated on a shared lightness scale. Never introduce ad-hoc hexes or
-/// greys: neutrals stay warm in both light and dark mode.
-///
-/// Widgets never read ramp steps directly — they read semantic slots from
-/// [AppTokens] via `context.tokens`, which resolves per brightness.
+/// Colors come from three ramps (slate, indigo, emerald). Widgets never read
+/// ramp steps directly — they read semantic slots from [AppTokens] via
+/// `context.tokens`, which resolves per brightness. The slot names
+/// (`neutral*`, `accent*`, `sage*`) are historical: `sage*` is the success /
+/// positive color, now emerald.
 class AppTheme {
   AppTheme._();
 
-  // ── Neutral ramp (warm, OKLCH h≈80) ───────────────────────────
-  static const Color neutral100 = Color(0xFFF2ECE1);
-  static const Color neutral200 = Color(0xFFE3DBCF);
-  static const Color neutral300 = Color(0xFFCEC6B9);
-  static const Color neutral400 = Color(0xFFACA396);
-  static const Color neutral500 = Color(0xFF8C8375);
-  static const Color neutral600 = Color(0xFF776F62);
-  static const Color neutral700 = Color(0xFF5F584D);
-  static const Color neutral800 = Color(0xFF464038);
-  static const Color neutral900 = Color(0xFF2D2A24);
+  // ── Neutral ramp: slate ───────────────────────────────────────
+  static const Color neutral100 = Color(0xFFF1F5F9);
+  static const Color neutral200 = Color(0xFFE2E8F0);
+  static const Color neutral300 = Color(0xFFCBD5E1);
+  static const Color neutral400 = Color(0xFF94A3B8);
+  static const Color neutral500 = Color(0xFF64748B);
+  static const Color neutral600 = Color(0xFF475569);
+  static const Color neutral700 = Color(0xFF334155);
+  static const Color neutral800 = Color(0xFF1E293B);
+  static const Color neutral900 = Color(0xFF0F172A);
 
-  // ── Accent ramp: terracotta (OKLCH h≈52) ──────────────────────
-  static const Color accent100 = Color(0xFFFDE8DC);
-  static const Color accent200 = Color(0xFFFBD3BC);
-  static const Color accent300 = Color(0xFFF2B998);
-  static const Color accent400 = Color(0xFFDB9063);
-  static const Color accent500 = Color(0xFFC67139);
-  static const Color accent600 = Color(0xFFA9561A);
-  static const Color accent700 = Color(0xFF8C4101);
-  static const Color accent800 = Color(0xFF682F00);
-  static const Color accent900 = Color(0xFF451D00);
+  // ── Accent ramp: indigo ───────────────────────────────────────
+  static const Color accent100 = Color(0xFFE0E7FF);
+  static const Color accent200 = Color(0xFFC7D2FE);
+  static const Color accent300 = Color(0xFFA5B4FC);
+  static const Color accent400 = Color(0xFF818CF8);
+  static const Color accent500 = Color(0xFF6366F1);
+  static const Color accent600 = Color(0xFF4F46E5);
+  static const Color accent700 = Color(0xFF4338CA);
+  static const Color accent800 = Color(0xFF3730A3);
+  static const Color accent900 = Color(0xFF312E81);
 
-  // ── Accent-2 ramp: sage (OKLCH h≈125) ─────────────────────────
-  static const Color sage100 = Color(0xFFEAEFE4);
-  static const Color sage200 = Color(0xFFD8E0CC);
-  static const Color sage300 = Color(0xFFC1CCB0);
-  static const Color sage400 = Color(0xFF9DAB85);
-  static const Color sage500 = Color(0xFF7A8A5E);
-  static const Color sage600 = Color(0xFF68774C);
-  static const Color sage700 = Color(0xFF526038);
-  static const Color sage800 = Color(0xFF3A4624);
-  static const Color sage900 = Color(0xFF252E13);
+  // ── Success ramp: emerald (kept under the historical "sage" name) ─
+  static const Color sage100 = Color(0xFFD1FAE5);
+  static const Color sage200 = Color(0xFFA7F3D0);
+  static const Color sage300 = Color(0xFF6EE7B7);
+  static const Color sage400 = Color(0xFF34D399);
+  static const Color sage500 = Color(0xFF10B981);
+  static const Color sage600 = Color(0xFF059669);
+  static const Color sage700 = Color(0xFF047857);
+  static const Color sage800 = Color(0xFF065F46);
+  static const Color sage900 = Color(0xFF064E3B);
 
   // ── Light anchors ─────────────────────────────────────────────
-  static const Color _cream = Color(0xFFF5EAD8); // brand ground
-  static const Color _ink = Color(0xFF201E1D); // brand text
-  static const Color _creamRaised = Color(0xFFFBF6EE); // oklch(.975 .012 80)
+  static const Color _ground = Color(0xFFF6F7FB); // page background
+  static const Color _surface = Color(0xFFFFFFFF); // cards, sheets
+  static const Color _ink = Color(0xFF0F172A); // primary text
+  static const Color _error = Color(0xFFDC2626);
 
-  // ── Dark anchors (same warm hue, deep lightness) ──────────────
-  static const Color _groundDark = Color(0xFF1A1711); // oklch(.205 .012 80)
-  static const Color _surfaceDark = Color(0xFF26221B); // oklch(.255 .014 80)
-  static const Color _tintDark = Color(0xFF363129); // oklch(.315 .016 80)
+  // ── Dark anchors (deep navy, same cool hue) ───────────────────
+  static const Color _groundDark = Color(0xFF0B1020);
+  static const Color _surfaceDark = Color(0xFF131A2E);
+  static const Color _tintDark = Color(0xFF1B2440);
+  static const Color _borderDark = Color(0xFF263052);
+  static const Color _inkDark = Color(0xFFE8ECF8);
+  static const Color _errorDark = Color(0xFFF87171);
 
   // ── Shape ─────────────────────────────────────────────────────
-  static const double radius = 16;
-  static const double radiusCard = 24;
+  /// Controls (buttons, inputs, chips, small blocks).
+  static const double radius = 12;
+
+  /// Cards and sheets.
+  static const double radiusCard = 16;
+
+  /// Badges and segmented pills.
   static const double radiusPill = 999;
 
   static const AppTokens lightTokens = AppTokens(
-    ground: _cream,
-    surface: _creamRaised,
+    ground: _ground,
+    surface: _surface,
     ink: _ink,
-    subtle: neutral700,
-    faint: neutral500,
+    subtle: neutral600,
+    // Slate-500 darkened a step so hints and timestamps clear 4.5:1 on the
+    // ground and on tinted fills (theme_test checks every pair).
+    faint: Color(0xFF5E6E86),
     neutralTint: neutral100,
     neutralTintStrong: neutral200,
-    border: neutral300,
-    accent: accent500,
-    accentDeep: accent600,
+    border: neutral200,
+    accent: accent600,
+    accentDeep: accent700,
     accentText: accent700,
     accentTextStrong: accent800,
-    accentTint: accent100,
-    sage: sage500,
-    sageDeep: sage600,
+    accentTint: Color(0xFFEEF2FF),
+    sage: sage600,
+    sageDeep: sage700,
     sageText: sage700,
     sageTextStrong: sage800,
-    sageTint: sage100,
-    sageTintStrong: sage200,
-    onFill: _creamRaised,
-    danger: accent700,
+    sageTint: Color(0xFFECFDF5),
+    sageTintStrong: sage100,
+    onFill: Colors.white,
+    danger: _error,
   );
 
   static const AppTokens darkTokens = AppTokens(
     ground: _groundDark,
     surface: _surfaceDark,
-    ink: _cream,
-    subtle: neutral300,
-    faint: neutral400,
+    ink: _inkDark,
+    subtle: Color(0xFFA9B4CE),
+    faint: Color(0xFF8A97B5),
     neutralTint: _tintDark,
-    neutralTintStrong: neutral800,
-    border: neutral600,
+    neutralTintStrong: Color(0xFF232C4C),
+    border: _borderDark,
     accent: accent400,
     accentDeep: accent300,
     accentText: accent300,
     accentTextStrong: accent200,
-    accentTint: accent900,
+    accentTint: Color(0xFF1E2352),
     sage: sage400,
     sageDeep: sage300,
     sageText: sage300,
     sageTextStrong: sage200,
-    sageTint: sage900,
-    sageTintStrong: sage800,
+    sageTint: Color(0xFF0F2A22),
+    sageTintStrong: Color(0xFF14382D),
     onFill: _groundDark,
-    danger: accent300,
+    danger: _errorDark,
   );
 
   static ThemeData light() => _theme(Brightness.light, lightTokens);
@@ -133,10 +145,10 @@ class AppTheme {
         outlineVariant: t.neutralTintStrong,
         error: t.danger,
         onError: t.onFill,
-        errorContainer: t.accentTint,
-        onErrorContainer: t.accentTextStrong,
-        inverseSurface: isLight ? neutral900 : _cream,
-        onInverseSurface: isLight ? _cream : _ink,
+        errorContainer: isLight ? const Color(0xFFFEF2F2) : const Color(0xFF3B1620),
+        onErrorContainer: t.danger,
+        inverseSurface: isLight ? neutral900 : _inkDark,
+        onInverseSurface: isLight ? Colors.white : _groundDark,
         shadow: Colors.black,
         scrim: Colors.black,
         inversePrimary: isLight ? accent300 : accent700,
@@ -145,181 +157,175 @@ class AppTheme {
       extensions: [t],
     );
 
-    final body = GoogleFonts.figtreeTextTheme(base.textTheme);
-    TextStyle display(double size) => GoogleFonts.caprasimo(
+    final body = GoogleFonts.interTextTheme(base.textTheme);
+    TextStyle heading(double size, {FontWeight weight = FontWeight.w700}) => GoogleFonts.inter(
           fontSize: size,
-          fontWeight: FontWeight.w400,
+          fontWeight: weight,
           color: t.ink,
-          height: 1.15,
+          height: 1.2,
+          letterSpacing: -0.4,
+        );
+    TextStyle text(double size, Color color, {FontWeight weight = FontWeight.w400, double height = 1.4}) =>
+        GoogleFonts.inter(fontSize: size, fontWeight: weight, color: color, height: height);
+
+    final controlShape = RoundedRectangleBorder(borderRadius: BorderRadius.circular(radius));
+    OutlineInputBorder inputBorder(Color color, [double width = 1]) => OutlineInputBorder(
+          borderRadius: BorderRadius.circular(radius),
+          borderSide: BorderSide(color: color, width: width),
         );
 
     return base.copyWith(
       scaffoldBackgroundColor: t.ground,
       splashColor: t.accent.withValues(alpha: 0.08),
-      highlightColor: t.accent.withValues(alpha: 0.06),
-      focusColor: t.accent.withValues(alpha: 0.16),
-      disabledColor: t.ink.withValues(alpha: 0.45),
-      dividerColor: t.neutralTintStrong,
+      highlightColor: t.accent.withValues(alpha: 0.05),
+      focusColor: t.accent.withValues(alpha: 0.14),
+      disabledColor: t.ink.withValues(alpha: 0.4),
+      dividerColor: t.border,
+      dividerTheme: DividerThemeData(color: t.border, thickness: 1, space: 1),
       textTheme: body.copyWith(
-        displayLarge: display(40),
-        displayMedium: display(34),
-        displaySmall: display(28),
-        headlineMedium: display(24),
-        headlineSmall: display(21),
-        titleLarge: GoogleFonts.figtree(
-            fontSize: 20, fontWeight: FontWeight.w700, color: t.ink),
-        titleMedium: GoogleFonts.figtree(
-            fontSize: 17, fontWeight: FontWeight.w700, color: t.ink),
-        titleSmall: GoogleFonts.figtree(
-            fontSize: 14, fontWeight: FontWeight.w600, color: t.ink),
-        bodyLarge:
-            GoogleFonts.figtree(fontSize: 16, color: t.subtle, height: 1.45),
-        bodyMedium:
-            GoogleFonts.figtree(fontSize: 14, color: t.subtle, height: 1.4),
-        bodySmall:
-            GoogleFonts.figtree(fontSize: 12, color: t.faint, height: 1.35),
-        labelLarge: GoogleFonts.figtree(
-            fontSize: 15, fontWeight: FontWeight.w700, letterSpacing: 0.2),
+        displayLarge: heading(36, weight: FontWeight.w800),
+        displayMedium: heading(30, weight: FontWeight.w800),
+        displaySmall: heading(26, weight: FontWeight.w800),
+        headlineMedium: heading(22),
+        headlineSmall: heading(19),
+        titleLarge: text(18, t.ink, weight: FontWeight.w700, height: 1.25),
+        titleMedium: text(16, t.ink, weight: FontWeight.w700, height: 1.3),
+        titleSmall: text(14, t.ink, weight: FontWeight.w600),
+        bodyLarge: text(16, t.subtle, height: 1.5),
+        bodyMedium: text(14, t.subtle, height: 1.45),
+        bodySmall: text(12.5, t.faint, height: 1.4),
+        labelLarge: text(15, t.ink, weight: FontWeight.w600),
       ),
       iconTheme: IconThemeData(color: t.ink, size: 22),
       appBarTheme: AppBarTheme(
         backgroundColor: t.ground,
         surfaceTintColor: Colors.transparent,
+        scrolledUnderElevation: 0,
         elevation: 0,
         centerTitle: false,
-        titleTextStyle: display(24),
+        titleTextStyle: heading(20),
         iconTheme: IconThemeData(color: t.ink, size: 22),
+      ),
+      cardTheme: CardThemeData(
+        color: t.surface,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        margin: EdgeInsets.zero,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(radiusCard),
+          side: BorderSide(color: t.border),
+        ),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ButtonStyle(
           backgroundColor: WidgetStateProperty.resolveWith((states) {
-            if (states.contains(WidgetState.disabled)) {
-              return t.accent.withValues(alpha: 0.45);
-            }
+            if (states.contains(WidgetState.disabled)) return t.accent.withValues(alpha: 0.4);
             if (states.contains(WidgetState.pressed)) return t.accentDeep;
             return t.accent;
           }),
           foregroundColor: WidgetStatePropertyAll(t.onFill),
           overlayColor: WidgetStatePropertyAll(t.onFill.withValues(alpha: 0.08)),
           elevation: const WidgetStatePropertyAll(0),
-          minimumSize: const WidgetStatePropertyAll(Size(64, 54)),
-          padding: const WidgetStatePropertyAll(
-              EdgeInsets.symmetric(horizontal: 28, vertical: 16)),
-          shape: const WidgetStatePropertyAll(StadiumBorder()),
-          textStyle: WidgetStatePropertyAll(
-              GoogleFonts.figtree(fontSize: 16, fontWeight: FontWeight.w700)),
-          side: WidgetStateProperty.resolveWith((states) =>
-              states.contains(WidgetState.focused)
-                  ? BorderSide(color: t.accentText, width: 2)
-                  : BorderSide.none),
+          minimumSize: const WidgetStatePropertyAll(Size(64, 50)),
+          padding: const WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 22, vertical: 14)),
+          shape: WidgetStatePropertyAll(controlShape),
+          textStyle: WidgetStatePropertyAll(text(15, t.onFill, weight: FontWeight.w600)),
+        ),
+      ),
+      filledButtonTheme: FilledButtonThemeData(
+        style: ButtonStyle(
+          backgroundColor: WidgetStateProperty.resolveWith((states) {
+            if (states.contains(WidgetState.disabled)) return t.accent.withValues(alpha: 0.4);
+            if (states.contains(WidgetState.pressed)) return t.accentDeep;
+            return t.accent;
+          }),
+          foregroundColor: WidgetStatePropertyAll(t.onFill),
+          overlayColor: WidgetStatePropertyAll(t.onFill.withValues(alpha: 0.08)),
+          elevation: const WidgetStatePropertyAll(0),
+          minimumSize: const WidgetStatePropertyAll(Size(48, 46)),
+          padding: const WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 18, vertical: 12)),
+          shape: WidgetStatePropertyAll(controlShape),
+          textStyle: WidgetStatePropertyAll(text(14.5, t.onFill, weight: FontWeight.w600)),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: ButtonStyle(
           foregroundColor: WidgetStateProperty.resolveWith((states) =>
-              states.contains(WidgetState.disabled)
-                  ? t.ink.withValues(alpha: 0.45)
-                  : t.ink),
+              states.contains(WidgetState.disabled) ? t.ink.withValues(alpha: 0.4) : t.ink),
           backgroundColor: WidgetStateProperty.resolveWith((states) =>
-              states.contains(WidgetState.pressed)
-                  ? t.neutralTint
-                  : Colors.transparent),
-          overlayColor:
-              WidgetStatePropertyAll(t.accent.withValues(alpha: 0.06)),
-          minimumSize: const WidgetStatePropertyAll(Size(64, 50)),
-          padding: const WidgetStatePropertyAll(
-              EdgeInsets.symmetric(horizontal: 24, vertical: 14)),
-          shape: const WidgetStatePropertyAll(StadiumBorder()),
-          textStyle: WidgetStatePropertyAll(
-              GoogleFonts.figtree(fontSize: 15, fontWeight: FontWeight.w700)),
-          side: WidgetStateProperty.resolveWith((states) {
-            if (states.contains(WidgetState.focused)) {
-              return BorderSide(color: t.accent, width: 2);
-            }
-            return BorderSide(color: t.border, width: 1.5);
-          }),
+              states.contains(WidgetState.pressed) ? t.neutralTint : t.surface),
+          overlayColor: WidgetStatePropertyAll(t.accent.withValues(alpha: 0.06)),
+          minimumSize: const WidgetStatePropertyAll(Size(48, 46)),
+          padding: const WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 18, vertical: 12)),
+          shape: WidgetStatePropertyAll(controlShape),
+          textStyle: WidgetStatePropertyAll(text(14.5, t.ink, weight: FontWeight.w600)),
+          side: WidgetStateProperty.resolveWith((states) => BorderSide(
+                color: states.contains(WidgetState.focused) ? t.accent : (isLight ? neutral300 : t.border),
+                width: states.contains(WidgetState.focused) ? 2 : 1,
+              )),
         ),
       ),
       textButtonTheme: TextButtonThemeData(
         style: ButtonStyle(
           foregroundColor: WidgetStateProperty.resolveWith((states) =>
-              states.contains(WidgetState.pressed)
-                  ? t.accentTextStrong
-                  : t.accentText),
+              states.contains(WidgetState.pressed) ? t.accentTextStrong : t.accentText),
           overlayColor: WidgetStatePropertyAll(t.accentTint),
-          shape: const WidgetStatePropertyAll(StadiumBorder()),
-          textStyle: WidgetStatePropertyAll(
-              GoogleFonts.figtree(fontSize: 15, fontWeight: FontWeight.w700)),
+          shape: WidgetStatePropertyAll(controlShape),
+          textStyle: WidgetStatePropertyAll(text(14.5, t.accentText, weight: FontWeight.w600)),
+        ),
+      ),
+      iconButtonTheme: IconButtonThemeData(
+        style: ButtonStyle(
+          shape: WidgetStatePropertyAll(controlShape),
+          overlayColor: WidgetStatePropertyAll(t.accent.withValues(alpha: 0.08)),
         ),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: t.surface,
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
-        labelStyle: GoogleFonts.figtree(
-            color: t.subtle, fontWeight: FontWeight.w600, fontSize: 15),
-        hintStyle: GoogleFonts.figtree(color: t.faint, fontSize: 15),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(radiusPill),
-          borderSide: BorderSide(color: t.neutralTintStrong),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(radiusPill),
-          borderSide: BorderSide(color: t.neutralTintStrong),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(radiusPill),
-          borderSide: BorderSide(color: t.accent, width: 2),
-        ),
-        errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(radiusPill),
-          borderSide: BorderSide(color: t.danger, width: 1.5),
-        ),
-        focusedErrorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(radiusPill),
-          borderSide: BorderSide(color: t.danger, width: 2),
-        ),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        labelStyle: text(15, t.subtle, weight: FontWeight.w500),
+        hintStyle: text(15, t.faint),
+        border: inputBorder(isLight ? neutral300 : t.border),
+        enabledBorder: inputBorder(isLight ? neutral300 : t.border),
+        focusedBorder: inputBorder(t.accent, 2),
+        errorBorder: inputBorder(t.danger, 1.5),
+        focusedErrorBorder: inputBorder(t.danger, 2),
       ),
       dropdownMenuTheme: DropdownMenuThemeData(
         menuStyle: MenuStyle(
           backgroundColor: WidgetStatePropertyAll(t.surface),
           shape: WidgetStatePropertyAll(RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(radius))),
+            borderRadius: BorderRadius.circular(radius),
+            side: BorderSide(color: t.border),
+          )),
         ),
       ),
       chipTheme: ChipThemeData(
-        backgroundColor: t.neutralTint,
+        backgroundColor: t.surface,
         selectedColor: t.accentTint,
-        labelStyle: GoogleFonts.figtree(
-            color: t.accentTextStrong,
-            fontWeight: FontWeight.w700,
-            fontSize: 13),
-        side: BorderSide.none,
-        shape: const StadiumBorder(),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        labelStyle: text(13, t.subtle, weight: FontWeight.w600),
+        secondaryLabelStyle: text(13, t.accentTextStrong, weight: FontWeight.w600),
+        side: BorderSide(color: t.border),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(radius)),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       ),
       navigationBarTheme: NavigationBarThemeData(
         backgroundColor: t.surface,
         surfaceTintColor: Colors.transparent,
+        shadowColor: Colors.transparent,
+        elevation: 0,
         indicatorColor: t.accentTint,
-        indicatorShape: const StadiumBorder(),
-        height: 72,
+        indicatorShape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(radius)),
+        height: 68,
         iconTheme: WidgetStateProperty.resolveWith((states) => IconThemeData(
               size: 22,
-              color: states.contains(WidgetState.selected)
-                  ? t.accentText
-                  : t.faint,
+              color: states.contains(WidgetState.selected) ? t.accentText : t.faint,
             )),
-        labelTextStyle: WidgetStateProperty.resolveWith((states) =>
-            GoogleFonts.figtree(
-              fontSize: 12,
-              fontWeight: states.contains(WidgetState.selected)
-                  ? FontWeight.w700
-                  : FontWeight.w600,
-              color: states.contains(WidgetState.selected)
-                  ? t.accentText
-                  : t.faint,
+        labelTextStyle: WidgetStateProperty.resolveWith((states) => text(
+              12,
+              states.contains(WidgetState.selected) ? t.accentText : t.faint,
+              weight: states.contains(WidgetState.selected) ? FontWeight.w700 : FontWeight.w500,
             )),
       ),
       tabBarTheme: TabBarThemeData(
@@ -328,36 +334,32 @@ class AppTheme {
         indicatorColor: t.accent,
         indicatorSize: TabBarIndicatorSize.label,
         dividerColor: Colors.transparent,
-        labelStyle:
-            GoogleFonts.figtree(fontSize: 14, fontWeight: FontWeight.w700),
-        unselectedLabelStyle:
-            GoogleFonts.figtree(fontSize: 14, fontWeight: FontWeight.w600),
+        labelStyle: text(14, t.accentText, weight: FontWeight.w700),
+        unselectedLabelStyle: text(14, t.faint, weight: FontWeight.w500),
         overlayColor: WidgetStatePropertyAll(t.accent.withValues(alpha: 0.06)),
       ),
       snackBarTheme: SnackBarThemeData(
-        backgroundColor: isLight ? neutral900 : _cream,
-        contentTextStyle: GoogleFonts.figtree(
-            color: isLight ? _cream : _ink,
-            fontSize: 14,
-            fontWeight: FontWeight.w600),
+        backgroundColor: isLight ? neutral900 : t.neutralTintStrong,
+        contentTextStyle: text(14, isLight ? Colors.white : _inkDark, weight: FontWeight.w500),
+        actionTextColor: isLight ? accent300 : t.accentText,
         behavior: SnackBarBehavior.floating,
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(radius)),
+        shape: controlShape,
       ),
       dialogTheme: DialogThemeData(
         backgroundColor: t.surface,
         surfaceTintColor: Colors.transparent,
         shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(radiusCard + 4)),
-        titleTextStyle: display(22),
-        contentTextStyle:
-            GoogleFonts.figtree(fontSize: 15, color: t.subtle, height: 1.45),
+          borderRadius: BorderRadius.circular(radiusCard + 4),
+          side: BorderSide(color: t.border),
+        ),
+        titleTextStyle: heading(19),
+        contentTextStyle: text(15, t.subtle, height: 1.45),
       ),
       bottomSheetTheme: BottomSheetThemeData(
         backgroundColor: t.surface,
         surfaceTintColor: Colors.transparent,
         shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
         ),
       ),
       progressIndicatorTheme: ProgressIndicatorThemeData(
@@ -366,10 +368,15 @@ class AppTheme {
       ),
       listTileTheme: ListTileThemeData(
         iconColor: t.subtle,
-        titleTextStyle: GoogleFonts.figtree(
-            fontSize: 15, fontWeight: FontWeight.w600, color: t.ink),
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(radius)),
+        titleTextStyle: text(15, t.ink, weight: FontWeight.w600),
+        shape: controlShape,
+      ),
+      switchTheme: SwitchThemeData(
+        thumbColor: WidgetStateProperty.resolveWith(
+            (states) => states.contains(WidgetState.selected) ? t.onFill : t.surface),
+        trackColor: WidgetStateProperty.resolveWith(
+            (states) => states.contains(WidgetState.selected) ? t.accent : t.neutralTintStrong),
+        trackOutlineColor: const WidgetStatePropertyAll(Colors.transparent),
       ),
     );
   }
@@ -425,22 +432,22 @@ class AppTokens extends ThemeExtension<AppTokens> {
   /// Subtle strokes and empty rating stars.
   final Color border;
 
-  /// Terracotta base — chrome, icons, large text (~3:1 on ground).
+  /// Indigo base — buttons, icons, active states.
   final Color accent;
 
   /// One step past base, for pressed states and dark-mode icons.
   final Color accentDeep;
 
-  /// Paragraph-safe terracotta text on the ground.
+  /// Indigo text that is safe at body size on the ground.
   final Color accentText;
 
-  /// Terracotta text on [accentTint] fills.
+  /// Indigo text on [accentTint] fills.
   final Color accentTextStrong;
 
-  /// Tinted terracotta fill.
+  /// Tinted indigo fill (badges, selected rows).
   final Color accentTint;
 
-  /// Sage base — the safe/positive/online voice.
+  /// Emerald base — the safe/positive/verified voice.
   final Color sage;
   final Color sageDeep;
   final Color sageText;
@@ -451,7 +458,7 @@ class AppTokens extends ThemeExtension<AppTokens> {
   /// Text/icons sitting on a filled accent or sage shape.
   final Color onFill;
 
-  /// Errors ride the terracotta ramp.
+  /// Errors and destructive actions.
   final Color danger;
 
   @override
@@ -590,4 +597,14 @@ class AppIcons {
   static const trash = LucideIcons.trash2600;
   static const wallet = LucideIcons.wallet600;
   static const hourglass = LucideIcons.hourglass600;
+  static const edit = LucideIcons.pencil600;
+  static const plus = LucideIcons.plus600;
+  static const users = LucideIcons.users600;
+  static const store = LucideIcons.store600;
+  static const dashboard = LucideIcons.layoutDashboard600;
+  static const banknote = LucideIcons.banknote600;
+  static const trendingUp = LucideIcons.trendingUp600;
+  static const userCheck = LucideIcons.userRoundCheck600;
+  static const clipboardList = LucideIcons.clipboardList600;
+  static const circleX = LucideIcons.circleX600;
 }

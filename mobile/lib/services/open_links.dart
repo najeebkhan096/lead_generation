@@ -6,6 +6,16 @@ Future<bool> openExternalUrl(String url) async {
   return launchUrl(uri, mode: LaunchMode.externalApplication);
 }
 
+/// [waUrl] (a wa.me chat link) with [text] prefilled in the message box.
+/// Percent-encoded, spaces as `%20`; unchanged when there is no text or no
+/// link.
+String? whatsAppUrlWithText(String? waUrl, String? text) {
+  final url = (waUrl ?? '').trim();
+  if (url.isEmpty || text == null || text.isEmpty) return waUrl;
+  final base = url.contains('?') ? url.substring(0, url.indexOf('?')) : url;
+  return '$base?text=${Uri.encodeComponent(text)}';
+}
+
 Future<bool> openWhatsApp(String? waUrl) async {
   if (waUrl == null || waUrl.trim().isEmpty) return false;
   return openExternalUrl(waUrl);
@@ -22,10 +32,26 @@ Future<bool> openPhone(String? phone) async {
   return openExternalUrl('tel:$digits');
 }
 
-Future<bool> openEmail(String? email) async {
+/// A `mailto:` link to [to], with an optional [subject] and [body].
+///
+/// Components are percent-encoded (spaces as `%20` — the `+` form is shown
+/// literally by mail apps) and line breaks are CRLF, as RFC 6068 asks.
+String mailtoUrl(String to, {String? subject, String? body}) {
+  final query = <String>[
+    if (subject != null && subject.isNotEmpty) 'subject=${Uri.encodeComponent(subject)}',
+    if (body != null && body.isNotEmpty)
+      'body=${Uri.encodeComponent(body.replaceAll('\r\n', '\n').replaceAll('\n', '\r\n'))}',
+  ];
+  return query.isEmpty ? 'mailto:$to' : 'mailto:$to?${query.join('&')}';
+}
+
+/// Opens the phone's mail app with a new message to [email]. The sender is
+/// whichever account the mail app is set to send from — a `mailto:` link
+/// cannot choose it.
+Future<bool> openEmail(String? email, {String? subject, String? body}) async {
   final trimmed = (email ?? '').trim();
   if (trimmed.isEmpty) return false;
-  return openExternalUrl('mailto:$trimmed');
+  return openExternalUrl(mailtoUrl(trimmed, subject: subject, body: body));
 }
 
 Future<bool> openWebsite(String? website) async {

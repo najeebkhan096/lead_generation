@@ -5,6 +5,7 @@ import 'package:video_player/video_player.dart';
 import '../models/outreach_message.dart';
 import '../services/media_service.dart';
 import 'media_viewers.dart';
+import '../../../theme/app_theme.dart';
 
 /// Builds the inside-the-bubble media for a message: image, video, audio or document.
 class MessageMedia extends StatelessWidget {
@@ -338,13 +339,13 @@ class _DocumentContentState extends State<_DocumentContent> {
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.06), borderRadius: BorderRadius.circular(8)),
       child: Row(children: [
-        Icon(_icon, size: 34, color: Colors.blueGrey),
+        Icon(_icon, size: 34, color: context.tokens.subtle),
         const SizedBox(width: 10),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(media.fileName, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
             if (sub.isNotEmpty) Text(sub, style: const TextStyle(fontSize: 11)),
-            if (media.error != null) const Text('File unavailable', style: TextStyle(fontSize: 11, color: Colors.red)),
+            if (media.error != null) Text('File unavailable', style: TextStyle(fontSize: 11, color: context.tokens.danger)),
             if (!available && media.error == null) const Text('Downloading…', style: TextStyle(fontSize: 11)),
           ]),
         ),

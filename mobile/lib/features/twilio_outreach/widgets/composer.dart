@@ -9,6 +9,7 @@ import '../controllers/chat_controller.dart';
 import '../models/outreach_message.dart';
 import '../services/media_service.dart';
 import 'media_viewers.dart';
+import '../../../theme/app_theme.dart';
 
 /// Bottom bar: attach button, text field, send button; with reply and
 /// attachment previews above it.
@@ -252,12 +253,12 @@ class _ChatComposerState extends State<ChatComposer> {
 
   @override
   Widget build(BuildContext context) {
-    final dark = Theme.of(context).brightness == Brightness.dark;
-    final accent = dark ? const Color(0xFF00A884) : const Color(0xFF128C7E);
+    final t = context.tokens;
+    final accent = t.accent;
     final reply = c.replyTo;
     final att = c.attachment;
     return Material(
-      color: dark ? const Color(0xFF0B141A) : const Color(0xFFF0F2F5),
+      color: t.ground,
       child: SafeArea(
         top: false,
         child: Column(
@@ -282,12 +283,12 @@ class _ChatComposerState extends State<ChatComposer> {
                   children: [
                     IconButton(
                       tooltip: 'Cancel recording',
-                      icon: const Icon(Icons.delete_outline, color: Colors.red),
+                      icon: Icon(Icons.delete_outline, color: t.danger),
                       onPressed: () => _finishRecording(send: false),
                     ),
-                    const Icon(
+                    Icon(
                       Icons.fiber_manual_record,
-                      color: Colors.red,
+                      color: t.danger,
                       size: 14,
                     ),
                     const SizedBox(width: 6),
@@ -326,8 +327,9 @@ class _ChatComposerState extends State<ChatComposer> {
                     Expanded(
                       child: Container(
                         decoration: BoxDecoration(
-                          color: dark ? const Color(0xFF1F2C34) : Colors.white,
+                          color: t.surface,
                           borderRadius: BorderRadius.circular(24),
+                          border: Border.all(color: t.border),
                         ),
                         child: Row(
                           crossAxisAlignment: CrossAxisAlignment.end,
@@ -424,10 +426,10 @@ class _Strip extends StatelessWidget {
     margin: const EdgeInsets.fromLTRB(8, 6, 8, 0),
     padding: const EdgeInsets.fromLTRB(10, 6, 2, 6),
     decoration: BoxDecoration(
-      color: Colors.black.withValues(alpha: 0.06),
+      color: context.tokens.neutralTint,
       borderRadius: BorderRadius.circular(10),
-      border: const Border(
-        left: BorderSide(color: Color(0xFF128C7E), width: 4),
+      border: Border(
+        left: BorderSide(color: context.tokens.accent, width: 4),
       ),
     ),
     child: Row(

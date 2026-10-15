@@ -4,7 +4,13 @@ import { getFirestore } from '../../firebase/admin.js';
 const COLLECTION = 'sales';
 
 // Deal-stage progression — separate from either payment status below.
-export const LEAD_STATUSES = ['new', 'in_progress', 'completed', 'cancelled'];
+//   new          deal locked: the salesman closed it with the client
+//   in_progress  removal: our team is doing the work
+//   payment      removal done, waiting for the client to pay
+//   completed    the client has paid
+// (Stored values for the first two predate the process naming; kept so
+// existing documents and older clients keep working.)
+export const LEAD_STATUSES = ['new', 'in_progress', 'payment', 'completed', 'cancelled'];
 // Has the client paid what they were charged (in USD).
 export const CLIENT_PAYMENT_STATUSES = ['pending', 'paid', 'stuck', 'received', 'in_process'];
 // Has the employee/salesman been paid their cut (in PKR, separate from the
@@ -24,6 +30,7 @@ function docToSale(doc) {
   return {
     id: doc.id,
     businessName: data.businessName || '',
+    clientId: data.clientId || null,
     reviewLink: data.reviewLink || null,
     salesmanId: data.salesmanId || null,
     salesmanName: data.salesmanName || null,
@@ -40,6 +47,11 @@ function docToSale(doc) {
     clientAmountReceived,
     removalCost,
     profit: computeProfit({ clientAmountReceived, removalCost, employeePaymentAmount }),
+    // True when this sale's payment figures predate the "fresh start": the
+    // sale and its client stay, but the money is excluded from payout,
+    // billing and profit totals. See archivePayments().
+    paymentsArchived: data.paymentsArchived === true,
+    paymentsArchivedAt: data.paymentsArchivedAt?.toDate?.()?.toISOString() || null,
     createdAt: data.createdAt?.toDate?.()?.toISOString() || null,
     updatedAt: data.updatedAt?.toDate?.()?.toISOString() || null,
     lastReviewScannedAt: data.lastReviewScannedAt?.toDate?.()?.toISOString() || null,
@@ -53,6 +65,7 @@ function docToSale(doc) {
 function sanitizePayload(input) {
   const payload = {};
   if (input.businessName !== undefined) payload.businessName = String(input.businessName).trim();
+  if (input.clientId !== undefined) payload.clientId = input.clientId || null;
   if (input.reviewLink !== undefined) payload.reviewLink = input.reviewLink ? String(input.reviewLink).trim() : null;
   if (input.salesmanId !== undefined) payload.salesmanId = input.salesmanId || null;
   if (input.salesmanName !== undefined) payload.salesmanName = input.salesmanName ? String(input.salesmanName).trim() : null;
@@ -87,6 +100,10 @@ function sanitizePayload(input) {
   }
   if (input.clientAmountReceived !== undefined) payload.clientAmountReceived = Number(input.clientAmountReceived) || 0;
   if (input.removalCost !== undefined) payload.removalCost = Number(input.removalCost) || 0;
+  if (input.paymentsArchived !== undefined) {
+    payload.paymentsArchived = input.paymentsArchived === true;
+    payload.paymentsArchivedAt = payload.paymentsArchived ? FieldValue.serverTimestamp() : null;
+  }
   return payload;
 }
 
@@ -101,6 +118,7 @@ export async function createSale(input) {
   const ref = db.collection(COLLECTION).doc();
   await ref.set({
     businessName: payload.businessName,
+    clientId: payload.clientId ?? null,
     reviewLink: payload.reviewLink ?? null,
     salesmanId: payload.salesmanId ?? null,
     salesmanName: payload.salesmanName ?? null,
@@ -112,6 +130,7 @@ export async function createSale(input) {
     employeePaymentStatus: payload.employeePaymentStatus ?? 'pending',
     clientAmountReceived: payload.clientAmountReceived ?? 0,
     removalCost: payload.removalCost ?? 0,
+    paymentsArchived: false,
     createdAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
   });
@@ -151,10 +170,18 @@ export async function updateSale(id, input) {
  * removal cost, profit — is PKR (local operations currency).
  */
 export async function getSalesStats({ salesmanId } = {}) {
-  const sales = await listSales({ salesmanId });
+  return computeSalesStats(await listSales({ salesmanId }));
+}
 
+/**
+ * Pure aggregation behind [getSalesStats]. Sales whose payments were
+ * archived still count as orders (totalSales, byLeadStatus, per-salesman
+ * counts) but contribute nothing to any money total.
+ */
+export function computeSalesStats(sales) {
   const totals = {
     totalSales: sales.length,
+    archivedSales: sales.filter((s) => s.paymentsArchived).length,
     totalRevenueUsd: 0,
     totalEmployeePayoutPkr: 0,
     totalClientReceivedPkr: 0,
@@ -168,15 +195,18 @@ export async function getSalesStats({ salesmanId } = {}) {
   const bySalesmanMap = new Map();
 
   for (const sale of sales) {
-    totals.totalRevenueUsd += sale.priceChargedToClient;
-    totals.totalEmployeePayoutPkr += sale.employeePaymentAmount;
-    totals.totalClientReceivedPkr += sale.clientAmountReceived;
-    totals.totalRemovalCostPkr += sale.removalCost;
-    totals.totalProfitPkr += sale.profit;
+    const counted = !sale.paymentsArchived;
+    if (counted) {
+      totals.totalRevenueUsd += sale.priceChargedToClient;
+      totals.totalEmployeePayoutPkr += sale.employeePaymentAmount;
+      totals.totalClientReceivedPkr += sale.clientAmountReceived;
+      totals.totalRemovalCostPkr += sale.removalCost;
+      totals.totalProfitPkr += sale.profit;
+      byClientPaymentStatus[sale.clientPaymentStatus].count += 1;
+      byEmployeePaymentStatus[sale.employeePaymentStatus].count += 1;
+    }
 
     byLeadStatus[sale.leadStatus].count += 1;
-    byClientPaymentStatus[sale.clientPaymentStatus].count += 1;
-    byEmployeePaymentStatus[sale.employeePaymentStatus].count += 1;
 
     const key = sale.salesmanId || 'unassigned';
     if (!bySalesmanMap.has(key)) {
@@ -192,15 +222,78 @@ export async function getSalesStats({ salesmanId } = {}) {
     }
     const entry = bySalesmanMap.get(key);
     entry.count += 1;
-    entry.revenueUsd += sale.priceChargedToClient;
-    entry.employeePayoutPkr += sale.employeePaymentAmount;
-    entry.profitPkr += sale.profit;
+    if (counted) {
+      entry.revenueUsd += sale.priceChargedToClient;
+      entry.employeePayoutPkr += sale.employeePaymentAmount;
+      entry.profitPkr += sale.profit;
+    }
     if (sale.leadStatus === 'completed') entry.completedCount += 1;
   }
 
   const bySalesman = [...bySalesmanMap.values()].sort((a, b) => b.revenueUsd - a.revenueUsd);
 
   return { ...totals, byLeadStatus, byClientPaymentStatus, byEmployeePaymentStatus, bySalesman };
+}
+
+/**
+ * Chooses which sales a fresh-start archive (or its undo) touches.
+ *
+ * - archive: sales created before [before] that are not archived yet.
+ *   Sales with no createdAt predate timestamps and count as old.
+ * - restore: every archived sale (optionally only those created before
+ *   [before]).
+ */
+export function selectForArchive(sales, { before, restore = false } = {}) {
+  const cutoff = before ? new Date(before).getTime() : null;
+  const isOld = (s) => {
+    if (cutoff === null) return true;
+    if (!s.createdAt) return true;
+    return new Date(s.createdAt).getTime() < cutoff;
+  };
+  return sales.filter((s) => (restore ? s.paymentsArchived && isOld(s) : !s.paymentsArchived && isOld(s)));
+}
+
+/**
+ * "Start fresh from today": flags older sales so their payment figures stop
+ * counting. Nothing is deleted or edited — the sale, its client and every
+ * amount stay on the document, and `restore: true` undoes it.
+ *
+ * Defaults to a dry run; pass `apply: true` to write.
+ */
+export async function archivePayments({ before, restore = false, apply = false } = {}) {
+  if (before && Number.isNaN(new Date(before).getTime())) {
+    const err = new Error('before must be a valid date');
+    err.status = 400;
+    throw err;
+  }
+  const sales = await listSales();
+  const targets = selectForArchive(sales, { before, restore });
+  const summary = {
+    mode: restore ? 'restore' : 'archive',
+    applied: apply,
+    before: before || null,
+    totalSales: sales.length,
+    matched: targets.length,
+    alreadyArchived: sales.filter((s) => s.paymentsArchived).length,
+    updated: 0,
+  };
+  if (!apply || targets.length === 0) return summary;
+
+  const db = getFirestore();
+  const BATCH = 400;
+  for (let i = 0; i < targets.length; i += BATCH) {
+    const batch = db.batch();
+    for (const sale of targets.slice(i, i + BATCH)) {
+      // updatedAt is left alone so lists ordered by it do not reshuffle.
+      batch.update(db.collection(COLLECTION).doc(sale.id), {
+        paymentsArchived: !restore,
+        paymentsArchivedAt: restore ? null : FieldValue.serverTimestamp(),
+      });
+    }
+    await batch.commit();
+    summary.updated += Math.min(BATCH, targets.length - i);
+  }
+  return summary;
 }
 
 export async function deleteSale(id) {

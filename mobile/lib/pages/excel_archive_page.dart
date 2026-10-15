@@ -234,7 +234,7 @@ class _ArchiveCard extends StatelessWidget {
               Container(
                 width: 40,
                 height: 40,
-                decoration: BoxDecoration(color: t.sageTint, shape: BoxShape.circle),
+                decoration: BoxDecoration(color: t.sageTint, borderRadius: BorderRadius.circular(AppTheme.radius)),
                 child: Icon(AppIcons.download, size: 18, color: t.sageDeep),
               ),
               const SizedBox(width: 14),

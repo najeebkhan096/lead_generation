@@ -246,6 +246,8 @@ abstract class LeadRepository {
 
   Future<SalesUser> setUserApproved(String id, {required bool approved});
 
+  Future<SalesUser> setUserRole(String id, {required String role});
+
   /// Re-scans every watchlisted business now and returns which ones picked
   /// up new reviews since the last scan.
   /// [dateRange] (days, e.g. '30'/'45'/'60') bounds how far back a review

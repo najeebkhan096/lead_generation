@@ -17,6 +17,7 @@ import emailValidationRoutes from './modules/validation/email/emailValidationRou
 import emailValidatedRoutes from './modules/validation/email/emailValidatedRoutes.js';
 import userRoutes from './modules/users/userRoutes.js';
 import saleRoutes from './modules/sales/saleRoutes.js';
+import clientRoutes from './modules/clients/clientRoutes.js';
 import stateCityScanRoutes from './modules/scan/stateCityScanRoutes.js';
 import outreachRoutes from './modules/outreach/outreachRoutes.js';
 import twilioTestRoutes from './modules/twilio-test/testLeadRoutes.js';
@@ -74,6 +75,7 @@ app.use('/api/email-validation', emailValidationRoutes);
 app.use('/api/email-validated-scans', emailValidatedRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/sales', saleRoutes);
+app.use('/api/clients', clientRoutes);
 app.use('/api/state-scan', stateCityScanRoutes);
 app.use('/api/outreach', outreachRoutes);
 app.use('/api/twilio-test', twilioTestRoutes);

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../theme/app_theme.dart';
+import '../widgets/segmented_tab_bar.dart';
 import 'excel_leads_page.dart';
 import 'saved_businesses_page.dart';
 import 'website_leads_page.dart';
@@ -15,35 +15,15 @@ class LeadsPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = context.tokens;
     return DefaultTabController(
       length: 3,
       child: Scaffold(
         body: SafeArea(
           child: Column(
             children: [
-              Container(
-                margin: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-                padding: const EdgeInsets.all(4),
-                decoration: BoxDecoration(
-                  color: t.surface,
-                  borderRadius: const BorderRadius.all(Radius.circular(AppTheme.radiusPill)),
-                ),
-                child: TabBar(
-                  indicator: BoxDecoration(
-                    color: t.accent,
-                    borderRadius: const BorderRadius.all(Radius.circular(AppTheme.radiusPill)),
-                  ),
-                  indicatorSize: TabBarIndicatorSize.tab,
-                  labelColor: t.onFill,
-                  unselectedLabelColor: t.subtle,
-                  splashBorderRadius: BorderRadius.circular(AppTheme.radiusPill),
-                  tabs: const [
-                    Tab(height: 40, text: 'Scans'),
-                    Tab(height: 40, text: '1-star'),
-                    Tab(height: 40, text: 'No website'),
-                  ],
-                ),
+              const SegmentedTabBar(
+                margin: EdgeInsets.fromLTRB(20, 16, 20, 0),
+                labels: ['Scans', '1-star', 'No website'],
               ),
               const Expanded(
                 child: TabBarView(

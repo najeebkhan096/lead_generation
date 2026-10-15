@@ -40,6 +40,8 @@ String pkr(double value) => 'PKR ${_formatAmount(value)}';
       return (AppTheme.neutral600, AppTheme.neutral100, AppIcons.sparkles);
     case LeadStatus.inProgress:
       return (AppTheme.accent700, AppTheme.accent100, AppIcons.zap);
+    case LeadStatus.payment:
+      return (AppTheme.accent700, AppTheme.accent100, AppIcons.clock);
     case LeadStatus.completed:
       return (AppTheme.sage800, AppTheme.sage100, AppIcons.shieldCheck);
     case LeadStatus.cancelled:
@@ -405,7 +407,7 @@ class _SalesListTab extends StatefulWidget {
 
   final String? salesmanId;
 
-  /// True = new + in progress; false = completed + cancelled.
+  /// True = deal locked + removal + payment; false = completed + cancelled.
   final bool ongoing;
   final List<SalesUser> salesmen;
   final bool scanning;
@@ -443,7 +445,9 @@ class _SalesListTabState extends State<_SalesListTab> with AutomaticKeepAliveCli
       if (!mounted) return;
       setState(() {
         _sales = sales.where((s) {
-          final isOngoing = s.leadStatus == LeadStatus.newLead || s.leadStatus == LeadStatus.inProgress;
+          final isOngoing = s.leadStatus == LeadStatus.newLead ||
+              s.leadStatus == LeadStatus.inProgress ||
+              s.leadStatus == LeadStatus.payment;
           return isOngoing == widget.ongoing;
         }).toList();
         _loading = false;

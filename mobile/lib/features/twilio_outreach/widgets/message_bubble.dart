@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/outreach_message.dart';
 import 'media_content.dart';
 import 'status_ticks.dart';
+import '../../../theme/app_theme.dart';
 
 String clockTime(DateTime t) =>
     '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
@@ -23,16 +24,17 @@ class DateSeparator extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final dark = Theme.of(context).brightness == Brightness.dark;
+    final t = context.tokens;
     return Center(
       child: Container(
         margin: const EdgeInsets.symmetric(vertical: 10),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
         decoration: BoxDecoration(
-          color: dark ? const Color(0xFF1F2C34) : Colors.white.withValues(alpha: 0.9),
+          color: t.surface,
           borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: t.border),
         ),
-        child: Text(dayLabel(date), style: TextStyle(fontSize: 12, color: dark ? Colors.white70 : Colors.black54)),
+        child: Text(dayLabel(date), style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: t.faint)),
       ),
     );
   }
@@ -60,12 +62,10 @@ class MessageBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final dark = Theme.of(context).brightness == Brightness.dark;
+    final t = context.tokens;
     final mine = message.isOutbound;
-    final bg = mine
-        ? (dark ? const Color(0xFF005C4B) : const Color(0xFFD9FDD3))
-        : (dark ? const Color(0xFF1F2C34) : Colors.white);
-    final fg = dark ? Colors.white : Colors.black87;
+    final bg = mine ? t.accentTint : t.surface;
+    final fg = t.ink;
     const r = Radius.circular(12);
     const tail = Radius.circular(3);
     final radius = BorderRadius.only(
@@ -89,7 +89,9 @@ class MessageBubble extends StatelessWidget {
           decoration: BoxDecoration(
             color: bg,
             borderRadius: radius,
-            border: message.hasFailed ? Border.all(color: Colors.red.shade300) : null,
+            border: message.hasFailed
+                ? Border.all(color: t.danger)
+                : (mine ? null : Border.all(color: t.border)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -125,9 +127,9 @@ class MessageBubble extends StatelessWidget {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
                     decoration: BoxDecoration(
-                      color: dark ? const Color(0xFF0B141A) : Colors.white,
+                      color: t.surface,
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.black12),
+                      border: Border.all(color: t.border),
                     ),
                     child: Text(message.reactionEmojis.join(' '), style: const TextStyle(fontSize: 14)),
                   ),
@@ -139,7 +141,7 @@ class MessageBubble extends StatelessWidget {
                       (message.errorMessage?.isNotEmpty ?? false)
                           ? 'Not sent: ${message.errorMessage} • tap for options'
                           : 'Not sent • tap for options',
-                      style: TextStyle(fontSize: 11, color: Colors.red.shade400, fontWeight: FontWeight.w600)),
+                      style: TextStyle(fontSize: 11, color: t.danger, fontWeight: FontWeight.w600)),
                 ),
             ],
           ),
@@ -157,15 +159,16 @@ class _Quote extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final t = context.tokens;
     return GestureDetector(
       onTap: onTap,
       child: Container(
         margin: const EdgeInsets.only(bottom: 4),
         padding: const EdgeInsets.fromLTRB(8, 4, 8, 4),
         decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.07),
+          color: t.ink.withValues(alpha: 0.05),
           borderRadius: BorderRadius.circular(6),
-          border: Border(left: BorderSide(color: message.isOutbound ? const Color(0xFF128C7E) : Colors.purple, width: 3)),
+          border: Border(left: BorderSide(color: message.isOutbound ? t.accent : t.sage, width: 3)),
         ),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(message.isOutbound ? 'You' : 'Them', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),

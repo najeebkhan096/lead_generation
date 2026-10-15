@@ -13,6 +13,18 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.approved == true;
     }
 
+    // The one client edit allowed on a verified lead (whatsappLeads /
+    // emailLeads): mark it contacted, or move it back to New. Marking
+    // contacted must carry its timestamp, and `contactedBy` can only name
+    // the caller.
+    function isContactedUpdate() {
+      let d = request.resource.data;
+      return d.diff(resource.data).affectedKeys().hasOnly(['status', 'contactedAt', 'contactedBy'])
+          && d.status in ['lead', 'contacted']
+          && (d.status == 'lead' || ('contactedAt' in d && d.contactedAt is timestamp))
+          && (!('contactedBy' in d) || d.contactedBy == request.auth.uid);
+    }
+
     // Mobile app can read leads and update tracking status.
     // Writes (creation/deletion) only via Admin SDK (backend).
     match /leads/{leadId} {
@@ -52,17 +64,23 @@ service cloud.firestore {
       allow create, delete: if false;
     }
 
-    // Verified leads — the output of the two validators, written only by
-    // the backend (Admin SDK bypasses these rules). Signed-in, approved
-    // salespeople can read them; nothing is writable from a client.
+    // Verified leads — the output of the two validators, written by the
+    // backend (Admin SDK bypasses these rules). Signed-in, approved
+    // salespeople can read them and do exactly one thing to them: mark one
+    // contacted (or move it back to New) — `status`, `contactedAt`,
+    // `contactedBy`, and nothing else, so a client can never alter the
+    // verified contact details. `updatedAt` is deliberately not writable:
+    // the lists are ordered by it.
     match /whatsappLeads/{leadId} {
       allow read: if isApproved();
-      allow write: if false;
+      allow update: if isApproved() && isContactedUpdate();
+      allow create, delete: if false;
     }
 
     match /emailLeads/{leadId} {
       allow read: if isApproved();
-      allow write: if false;
+      allow update: if isApproved() && isContactedUpdate();
+      allow create, delete: if false;
     }
 
     // Mobile app users (salesmen) — each user creates/updates only their

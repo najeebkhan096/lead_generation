@@ -806,6 +806,19 @@ class LeadRemoteDataSource {
     return SalesUser.fromJson(body['user'] as Map<String, dynamic>);
   }
 
+  Future<SalesUser> setUserRole(String id, {required String role}) async {
+    final response = await _client.patch(
+      _uri(ApiConstants.userUpdate(id)),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'role': role}),
+    );
+    final body = _tryDecode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['error'] ?? 'Failed to update user role');
+    }
+    return SalesUser.fromJson(body['user'] as Map<String, dynamic>);
+  }
+
   Future<List<WatchlistEntry>> listWatchlist() async {
     final response = await _client.get(_uri(ApiConstants.watchlist));
     if (response.statusCode >= 400) {

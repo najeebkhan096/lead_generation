@@ -4,6 +4,7 @@ import {
   updateSale,
   deleteSale,
   getSalesStats,
+  archivePayments,
 } from './saleStore.js';
 import { scanSaleReviews } from './salesReviewScanner.js';
 
@@ -78,5 +79,23 @@ export async function scanReviews(req, res) {
     return res.status(err.status || 500).json({ error: err.message || 'Sales review scan failed' });
   } finally {
     scanningReviews = false;
+  }
+}
+
+/**
+ * POST /api/sales/archive-payments  { before?, restore?, apply? }
+ * Dry run unless `apply` is true. See archivePayments().
+ */
+export async function archiveSalePayments(req, res) {
+  try {
+    const { before, restore, apply } = req.body || {};
+    const result = await archivePayments({
+      before: before ? String(before) : undefined,
+      restore: restore === true,
+      apply: apply === true,
+    });
+    return res.json({ result });
+  } catch (err) {
+    return res.status(err.status || 500).json({ error: err.message || 'Failed to archive payments' });
   }
 }

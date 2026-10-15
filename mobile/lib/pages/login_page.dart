@@ -30,79 +30,80 @@ class _LoginPageState extends State<LoginPage> {
   @override
   Widget build(BuildContext context) {
     final t = context.tokens;
+    final text = Theme.of(context).textTheme;
     return Scaffold(
       body: Stack(
         children: [
-          // Soft decorative blobs bleeding off the page edges.
+          // A quiet indigo wash at the top that fades into the page.
           Positioned(
-            top: -90,
-            right: -70,
-            child: _Blob(size: 240, color: t.accentTint),
-          ),
-          Positioned(
-            top: 90,
-            right: 40,
-            child: _Blob(size: 72, color: t.sageTintStrong),
-          ),
-          Positioned(
-            bottom: -120,
-            left: -90,
-            child: _Blob(size: 280, color: t.sageTint),
+            top: 0,
+            left: 0,
+            right: 0,
+            height: 360,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [t.accentTint, t.ground],
+                ),
+              ),
+            ),
           ),
           SafeArea(
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 32),
+              padding: const EdgeInsets.symmetric(horizontal: 24),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Spacer(flex: 2),
                   Container(
-                    width: 76,
-                    height: 76,
+                    width: 64,
+                    height: 64,
                     decoration: BoxDecoration(
-                      color: t.sageTintStrong,
-                      shape: BoxShape.circle,
+                      color: t.accent,
+                      borderRadius: BorderRadius.circular(AppTheme.radiusCard + 2),
                     ),
-                    child: Icon(AppIcons.sprout, size: 36, color: t.sageText),
+                    child: Icon(AppIcons.send, size: 30, color: t.onFill),
                   ),
                   const SizedBox(height: 28),
-                  Text.rich(
-                    TextSpan(
+                  Text('Verified leads,\nready to contact.', style: text.displaySmall),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Sign in to see the businesses confirmed on WhatsApp and email, and track who you have reached.',
+                    style: text.bodyLarge,
+                  ),
+                  const SizedBox(height: 28),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: t.surface,
+                      borderRadius: BorderRadius.circular(AppTheme.radiusCard),
+                      border: Border.all(color: t.border),
+                    ),
+                    child: Column(
                       children: [
-                        const TextSpan(text: 'Grow your\n'),
-                        TextSpan(
-                          text: 'next lead.',
-                          style: TextStyle(color: t.accentDeep),
+                        _FeatureRow(
+                          icon: AppIcons.chat,
+                          tint: t.sageTint,
+                          iconColor: t.sageText,
+                          label: 'Numbers confirmed on WhatsApp',
+                        ),
+                        Divider(color: t.border, height: 1),
+                        _FeatureRow(
+                          icon: AppIcons.mail,
+                          tint: t.accentTint,
+                          iconColor: t.accentText,
+                          label: 'Verified business emails',
+                        ),
+                        Divider(color: t.border, height: 1),
+                        _FeatureRow(
+                          icon: AppIcons.handshake,
+                          tint: t.neutralTint,
+                          iconColor: t.subtle,
+                          label: 'New and contacted, always in order',
                         ),
                       ],
                     ),
-                    style: Theme.of(context).textTheme.displayMedium,
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Sign in to access your business leads and outreach tools.',
-                    style: Theme.of(context).textTheme.bodyLarge,
-                  ),
-                  const SizedBox(height: 28),
-                  _FeatureRow(
-                    icon: AppIcons.compass,
-                    tint: t.accentTint,
-                    iconColor: t.accentText,
-                    label: 'Fresh leads, straight from your searches',
-                  ),
-                  const SizedBox(height: 12),
-                  _FeatureRow(
-                    icon: AppIcons.chat,
-                    tint: t.sageTint,
-                    iconColor: t.sageText,
-                    label: 'One-tap WhatsApp outreach',
-                  ),
-                  const SizedBox(height: 12),
-                  _FeatureRow(
-                    icon: AppIcons.handshake,
-                    tint: t.accentTint,
-                    iconColor: t.accentText,
-                    label: 'Track every deal to the finish',
                   ),
                   const Spacer(flex: 3),
                   if (_loading)
@@ -110,13 +111,14 @@ class _LoginPageState extends State<LoginPage> {
                   else
                     SizedBox(
                       width: double.infinity,
-                      child: ElevatedButton.icon(
+                      child: FilledButton.icon(
+                        style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(54)),
                         onPressed: _handleGoogleSignIn,
                         icon: const Icon(AppIcons.logIn, size: 20),
                         label: const Text('Sign in with Google'),
                       ),
                     ),
-                  const SizedBox(height: 48),
+                  const SizedBox(height: 40),
                 ],
               ),
             ),
@@ -142,35 +144,25 @@ class _FeatureRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Container(
-          width: 40,
-          height: 40,
-          decoration: BoxDecoration(color: tint, shape: BoxShape.circle),
-          child: Icon(icon, size: 18, color: iconColor),
-        ),
-        const SizedBox(width: 14),
-        Expanded(
-          child: Text(label, style: Theme.of(context).textTheme.bodyMedium),
-        ),
-      ],
-    );
-  }
-}
-
-class _Blob extends StatelessWidget {
-  const _Blob({required this.size, required this.color});
-
-  final double size;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      child: Row(
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(color: tint, borderRadius: BorderRadius.circular(AppTheme.radius)),
+            child: Icon(icon, size: 18, color: iconColor),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Text(
+              label,
+              style: Theme.of(context).textTheme.titleSmall,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

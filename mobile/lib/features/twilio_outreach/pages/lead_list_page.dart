@@ -8,6 +8,7 @@ import '../services/template_image.dart';
 import '../widgets/message_bubble.dart';
 import 'chat_page.dart';
 import 'send_test_page.dart';
+import '../../../theme/app_theme.dart';
 
 class LeadListPage extends StatefulWidget {
   const LeadListPage({super.key, this.onExit});
@@ -108,7 +109,7 @@ class _LeadListPageState extends State<LeadListPage> {
                 },
               ),
               if (error != null)
-                Padding(padding: const EdgeInsets.only(top: 8), child: Text(error!, style: TextStyle(color: Colors.red.shade400, fontSize: 12))),
+                Padding(padding: const EdgeInsets.only(top: 8), child: Text(error!, style: TextStyle(color: context.tokens.danger, fontSize: 12))),
             ]),
           ),
           actions: [
@@ -293,7 +294,7 @@ class _LeadTile extends StatelessWidget {
       title: Row(children: [
         Expanded(child: Text(lead.displayName, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: unread ? FontWeight.w800 : FontWeight.w600))),
         if (lead.lastMessageAt != null)
-          Text(_listTime(lead.lastMessageAt!), style: TextStyle(fontSize: 11, color: unread ? const Color(0xFF128C7E) : null)),
+          Text(_listTime(lead.lastMessageAt!), style: TextStyle(fontSize: 11, color: unread ? context.tokens.accentText : null)),
       ]),
       subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(sub, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12)),
@@ -306,8 +307,8 @@ class _LeadTile extends StatelessWidget {
             Container(
               margin: const EdgeInsets.only(left: 6),
               padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-              decoration: BoxDecoration(color: const Color(0xFF25D366), borderRadius: BorderRadius.circular(10)),
-              child: Text('${lead.unreadCount}', style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
+              decoration: BoxDecoration(color: context.tokens.accent, borderRadius: BorderRadius.circular(10)),
+              child: Text('${lead.unreadCount}', style: TextStyle(color: context.tokens.onFill, fontSize: 11, fontWeight: FontWeight.bold)),
             ),
         ]),
       ]),

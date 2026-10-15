@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../models/sale.dart';
 import '../services/sale_repository.dart';
 import '../theme/app_theme.dart';
+import '../widgets/segmented_tab_bar.dart';
 import '../widgets/page_header.dart';
 import 'saved_businesses_page.dart' show StateBadge;
 
@@ -57,17 +58,18 @@ class _SalesPageState extends State<SalesPage> {
               final allSales = snapshot.data ?? const <Sale>[];
 
               final ongoing = allSales
-                  .where((s) => s.status == SaleStatus.newSale || s.status == SaleStatus.inProgress)
+                  .where((s) => s.status.isOngoing)
                   .toList();
               final completed = allSales
                   .where((s) => s.status == SaleStatus.completed || s.status == SaleStatus.cancelled)
                   .toList();
 
+              // Orders from before the fresh start stay listed but add no money.
               final totalEarned = allSales
-                  .where((s) => s.employeePaymentStatus == EmployeePaymentStatus.paid)
+                  .where((s) => !s.paymentsArchived && s.employeePaymentStatus == EmployeePaymentStatus.paid)
                   .fold<double>(0, (sum, s) => sum + s.employeePaymentAmount);
               final pending = allSales
-                  .where((s) => s.status == SaleStatus.completed && s.employeePaymentStatus == EmployeePaymentStatus.pending)
+                  .where((s) => !s.paymentsArchived && s.status == SaleStatus.completed && s.employeePaymentStatus == EmployeePaymentStatus.pending)
                   .fold<double>(0, (sum, s) => sum + s.employeePaymentAmount);
 
               return Column(
@@ -125,22 +127,9 @@ class _SegmentedTabs extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = context.tokens;
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 20),
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(color: t.surface, borderRadius: const BorderRadius.all(Radius.circular(AppTheme.radiusPill))),
-      child: TabBar(
-        indicator: BoxDecoration(color: t.accent, borderRadius: const BorderRadius.all(Radius.circular(AppTheme.radiusPill))),
-        indicatorSize: TabBarIndicatorSize.tab,
-        labelColor: t.onFill,
-        unselectedLabelColor: t.subtle,
-        splashBorderRadius: BorderRadius.circular(AppTheme.radiusPill),
-        tabs: const [
-          Tab(height: 40, text: 'Ongoing'),
-          Tab(height: 40, text: 'Completed'),
-        ],
-      ),
+    return const SegmentedTabBar(
+      margin: EdgeInsets.symmetric(horizontal: 20),
+      labels: ['Ongoing', 'Completed'],
     );
   }
 }
@@ -234,8 +223,9 @@ class _SaleCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = context.tokens;
     final (statusLabel, statusBg, statusFg) = switch (sale.status) {
-      SaleStatus.newSale => ('NEW', t.neutralTint, t.subtle),
-      SaleStatus.inProgress => ('IN PROGRESS', t.accentTint, t.accentTextStrong),
+      SaleStatus.newSale => ('DEAL LOCKED', t.neutralTint, t.subtle),
+      SaleStatus.inProgress => ('REMOVAL', t.accentTint, t.accentTextStrong),
+      SaleStatus.payment => ('AWAITING PAYMENT', t.accentTint, t.accentTextStrong),
       SaleStatus.completed => ('COMPLETED', t.sage, t.onFill),
       SaleStatus.cancelled => ('CANCELLED', t.neutralTintStrong, t.faint),
     };
@@ -267,6 +257,9 @@ class _SaleCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 12),
+          if (sale.paymentsArchived)
+            Text('Earlier order · not in current earnings', style: Theme.of(context).textTheme.bodySmall)
+          else
           Row(
             children: [
               Icon(AppIcons.wallet, size: 15, color: paid ? t.sageDeep : t.accentText),

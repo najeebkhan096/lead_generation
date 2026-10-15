@@ -1,6 +1,5 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import '../models/lead.dart';
 import '../services/lead_repository.dart';
@@ -81,13 +80,7 @@ class _SavedBusinessCardState extends State<SavedBusinessCard> {
       decoration: BoxDecoration(
         color: t.surface,
         borderRadius: BorderRadius.circular(AppTheme.radiusCard),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.07),
-            blurRadius: 14,
-            offset: const Offset(0, 6),
-          ),
-        ],
+        border: Border.all(color: t.border),
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(AppTheme.radiusCard),
@@ -235,7 +228,7 @@ class _SavedBusinessCardState extends State<SavedBusinessCard> {
         height: 42,
         decoration: BoxDecoration(
           color: isSelected ? t.accentTint : t.neutralTint,
-          shape: BoxShape.circle,
+          borderRadius: BorderRadius.circular(AppTheme.radius),
         ),
         child: Icon(icon,
             size: 20, color: isSelected ? t.accentTextStrong : t.subtle),
@@ -275,13 +268,14 @@ class _InitialAvatar extends StatelessWidget {
       height: 50,
       decoration: BoxDecoration(
         color: warm ? t.accentTint : t.sageTint,
-        shape: BoxShape.circle,
+        borderRadius: BorderRadius.circular(AppTheme.radius),
       ),
       alignment: Alignment.center,
       child: Text(
         letter,
-        style: GoogleFonts.caprasimo(
-          fontSize: 21,
+        style: TextStyle(
+          fontSize: 19,
+          fontWeight: FontWeight.w800,
           color: warm ? t.accentText : t.sageText,
         ),
       ),

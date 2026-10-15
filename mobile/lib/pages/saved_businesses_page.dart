@@ -3,7 +3,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../models/lead.dart';
-import '../services/lead_repository.dart';
 import '../services/paged_query.dart';
 import '../theme/app_theme.dart';
 import '../utils/seeded_shuffle.dart';
@@ -60,7 +59,6 @@ class SavedBusinessesPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final repo = LeadRepository();
     final salesmanId = FirebaseAuth.instance.currentUser?.uid;
     return LeadCollectionPage<Lead>(
       title: 'Discover leads',
@@ -87,7 +85,6 @@ class SavedBusinessesPage extends StatelessWidget {
       ),
       searchText: (l) => '${l.business} ${l.location} ${l.phone ?? ''} ${l.category}'.toLowerCase(),
       categoryOf: (l) => l.category,
-      loadCategories: repo.fetchCategoryNames,
       itemBuilder: (context, lead) => SavedBusinessCard(
         lead: lead,
         onTap: () => Navigator.of(context).push(

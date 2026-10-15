@@ -29,11 +29,6 @@ class AuthService {
     }
   }
 
-  /// Every mobile app user is a salesman the web app can assign work to —
-  /// creates the `users/{uid}` profile doc on first sign-in (role fixed at
-  /// `salesman`, this app has no other kind of account) and refreshes
-  /// name/email/photo + `lastLoginAt` on every subsequent sign-in without
-  /// clobbering `createdAt`.
   Future<void> _upsertUserProfile(User user) async {
     final ref = FirebaseFirestore.instance.collection('users').doc(user.uid);
     final snap = await ref.get();
@@ -41,26 +36,56 @@ class AuthService {
       'name': user.displayName,
       'email': user.email,
       'photoURL': user.photoURL,
-      'role': 'salesman',
       'lastLoginAt': FieldValue.serverTimestamp(),
     };
     if (!snap.exists) {
+      data['role'] = 'salesman';
       data['createdAt'] = FieldValue.serverTimestamp();
       data['approved'] = false;
     }
     await ref.set(data, SetOptions(merge: true));
+    
+    // Debug print
+    final updatedSnap = await ref.get();
+    print('=== [AuthService] User Profile Upserted ===');
+    print('UID: ${user.uid}');
+    print('Email: ${user.email}');
+    print('Role: ${updatedSnap.data()?['role']}');
+    print('Approved: ${updatedSnap.data()?['approved']}');
   }
 
-  /// True only when the admin has set `approved` on this user's profile.
-  /// Missing/false both count as not approved — do not mention that to the
-  /// user; callers show a generic error instead.
   Future<bool> isCurrentUserApproved() async {
     final user = _auth.currentUser;
     if (user == null) return false;
     try {
       final snap = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
-      return snap.data()?['approved'] == true;
-    } catch (_) {
+      final approved = snap.data()?['approved'] == true;
+      print('=== [AuthService] isCurrentUserApproved: $approved (UID: ${user.uid}) ===');
+      return approved;
+    } catch (e) {
+      print('Error checking approval: $e');
+      return false;
+    }
+  }
+
+  Future<bool> isCurrentUserAdmin() async {
+    final user = _auth.currentUser;
+    if (user == null) {
+      print('=== [AuthService] isCurrentUserAdmin: No current user logged in ===');
+      return false;
+    }
+    try {
+      final snap = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+      final role = snap.data()?['role'];
+      final isAdmin = role == 'admin';
+      print('=== [AuthService] Check Admin Role ===');
+      print('UID: ${user.uid}');
+      print('Email: ${user.email}');
+      print('Role found in Firestore: "$role"');
+      print('Is Admin?: $isAdmin');
+      return isAdmin;
+    } catch (e) {
+      print('Error checking admin role: $e');
       return false;
     }
   }

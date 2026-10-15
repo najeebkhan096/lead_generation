@@ -143,7 +143,7 @@ class _SearchCard extends StatelessWidget {
             height: 44,
             decoration: BoxDecoration(
               color: t.neutralTint,
-              shape: BoxShape.circle,
+              borderRadius: BorderRadius.circular(AppTheme.radius),
             ),
             child: Icon(AppIcons.search, size: 19, color: t.subtle),
           ),

@@ -3,6 +3,7 @@ import '../models/outreach_message.dart';
 import '../services/outreach_api.dart';
 import '../services/outreach_repository.dart';
 import '../services/template_image.dart';
+import '../../../theme/app_theme.dart';
 
 /// Sends a real message to any number (any country) so the SMS / WhatsApp
 /// routing can be checked without opening a lead. Delivery status is shown live.
@@ -198,7 +199,7 @@ class _ResultTile extends StatelessWidget {
       contentPadding: EdgeInsets.zero,
       leading: Icon(
         failed ? Icons.error_outline : (m.status == MessageStatus.sending ? Icons.schedule : Icons.check_circle_outline),
-        color: failed ? Colors.red : null,
+        color: failed ? context.tokens.danger : null,
       ),
       title: Text('${m.isSms ? 'SMS' : 'WhatsApp'} · ${m.status.name}'),
       subtitle: Text(

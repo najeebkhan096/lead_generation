@@ -126,7 +126,7 @@ Nothing loads a whole collection. `websiteLeads` alone holds tens of thousands o
 
 **Web**: one list engine — `PagedLeadsBloc` + `PagedLeadList` (a sliver grid, so only visible cards are built; the next page loads on scroll or via a "Load more" button) — behind Review, No-website, WhatsApp and Email leads (`LeadListPage` + a small config each). Search is debounced and answered by the server. Archive lead lists are bounded (parsed from a workbook) and reveal a window at a time (`LazyRevealMixin`).
 
-**Mobile**: `PagedQueryController` (`limit` + `startAfterDocument`) behind `LeadCollectionPage`. Lists are one-shot page reads, so new data arrives on pull-to-refresh rather than live. "Discover leads" starts each salesman at a point derived from their uid in the document-id order and wraps around, which keeps salesmen on different leads without downloading the pool to shuffle it. Search on the phone filters what has been read (up to 1,500 documents) — pick a category to search further. Profile stats use server-side `count()`.
+**Mobile**: `PagedQueryController` behind `LeadCollectionPage`. Lists are live: the controller listens (`snapshots()`) to the first page and grows that one listener's `limit` a page at a time as you scroll, so a lead validated in the console or marked Contacted on another phone appears on its own (pull-to-refresh just rebuilds the listener). "Discover leads" starts each salesman at a point derived from their uid in the document-id order and wraps around, which keeps salesmen on different leads without downloading the pool to shuffle it. Search on the phone filters what has been read (up to 1,500 documents) — pick a category to search further. Profile stats use server-side `count()`.
 
 ## 4a. Validation
 

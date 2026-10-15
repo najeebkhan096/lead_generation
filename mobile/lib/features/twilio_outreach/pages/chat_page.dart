@@ -10,6 +10,7 @@ import '../widgets/composer.dart';
 import '../widgets/message_bubble.dart';
 import 'lead_info_page.dart';
 import 'lead_picker.dart';
+import '../../../theme/app_theme.dart';
 
 class ChatPage extends StatefulWidget {
   const ChatPage({super.key, required this.lead});
@@ -173,7 +174,7 @@ class _ChatPageState extends State<ChatPage> {
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: mine == e ? Colors.black12 : null,
+                color: mine == e ? context.tokens.neutralTintStrong : null,
               ),
               child: Text(e, style: const TextStyle(fontSize: 26)),
             ),
@@ -303,7 +304,7 @@ class _ChatPageState extends State<ChatPage> {
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
-              Icon(Icons.error, color: Colors.red.shade400),
+              Icon(Icons.error, color: ctx.tokens.danger),
               const SizedBox(width: 8),
               const Text('Message not sent', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
             ]),
@@ -330,14 +331,15 @@ class _ChatPageState extends State<ChatPage> {
   Widget build(BuildContext context) {
     final lead = _c.lead ?? widget.lead;
     final dark = Theme.of(context).brightness == Brightness.dark;
+    final t = context.tokens;
     return Scaffold(
-      backgroundColor: dark ? const Color(0xFF0B141A) : const Color(0xFFEFEAE2),
+      backgroundColor: t.ground,
       appBar: AppBar(
         titleSpacing: 0,
         title: Row(children: [
           CircleAvatar(
-            backgroundColor: Colors.white24,
-            child: Text(lead.initial, style: const TextStyle(color: Colors.white)),
+            backgroundColor: t.accentTint,
+            child: Text(lead.initial, style: TextStyle(color: t.accentText, fontWeight: FontWeight.w700)),
           ),
           const SizedBox(width: 10),
           Expanded(
@@ -348,7 +350,7 @@ class _ChatPageState extends State<ChatPage> {
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text(lead.displayName, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 16)),
                   Text(lead.phoneNumber,
-                      maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: Colors.white70)),
+                      maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: t.faint)),
                 ]),
               ),
             ),
@@ -358,7 +360,7 @@ class _ChatPageState extends State<ChatPage> {
           IconButton(
             tooltip: 'Send template',
             icon: _sendingTemplate
-                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
                 : const Icon(Icons.campaign_outlined),
             onPressed: _sendingTemplate ? null : _sendTemplate,
           ),
@@ -375,19 +377,19 @@ class _ChatPageState extends State<ChatPage> {
     final open = _c.windowOpen;
     final left = open ? _c.conversation.remaining() : null;
     final never = _c.conversation.lastInboundAt == null;
-    final dark = Theme.of(context).brightness == Brightness.dark;
+    final t = context.tokens;
     return Column(mainAxisSize: MainAxisSize.min, children: [
       if (open && left != null && left < const Duration(hours: 2))
         Container(
           width: double.infinity,
-          color: Colors.amber.shade100,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          color: t.accentTint,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           child: Text('Free-form replies close in ${left.inMinutes} min (24-hour WhatsApp window).',
-              style: const TextStyle(fontSize: 12, color: Colors.black87)),
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: t.accentTextStrong)),
         ),
       if (!open)
         Material(
-          color: dark ? const Color(0xFF1F2C34) : Colors.white,
+          color: t.surface,
           child: Padding(
             padding: const EdgeInsets.fromLTRB(12, 8, 8, 4),
             child: Row(children: [

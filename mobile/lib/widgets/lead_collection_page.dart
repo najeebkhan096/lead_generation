@@ -20,6 +20,11 @@ const _searchTarget = 20;
 /// category reaches further into the data.
 const _searchReadCap = 1500;
 
+/// How many documents opening the category list may read to find every
+/// category that has leads. The lists this is used on are hundreds of
+/// documents; the cap stops a huge collection from being read whole.
+const _categoryReadCap = 1500;
+
 /// One list filter value (e.g. "1-star" / "No website"); `value == null` is
 /// "all".
 typedef LeadFilter = ({String label, String? value});
@@ -46,7 +51,6 @@ class LeadCollectionPage<T> extends StatefulWidget {
     required this.itemBuilder,
     required this.searchText,
     required this.categoryOf,
-    required this.loadCategories,
     this.filters = const [],
     this.dateOf,
     this.groupWhen,
@@ -72,9 +76,6 @@ class LeadCollectionPage<T> extends StatefulWidget {
   final String Function(T item) searchText;
   final String Function(T item) categoryOf;
 
-  /// The category names to offer. Merged with the categories seen in
-  /// what's loaded.
-  final Future<List<String>> Function() loadCategories;
   final List<LeadFilter> filters;
 
   /// The date a lead is grouped under ("Today", "Yesterday", ...). Items must
@@ -95,8 +96,13 @@ class _LeadCollectionPageState<T> extends State<LeadCollectionPage<T>> {
   late PagedQueryController<T> _controller;
   String? _filter;
   String _query = '';
-  List<String> _knownCategories = const [];
   bool _searchTopUpScheduled = false;
+
+  /// Per signal filter: the categories that have at least one lead in the
+  /// list — what the category dropdown offers. Read from the loaded leads of
+  /// the list when no category is selected (a selected category narrows the
+  /// list to itself, so it can't be re-derived then).
+  final Map<String?, Set<String>> _nonEmpty = {};
 
   @override
   void initState() {
@@ -104,9 +110,6 @@ class _LeadCollectionPageState<T> extends State<LeadCollectionPage<T>> {
     _scroll.addListener(_onScroll);
     _attach(widget.controllerFor(_filter));
     _controller.refresh();
-    widget.loadCategories().then((names) {
-      if (mounted) setState(() => _knownCategories = names);
-    }, onError: (_) {});
   }
 
   @override
@@ -126,8 +129,46 @@ class _LeadCollectionPageState<T> extends State<LeadCollectionPage<T>> {
   }
 
   void _onChanged() {
+    _syncCategories();
     if (mounted) setState(() {});
   }
+
+  /// Keeps [_nonEmpty] true to the loaded leads: replaced from the list while
+  /// unfiltered, and a selected category that has run out of leads (the last
+  /// one moved elsewhere) is dropped.
+  void _syncCategories() {
+    final c = _controller;
+    if (c.loading) return;
+    final known = _nonEmpty.putIfAbsent(_filter, () => <String>{});
+    if (c.category == null) {
+      known
+        ..clear()
+        ..addAll([
+          for (final item in c.items)
+            if (widget.categoryOf(item).trim().isNotEmpty) widget.categoryOf(item).trim(),
+        ]);
+    } else if (c.items.isEmpty && !c.hasMore && c.error == null) {
+      known.remove(c.category);
+    }
+  }
+
+  /// Opening the category list: read the rest of the list (up to a cap) so
+  /// every category that has leads is offered, not just those on the pages
+  /// scrolled so far.
+  Future<void> _loadAllForCategories() async {
+    final c = _controller;
+    if (c.category != null) return;
+    while (mounted && identical(c, _controller) && c.hasMore && c.error == null && c.documentsRead < _categoryReadCap) {
+      if (c.loading || c.loadingMore) {
+        await Future<void>.delayed(const Duration(milliseconds: 40));
+      } else {
+        await c.loadMore();
+      }
+    }
+  }
+
+  bool get _categoriesPartial =>
+      _controller.category == null && _controller.hasMore && _controller.error == null;
 
   void _onScroll() {
     if (!_scroll.hasClients) return;
@@ -138,11 +179,12 @@ class _LeadCollectionPageState<T> extends State<LeadCollectionPage<T>> {
   Future<void> _setFilter(String? value) async {
     if (value == _filter) return;
     final previous = _controller..removeListener(_onChanged);
-    final category = previous.category;
     setState(() => _filter = value);
     _attach(widget.controllerFor(value));
     unawaited(Future<void>.microtask(previous.dispose));
-    await _controller.refresh(category: category);
+    // A different signal is a different list, with its own categories, so
+    // it starts on "All categories".
+    await _controller.refresh();
   }
 
   bool get _grouped => widget.dateOf != null && (widget.groupWhen?.call(_filter) ?? true);
@@ -178,13 +220,14 @@ class _LeadCollectionPageState<T> extends State<LeadCollectionPage<T>> {
     });
   }
 
+  /// The dropdown's entries: "All" plus every category with leads in this
+  /// list (never the categories of other scans, which would open an empty list).
   List<String> _categories() {
-    final seen = <String>{
-      ..._knownCategories,
-      for (final item in _controller.items)
-        if (widget.categoryOf(item).trim().isNotEmpty) widget.categoryOf(item).trim(),
+    final names = {
+      ...?_nonEmpty[_filter],
+      if (_controller.category != null) _controller.category!,
     };
-    return [allCategories, ...(seen.toList()..sort())];
+    return [allCategories, ...(names.toList()..sort())];
   }
 
   @override
@@ -312,11 +355,7 @@ class _LeadCollectionPageState<T> extends State<LeadCollectionPage<T>> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            PageHeader(
-              title: widget.title,
-              subtitle: subtitle(),
-              trailing: HeaderBadge(icon: widget.headerIcon, background: t.accentTint, foreground: t.accentDeep),
-            ),
+            PageHeader(title: widget.title, subtitle: subtitle()),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Column(
@@ -327,19 +366,26 @@ class _LeadCollectionPageState<T> extends State<LeadCollectionPage<T>> {
                     hintText: widget.searchHint,
                     onChanged: (v) => setState(() => _query = v),
                   ),
-                  const SizedBox(height: 12),
-                  CategoryDropdown(
-                    categories: _categories(),
-                    selected: selected,
-                    onSelected: (value) => c.refresh(category: value == allCategories ? null : value),
-                  ),
-                  if (widget.filters.length > 1) ...[
-                    const SizedBox(height: 10),
-                    SizedBox(
-                      height: 40,
-                      child: ListView(
-                        scrollDirection: Axis.horizontal,
-                        children: [
+                  const SizedBox(height: 10),
+                  // Category and signal filters share one scrolling row, so
+                  // the list starts higher on the screen.
+                  SizedBox(
+                    height: 42,
+                    child: ListView(
+                      scrollDirection: Axis.horizontal,
+                      children: [
+                        CategoryDropdown(
+                          compact: true,
+                          categories: _categories(),
+                          liveCategories: _categories,
+                          refreshOn: _controller,
+                          loadingMore: () => _categoriesPartial,
+                          onOpen: _loadAllForCategories,
+                          selected: selected,
+                          onSelected: (value) => c.refresh(category: value == allCategories ? null : value),
+                        ),
+                        if (widget.filters.length > 1) ...[
+                          const SizedBox(width: 8),
                           for (final f in widget.filters)
                             Padding(
                               padding: const EdgeInsets.only(right: 8),
@@ -347,14 +393,13 @@ class _LeadCollectionPageState<T> extends State<LeadCollectionPage<T>> {
                                 label: Text(f.label),
                                 selected: _filter == f.value,
                                 showCheckmark: false,
-                                selectedColor: t.accentTint,
                                 onSelected: (_) => _setFilter(f.value),
                               ),
                             ),
                         ],
-                      ),
+                      ],
                     ),
-                  ],
+                  ),
                 ],
               ),
             ),
@@ -367,7 +412,8 @@ class _LeadCollectionPageState<T> extends State<LeadCollectionPage<T>> {
   }
 }
 
-/// Day heading above a run of leads found that day.
+/// Day heading above a run of leads found that day: a small-caps label and
+/// a hairline that runs to the edge.
 class _DateHeader extends StatelessWidget {
   const _DateHeader({required this.label, required this.first});
 
@@ -378,10 +424,16 @@ class _DateHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = context.tokens;
     return Padding(
-      padding: EdgeInsets.only(top: first ? 0 : 10, bottom: 10, left: 4),
-      child: Text(
-        label,
-        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, letterSpacing: 0.3, color: t.subtle),
+      padding: EdgeInsets.only(top: first ? 2 : 12, bottom: 10),
+      child: Row(
+        children: [
+          Text(
+            label.toUpperCase(),
+            style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, letterSpacing: 1.0, color: t.faint),
+          ),
+          const SizedBox(width: 12),
+          Expanded(child: Divider(color: t.border, height: 1)),
+        ],
       ),
     );
   }
@@ -397,6 +449,11 @@ class CategoryDropdown extends StatelessWidget {
     required this.selected,
     required this.onSelected,
     this.countFor,
+    this.compact = false,
+    this.liveCategories,
+    this.refreshOn,
+    this.loadingMore,
+    this.onOpen,
   });
 
   final List<String> categories;
@@ -404,11 +461,34 @@ class CategoryDropdown extends StatelessWidget {
   final ValueChanged<String> onSelected;
   final int Function(String category)? countFor;
 
+  /// A chip-sized button for a filter row, instead of a full-width field.
+  final bool compact;
+
+  /// While the picker is open: the current entries, re-read whenever
+  /// [refreshOn] notifies (the list is still loading more leads).
+  final List<String> Function()? liveCategories;
+  final Listenable? refreshOn;
+
+  /// Whether more leads are still being read (the entries may still grow).
+  final bool Function()? loadingMore;
+
+  /// Called as the picker opens.
+  final VoidCallback? onOpen;
+
   Future<void> _openPicker(BuildContext context) async {
+    onOpen?.call();
     final choice = await showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
-      builder: (_) => _CategoryPickerSheet(categories: categories, selected: selected, countFor: countFor),
+      builder: (_) => ListenableBuilder(
+        listenable: refreshOn ?? Listenable.merge(const []),
+        builder: (_, _) => _CategoryPickerSheet(
+          categories: liveCategories?.call() ?? categories,
+          selected: selected,
+          countFor: countFor,
+          loading: loadingMore?.call() ?? false,
+        ),
+      ),
     );
     if (choice != null) onSelected(choice);
   }
@@ -417,14 +497,60 @@ class CategoryDropdown extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = context.tokens;
     final isFiltered = selected != allCategories;
+    if (compact) {
+      return Align(
+        alignment: Alignment.centerLeft,
+        child: Material(
+          color: isFiltered ? t.accentTint : t.surface,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppTheme.radius),
+            side: BorderSide(color: isFiltered ? t.accent : t.border),
+          ),
+          child: InkWell(
+            onTap: () => _openPicker(context),
+            borderRadius: BorderRadius.circular(AppTheme.radius),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 220, minHeight: 40),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(AppIcons.filter, size: 16, color: isFiltered ? t.accentText : t.subtle),
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: Text(
+                        isFiltered ? selected : 'All categories',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: isFiltered ? t.accentTextStrong : t.subtle,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Icon(AppIcons.chevronDown, size: 16, color: isFiltered ? t.accentText : t.subtle),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
     return Material(
       color: t.surface,
-      borderRadius: BorderRadius.circular(AppTheme.radiusPill),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppTheme.radius),
+        side: BorderSide(color: isFiltered ? t.accent : t.border),
+      ),
       child: InkWell(
         onTap: () => _openPicker(context),
-        borderRadius: BorderRadius.circular(AppTheme.radiusPill),
+        borderRadius: BorderRadius.circular(AppTheme.radius),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
           child: Row(
             children: [
               Icon(AppIcons.filter, size: 19, color: t.accent),
@@ -433,8 +559,8 @@ class CategoryDropdown extends StatelessWidget {
                 child: Text(
                   isFiltered ? selected : 'All categories',
                   style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
+                    fontSize: 14.5,
+                    fontWeight: FontWeight.w600,
                     color: isFiltered ? t.accentTextStrong : t.ink,
                   ),
                   maxLines: 1,
@@ -447,7 +573,7 @@ class CategoryDropdown extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
                   decoration: BoxDecoration(
                     color: t.accentTint,
-                    borderRadius: const BorderRadius.all(Radius.circular(AppTheme.radiusPill)),
+                    borderRadius: const BorderRadius.all(Radius.circular(8)),
                   ),
                   child: Text(
                     '${countFor!(selected)}',
@@ -466,8 +592,15 @@ class CategoryDropdown extends StatelessWidget {
 }
 
 class _CategoryPickerSheet extends StatefulWidget {
-  const _CategoryPickerSheet({required this.categories, required this.selected, this.countFor});
+  const _CategoryPickerSheet({
+    required this.categories,
+    required this.selected,
+    this.countFor,
+    this.loading = false,
+  });
 
+  /// More leads are still being read, so more categories may appear.
+  final bool loading;
   final List<String> categories;
   final String selected;
   final int Function(String category)? countFor;
@@ -511,6 +644,17 @@ class _CategoryPickerSheetState extends State<_CategoryPickerSheet> {
                   ],
                 ),
               ),
+              if (widget.loading)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 10, 24, 0),
+                  child: Row(
+                    children: [
+                      const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)),
+                      const SizedBox(width: 10),
+                      Text('Checking every lead…', style: Theme.of(context).textTheme.bodySmall),
+                    ],
+                  ),
+                ),
               const SizedBox(height: 16),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -552,7 +696,7 @@ class _CategoryPickerSheetState extends State<_CategoryPickerSheet> {
                               height: 42,
                               decoration: BoxDecoration(
                                 color: isSelected ? t.accentTint : t.neutralTint,
-                                shape: BoxShape.circle,
+                                borderRadius: BorderRadius.circular(AppTheme.radius),
                               ),
                               child: Icon(
                                 isAll ? AppIcons.sparkles : AppIcons.tag,
@@ -623,10 +767,13 @@ class StateBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = context.tokens;
     return Container(
-      width: 88,
-      height: 88,
-      decoration: BoxDecoration(color: background ?? t.neutralTintStrong, shape: BoxShape.circle),
-      child: Icon(icon, size: 38, color: foreground ?? t.subtle),
+      width: 72,
+      height: 72,
+      decoration: BoxDecoration(
+        color: background ?? t.accentTint,
+        borderRadius: BorderRadius.circular(AppTheme.radiusCard + 4),
+      ),
+      child: Icon(icon, size: 32, color: foreground ?? t.accentText),
     );
   }
 }

@@ -27,35 +27,51 @@ void main() {
         home: const MainNavigationPage(),
       ));
 
-  testWidgets('the app is one page with two tabs: WhatsApp and Email', (tester) async {
+  NavigationBar navBar(WidgetTester tester) => tester.widget<NavigationBar>(find.byType(NavigationBar));
+
+  testWidgets('bottom bar: 1-star reviews and No website, each with WhatsApp and Email tabs', (tester) async {
     await pumpApp(tester);
 
-    // Exactly two tabs, no bottom bar, and none of the unvalidated lead views.
-    expect(find.byType(NavigationBar), findsNothing);
-    expect(tester.widget<TabBar>(find.byType(TabBar)).tabs, hasLength(2));
-    expect(find.widgetWithText(Tab, 'WhatsApp'), findsOneWidget);
-    expect(find.widgetWithText(Tab, 'Email'), findsOneWidget);
-    expect(find.text('Leads'), findsNothing);
-    expect(find.text('Discover leads'), findsNothing);
-    expect(find.text('Website leads'), findsNothing);
+    expect(navBar(tester).destinations, hasLength(2));
+    expect(navBar(tester).selectedIndex, 0);
+    final labels = tester
+        .widgetList<NavigationDestination>(find.byType(NavigationDestination))
+        .map((d) => d.label)
+        .toList();
+    expect(labels, ['1-star reviews', 'No website']);
 
-    // WhatsApp is first.
-    expect(find.text('WhatsApp leads'), findsOneWidget);
+    // 1-star reviews is showing, on its WhatsApp tab.
+    expect(find.text('WhatsApp · 1-star reviews'), findsOneWidget);
+    expect(find.widgetWithText(Tab, 'WhatsApp'), findsWidgets);
+    expect(find.widgetWithText(Tab, 'Email'), findsWidgets);
+    // New / Contacted is a switch inside each list, not a tab.
+    expect(find.widgetWithText(ChoiceChip, 'New'), findsWidgets);
+    expect(find.widgetWithText(ChoiceChip, 'Contacted'), findsWidgets);
+    expect(find.widgetWithText(Tab, 'Contacted'), findsNothing);
 
-    await tester.tap(find.widgetWithText(Tab, 'Email'));
+    // Its Email tab.
+    await tester.tap(find.widgetWithText(Tab, 'Email').first);
     await animate(tester);
-    expect(find.text('Email leads'), findsOneWidget);
+    expect(find.text('Email · 1-star reviews'), findsOneWidget);
 
-    await tester.tap(find.widgetWithText(Tab, 'WhatsApp'));
+    // No website: its own pair of tabs, back on WhatsApp.
+    await tester.tap(find.byIcon(AppIcons.globe));
     await animate(tester);
-    expect(find.text('WhatsApp leads'), findsOneWidget);
+    expect(navBar(tester).selectedIndex, 1);
+    expect(find.text('WhatsApp · No website'), findsOneWidget);
+
+    // Back to 1-star reviews: it kept its Email tab.
+    await tester.tap(find.byIcon(AppIcons.star));
+    await animate(tester);
+    expect(navBar(tester).selectedIndex, 0);
+    expect(find.text('Email · 1-star reviews'), findsOneWidget);
   });
 
   testWidgets('the account button opens More, with Sign out, and goes back', (tester) async {
     await pumpApp(tester);
 
     expect(find.text('Sign Out'), findsNothing);
-    await tester.tap(find.byTooltip('More'));
+    await tester.tap(find.byTooltip('More').first);
     await animate(tester);
 
     expect(find.text('Sign Out'), findsOneWidget);
@@ -64,6 +80,6 @@ void main() {
     await tester.pageBack();
     await animate(tester);
     expect(find.text('Sign Out'), findsNothing);
-    expect(find.widgetWithText(Tab, 'Email'), findsOneWidget);
+    expect(find.byType(NavigationBar), findsOneWidget);
   });
 }

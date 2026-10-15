@@ -2,7 +2,7 @@ import { scrapeBusinessSnapshot } from '../../scraper/googleMapsScraper.js';
 import { isWithinRange } from '../../lib/dateUtils.js';
 import { listSales, recordSaleReviewScan } from './saleStore.js';
 
-const SCAN_STATUSES = ['new', 'in_progress', 'completed'];
+const SCAN_STATUSES = ['new', 'in_progress', 'payment', 'completed'];
 
 function businessKey(name) {
   return String(name || '').toLowerCase().replace(/['’`]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
@@ -23,7 +23,7 @@ export function uniqueByBusiness(sales) {
 }
 
 /**
- * Re-scrapes every ongoing (new / in_progress) and completed sale that has
+ * Re-scrapes every ongoing (new / in_progress / payment) and completed sale that has
  * a Google Maps review link, looking for 1-star reviews inside `dateRange`
  * days (default 30). Same one-at-a-time Playwright path the watchlist uses
  * so concurrent category scans don't fight this for Chromium.

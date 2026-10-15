@@ -190,7 +190,7 @@ class _WhatsAppToggle extends StatelessWidget {
           height: 44,
           decoration: BoxDecoration(
             color: value ? t.sageTint : t.neutralTint,
-            shape: BoxShape.circle,
+            borderRadius: BorderRadius.circular(AppTheme.radius),
           ),
           child: Icon(
             AppIcons.chat,
@@ -279,13 +279,7 @@ class _ReviewCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: t.surface,
         borderRadius: BorderRadius.circular(AppTheme.radiusCard),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.07),
-            blurRadius: 14,
-            offset: const Offset(0, 6),
-          ),
-        ],
+        border: Border.all(color: t.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -297,7 +291,7 @@ class _ReviewCard extends StatelessWidget {
                 height: 44,
                 decoration: BoxDecoration(
                   color: t.accentTint,
-                  shape: BoxShape.circle,
+                  borderRadius: BorderRadius.circular(AppTheme.radius),
                 ),
                 child: Icon(AppIcons.quote, size: 20, color: t.accentText),
               ),
@@ -367,7 +361,7 @@ class _CleanReputationCard extends StatelessWidget {
             height: 44,
             decoration: BoxDecoration(
               color: t.sageTintStrong,
-              shape: BoxShape.circle,
+              borderRadius: BorderRadius.circular(AppTheme.radius),
             ),
             child: Icon(AppIcons.shieldCheck, size: 20, color: t.sageText),
           ),
@@ -474,7 +468,7 @@ class _StatusOption extends StatelessWidget {
                   height: 44,
                   decoration: BoxDecoration(
                     color: selected ? fill : t.neutralTint,
-                    shape: BoxShape.circle,
+                    borderRadius: BorderRadius.circular(AppTheme.radius),
                   ),
                   child: Icon(
                     option.icon,

@@ -31,25 +31,22 @@ class _Snap implements QuerySnapshot<Map<String, dynamic>> {
 }
 
 class _FakeQuery implements Query<Map<String, dynamic>> {
-  _FakeQuery(this.rows, {this.max, this.after});
+  _FakeQuery(this.rows, {this.max});
 
   final List<_Doc> rows;
   final int? max;
-  final String? after;
 
   @override
-  Query<Map<String, dynamic>> limit(int limit) => _FakeQuery(rows, max: limit, after: after);
+  Query<Map<String, dynamic>> limit(int limit) => _FakeQuery(rows, max: limit);
 
   @override
-  Query<Map<String, dynamic>> startAfterDocument(DocumentSnapshot documentSnapshot) =>
-      _FakeQuery(rows, max: max, after: documentSnapshot.id);
-
-  @override
-  Future<QuerySnapshot<Map<String, dynamic>>> get([GetOptions? options]) async {
+  Stream<QuerySnapshot<Map<String, dynamic>>> snapshots({
+    bool includeMetadataChanges = false,
+    ListenSource source = ListenSource.defaultSource,
+  }) {
     var out = rows;
-    if (after != null) out = out.sublist(out.indexWhere((d) => d.id == after) + 1);
     if (max != null && out.length > max!) out = out.sublist(0, max);
-    return _Snap(out);
+    return Stream.value(_Snap(out));
   }
 
   @override
@@ -82,7 +79,6 @@ Widget _page(List<_Doc> rows) => MaterialApp(
         itemBuilder: (context, l) => SizedBox(height: 56, child: Text(l.name)),
         searchText: (l) => l.name.toLowerCase(),
         categoryOf: (_) => '',
-        loadCategories: () async => const [],
       ),
     );
 
@@ -106,16 +102,16 @@ void main() {
     await tester.pumpWidget(_page(rows));
     await tester.pumpAndSettle();
 
-    expect(find.text('Today'), findsOneWidget);
-    expect(find.text('Yesterday'), findsOneWidget);
+    expect(find.text('TODAY'), findsOneWidget);
+    expect(find.text('YESTERDAY'), findsOneWidget);
     expect(find.textContaining('4 businesses'), findsOneWidget);
     expect(find.textContaining('2 new today'), findsOneWidget);
 
     // Headers sit above their leads, in order.
     double y(String text) => tester.getTopLeft(find.text(text)).dy;
-    expect(y('Today'), lessThan(y('Cafe A')));
-    expect(y('Cafe B'), lessThan(y('Yesterday')));
-    expect(y('Yesterday'), lessThan(y('Gym C')));
+    expect(y('TODAY'), lessThan(y('Cafe A')));
+    expect(y('Cafe B'), lessThan(y('YESTERDAY')));
+    expect(y('YESTERDAY'), lessThan(y('Gym C')));
     expect(y('Gym C'), lessThan(y('Spa D')));
   });
 
@@ -126,13 +122,13 @@ void main() {
 
     await tester.pumpWidget(_page(rows));
     await tester.pumpAndSettle();
-    expect(find.text('Today'), findsOneWidget);
+    expect(find.text('TODAY'), findsOneWidget);
 
     await tester.tap(find.text('My queue'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Today'), findsNothing);
-    expect(find.text('Yesterday'), findsNothing);
+    expect(find.text('TODAY'), findsNothing);
+    expect(find.text('YESTERDAY'), findsNothing);
     expect(find.text('Cafe A'), findsOneWidget);
     expect(find.textContaining('new today'), findsNothing);
   });

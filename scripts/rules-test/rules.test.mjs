@@ -3,7 +3,7 @@ import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { initializeTestEnvironment, assertFails, assertSucceeds } from '@firebase/rules-unit-testing';
-import { doc, getDoc, setDoc, updateDoc, deleteDoc, collection, getDocs, query, where } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, deleteDoc, collection, getDocs, query, where, serverTimestamp, deleteField } from 'firebase/firestore';
 import { ref, uploadBytes, getBytes } from 'firebase/storage';
 
 let env;
@@ -92,11 +92,34 @@ for (const name of ['whatsappLeads', 'emailLeads']) {
     await assertFails(getDoc(doc(env.unauthenticatedContext().firestore(), `${name}/${id}`)));
   });
 
-  test(`${name}: clients can never create, update or delete`, async () => {
+  test(`${name}: clients can never create or delete, nor change contact details`, async () => {
     const alice = env.authenticatedContext('alice').firestore();
     await assertFails(setDoc(doc(alice, `${name}/forged`), { business: 'x', phone: '+1' }));
     await assertFails(updateDoc(doc(alice, `${name}/${id}`), { business: 'renamed' }));
+    await assertFails(updateDoc(doc(alice, `${name}/${id}`), { phone: '+19990000000' }));
     await assertFails(deleteDoc(doc(alice, `${name}/${id}`)));
+  });
+
+  test(`${name}: an approved user can mark a lead contacted and move it back, nothing more`, async () => {
+    const alice = env.authenticatedContext('alice').firestore();
+    const eve = env.authenticatedContext('eve').firestore();
+    const ref = (db) => doc(db, `${name}/${id}`);
+
+    // Contacted: status + timestamp + their own uid.
+    await assertSucceeds(updateDoc(ref(alice), { status: 'contacted', contactedAt: serverTimestamp(), contactedBy: 'alice' }));
+    // Back to New: status reset and the contact fields removed.
+    await assertSucceeds(updateDoc(ref(alice), { status: 'lead', contactedAt: deleteField(), contactedBy: deleteField() }));
+
+    // Not someone else's name, not another status, not without a timestamp.
+    await assertFails(updateDoc(ref(alice), { status: 'contacted', contactedAt: serverTimestamp(), contactedBy: 'bob' }));
+    await assertFails(updateDoc(ref(alice), { status: 'dealDone', contactedAt: serverTimestamp(), contactedBy: 'alice' }));
+    await assertFails(updateDoc(ref(alice), { status: 'contacted', contactedBy: 'alice' }));
+    // Not riding extra fields along (updatedAt would reorder every list).
+    await assertFails(updateDoc(ref(alice), { status: 'contacted', contactedAt: serverTimestamp(), updatedAt: serverTimestamp() }));
+    await assertFails(updateDoc(ref(alice), { status: 'contacted', contactedAt: serverTimestamp(), business: 'x' }));
+    // Unapproved and signed-out accounts cannot.
+    await assertFails(updateDoc(ref(eve), { status: 'contacted', contactedAt: serverTimestamp() }));
+    await assertFails(updateDoc(ref(env.unauthenticatedContext().firestore()), { status: 'contacted', contactedAt: serverTimestamp() }));
   });
 }
 

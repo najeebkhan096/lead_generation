@@ -6,8 +6,7 @@ import '../../domain/entities/sales_user.dart';
 import '../../domain/repositories/lead_repository.dart';
 import '../widgets/user_avatar.dart';
 
-/// Approve or revoke mobile app accounts. Unapproved users can sign in
-/// but see no lead data — the phone shows a generic error, not this flag.
+/// Approve or revoke mobile app accounts and manage user roles (Admin vs Salesman).
 class UsersPage extends StatefulWidget {
   const UsersPage({super.key});
 
@@ -68,6 +67,24 @@ class _UsersPageState extends State<UsersPage> {
     }
   }
 
+  Future<void> _setRole(SalesUser user, String role) async {
+    setState(() => _busyId = user.id);
+    try {
+      final updated = await _repo.setUserRole(user.id, role: role);
+      if (!mounted) return;
+      setState(() {
+        _users = _users.map((u) => u.id == updated.id ? updated : u).toList();
+        _busyId = null;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _busyId = null);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final pending = _users.where((u) => !u.approved).length;
@@ -85,7 +102,7 @@ class _UsersPageState extends State<UsersPage> {
       body: SafeArea(
         child: Center(
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 780),
+            constraints: const BoxConstraints(maxWidth: 820),
             child: _loading
                 ? const Center(child: CircularProgressIndicator())
                 : _error != null
@@ -117,7 +134,7 @@ class _UsersPageState extends State<UsersPage> {
                           ),
                           const SizedBox(height: 6),
                           const Text(
-                            'Approved users can see mobile lead data. Everyone else can sign in but gets a generic error — they are not told approval is required.',
+                            'Manage user accounts, approval status, and roles (Admin vs Salesman).',
                             style: TextStyle(fontSize: 12.5, color: AppTheme.faint),
                           ),
                           const SizedBox(height: 16),
@@ -135,6 +152,7 @@ class _UsersPageState extends State<UsersPage> {
                                 busy: _busyId == user.id,
                                 onApprove: () => _setApproved(user, true),
                                 onRevoke: () => _setApproved(user, false),
+                                onRoleChanged: (role) => _setRole(user, role),
                               ),
                         ],
                       ),
@@ -151,12 +169,14 @@ class _UserCard extends StatelessWidget {
     required this.busy,
     required this.onApprove,
     required this.onRevoke,
+    required this.onRoleChanged,
   });
 
   final SalesUser user;
   final bool busy;
   final VoidCallback onApprove;
   final VoidCallback onRevoke;
+  final ValueChanged<String> onRoleChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -192,17 +212,41 @@ class _UserCard extends StatelessWidget {
                   ),
                 ],
                 const SizedBox(height: 6),
-                Text(
-                  user.approved ? 'Approved · can see mobile data' : 'Not approved',
-                  style: TextStyle(
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w700,
-                    color: user.approved ? AppTheme.sage700 : AppTheme.accent700,
-                  ),
+                Row(
+                  children: [
+                    Text(
+                      user.approved ? 'Approved · can see mobile data' : 'Not approved',
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w700,
+                        color: user.approved ? AppTheme.sage700 : AppTheme.accent700,
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
           ),
+          const SizedBox(width: 12),
+          // Role selector dropdown
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+            decoration: BoxDecoration(
+              border: Border.all(color: AppTheme.neutral300),
+              borderRadius: BorderRadius.circular(AppTheme.radius),
+            ),
+            child: DropdownButton<String>(
+              value: user.role == 'admin' ? 'admin' : 'salesman',
+              underline: const SizedBox.shrink(),
+              isDense: true,
+              items: const [
+                DropdownMenuItem(value: 'salesman', child: Text('Salesman', style: TextStyle(fontSize: 13))),
+                DropdownMenuItem(value: 'admin', child: Text('Admin', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold))),
+              ],
+              onChanged: busy ? null : (val) => val != null ? onRoleChanged(val) : null,
+            ),
+          ),
+          const SizedBox(width: 12),
           if (busy)
             const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2))
           else if (user.approved)

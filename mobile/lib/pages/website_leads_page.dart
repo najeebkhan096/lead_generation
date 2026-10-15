@@ -2,7 +2,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
 import '../models/lead.dart';
-import '../services/lead_repository.dart';
 import '../services/paged_query.dart';
 import '../services/website_lead_repository.dart';
 import '../theme/app_theme.dart';
@@ -44,8 +43,6 @@ class WebsiteLeadsPage extends StatelessWidget {
       dateOf: (lead) => lead.dateAdded,
       searchText: (l) => '${l.business} ${l.location} ${l.phone ?? ''} ${l.category}'.toLowerCase(),
       categoryOf: (l) => l.category,
-      // One document per scan batch — far cheaper than reading the leads.
-      loadCategories: LeadRepository().fetchCategoryNames,
       itemBuilder: (context, lead) => SavedBusinessCard(
         lead: lead,
         showWhatsAppAction: false,

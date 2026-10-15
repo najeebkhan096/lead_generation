@@ -152,7 +152,7 @@ class ProfilePage extends StatelessWidget {
                     height: 42,
                     decoration: BoxDecoration(
                       color: t.accentTint,
-                      shape: BoxShape.circle,
+                      borderRadius: BorderRadius.circular(AppTheme.radius),
                     ),
                     child:
                         Icon(AppIcons.mail, size: 19, color: t.accentText),
@@ -177,7 +177,7 @@ class ProfilePage extends StatelessWidget {
                     height: 42,
                     decoration: BoxDecoration(
                       color: t.neutralTint,
-                      shape: BoxShape.circle,
+                      borderRadius: BorderRadius.circular(AppTheme.radius),
                     ),
                     child: Icon(AppIcons.info, size: 19, color: t.subtle),
                   ),
@@ -235,7 +235,8 @@ class _ProfileItem extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
         color: t.surface,
-        borderRadius: BorderRadius.circular(AppTheme.radius + 4),
+        borderRadius: BorderRadius.circular(AppTheme.radius + 2),
+        border: Border.all(color: t.border),
       ),
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -244,7 +245,7 @@ class _ProfileItem extends StatelessWidget {
           height: 42,
           decoration: BoxDecoration(
             color: t.accentTint,
-            shape: BoxShape.circle,
+            borderRadius: BorderRadius.circular(AppTheme.radius),
           ),
           child: Icon(icon, size: 20, color: t.accentText),
         ),
@@ -270,33 +271,20 @@ class _IdentityCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: t.surface,
         borderRadius: BorderRadius.circular(AppTheme.radiusCard),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.07),
-            blurRadius: 14,
-            offset: const Offset(0, 6),
-          ),
-        ],
+        border: Border.all(color: t.border),
       ),
       child: Row(
         children: [
-          Container(
-            padding: const EdgeInsets.all(4),
-            decoration: BoxDecoration(
-              color: t.sageTintStrong,
-              shape: BoxShape.circle,
-            ),
-            child: CircleAvatar(
-              radius: 34,
-              backgroundColor: t.sageTint,
-              backgroundImage:
-                  user?.photoURL != null ? NetworkImage(user!.photoURL!) : null,
-              child: user?.photoURL == null
-                  ? Icon(AppIcons.user, size: 30, color: t.sageText)
-                  : null,
-            ),
+          // The photo is a foreground image so a failed load (Google rate
+          // limits profile photos) quietly falls back to the icon.
+          CircleAvatar(
+            radius: 30,
+            backgroundColor: t.accentTint,
+            foregroundImage: user?.photoURL != null ? NetworkImage(user!.photoURL!) : null,
+            onForegroundImageError: user?.photoURL != null ? (_, _) {} : null,
+            child: Icon(AppIcons.user, size: 26, color: t.accentText),
           ),
-          const SizedBox(width: 18),
+          const SizedBox(width: 16),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,

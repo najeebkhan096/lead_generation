@@ -19,9 +19,21 @@ const COLLECTION = 'emailLeads';
 /** Same id the lead has in every other collection (see leadIdentity.js). */
 export const emailLeadDocId = leadDocId;
 
+/**
+ * Which signal found the lead — `review` (a 1-star review) or `website` (no
+ * website) — so the verified list can be split the way the source lists are
+ * (the same rule `whatsappLeadStore.js` uses): the signal the validation
+ * started from, else a lead that carries a review text is a review lead.
+ */
+export function emailLeadSourceType(lead) {
+  if (lead.sourceType === 'review' || lead.sourceType === 'website') return lead.sourceType;
+  return lead.badReview?.text ? 'review' : 'website';
+}
+
 function toFirestoreEmailLead(lead, { country } = {}) {
   return {
     externalId: lead.id || null,
+    sourceType: emailLeadSourceType(lead),
     business: lead.business || 'Unknown',
     category: normalizeCategory(lead.category, country),
     location: lead.location || null,

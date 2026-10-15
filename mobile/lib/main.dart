@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import 'firebase_options.dart';
 import 'pages/access_error_page.dart';
+import 'pages/admin_navigation_page.dart';
 import 'pages/login_page.dart';
 import 'pages/main_navigation_page.dart';
 import 'services/auth_service.dart';
@@ -53,8 +54,6 @@ class LeadMobileApp extends StatelessWidget {
   }
 }
 
-/// After Firebase Auth succeeds, load `users/{uid}.approved`. Unapproved
-/// accounts see a generic error — never an "awaiting approval" message.
 class _ApprovedGate extends StatefulWidget {
   const _ApprovedGate();
 
@@ -63,19 +62,30 @@ class _ApprovedGate extends StatefulWidget {
 }
 
 class _ApprovedGateState extends State<_ApprovedGate> {
-  late final Future<bool> _approved = AuthService().isCurrentUserApproved();
+  late final Future<({bool approved, bool isAdmin})> _check = _fetchStatus();
+
+  Future<({bool approved, bool isAdmin})> _fetchStatus() async {
+    final auth = AuthService();
+    final approved = await auth.isCurrentUserApproved();
+    final isAdmin = await auth.isCurrentUserAdmin();
+    return (approved: approved, isAdmin: isAdmin);
+  }
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<bool>(
-      future: _approved,
+    return FutureBuilder<({bool approved, bool isAdmin})>(
+      future: _check,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Scaffold(
             body: Center(child: CircularProgressIndicator()),
           );
         }
-        if (snapshot.data == true) {
+        final data = snapshot.data;
+        if (data?.approved == true) {
+          if (data?.isAdmin == true) {
+            return const AdminNavigationPage();
+          }
           return const MainNavigationPage();
         }
         return const AccessErrorPage();

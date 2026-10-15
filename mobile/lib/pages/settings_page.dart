@@ -93,7 +93,7 @@ class _AppearanceOption extends StatelessWidget {
                   height: 44,
                   decoration: BoxDecoration(
                     color: selected ? t.accent : t.neutralTint,
-                    shape: BoxShape.circle,
+                    borderRadius: BorderRadius.circular(AppTheme.radius),
                   ),
                   child: Icon(icon,
                       size: 20, color: selected ? t.onFill : t.subtle),

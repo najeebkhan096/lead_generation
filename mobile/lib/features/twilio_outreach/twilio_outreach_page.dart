@@ -1,35 +1,15 @@
 import 'package:flutter/material.dart';
+import '../../theme/app_theme.dart';
 import 'pages/chat_page.dart';
 import 'pages/lead_list_page.dart';
 import 'services/outreach_api.dart';
 import 'services/outreach_repository.dart';
 
-const _waGreen = Color(0xFF075E54);
-
-/// WhatsApp-green theme used by every outreach screen.
+/// The outreach screens use the app theme, so they look like the rest of the
+/// app (indigo accent, flat bordered surfaces) in light and dark.
 ThemeData outreachTheme(BuildContext context) {
   final isDark = Theme.of(context).brightness == Brightness.dark;
-  return ThemeData(
-    useMaterial3: true,
-    colorScheme: ColorScheme.fromSeed(
-      seedColor: _waGreen,
-      brightness: isDark ? Brightness.dark : Brightness.light,
-    ),
-    scaffoldBackgroundColor: isDark
-        ? const Color(0xFF0B141A)
-        : const Color(0xFFF0F2F5),
-    appBarTheme: AppBarTheme(
-      backgroundColor: isDark ? const Color(0xFF1F2C34) : _waGreen,
-      foregroundColor: Colors.white,
-      elevation: 1,
-    ),
-    floatingActionButtonTheme: FloatingActionButtonThemeData(
-      backgroundColor: isDark
-          ? const Color(0xFF00A884)
-          : const Color(0xFF25D366),
-      foregroundColor: Colors.white,
-    ),
-  );
+  return isDark ? AppTheme.dark() : AppTheme.light();
 }
 
 /// Creates (or finds) the outreach lead for a business and opens its chat in

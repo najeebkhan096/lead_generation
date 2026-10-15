@@ -3,9 +3,13 @@ import 'package:equatable/equatable.dart';
 import 'watchlist_entry.dart';
 
 /// Deal-stage progression — separate from either payment status below.
+///
+/// Deal locked ([newLead]) → removal ([inProgress]) → payment ([payment],
+/// removal done, waiting on the client) → completed (client paid).
 enum LeadStatus {
   newLead,
   inProgress,
+  payment,
   completed,
   cancelled;
 
@@ -13,6 +17,8 @@ enum LeadStatus {
     switch (value) {
       case 'in_progress':
         return LeadStatus.inProgress;
+      case 'payment':
+        return LeadStatus.payment;
       case 'completed':
         return LeadStatus.completed;
       case 'cancelled':
@@ -26,13 +32,15 @@ enum LeadStatus {
   String get json => switch (this) {
         LeadStatus.newLead => 'new',
         LeadStatus.inProgress => 'in_progress',
+        LeadStatus.payment => 'payment',
         LeadStatus.completed => 'completed',
         LeadStatus.cancelled => 'cancelled',
       };
 
   String get label => switch (this) {
-        LeadStatus.newLead => 'New',
-        LeadStatus.inProgress => 'In Progress',
+        LeadStatus.newLead => 'Deal locked',
+        LeadStatus.inProgress => 'Removal',
+        LeadStatus.payment => 'Payment',
         LeadStatus.completed => 'Completed',
         LeadStatus.cancelled => 'Cancelled',
       };

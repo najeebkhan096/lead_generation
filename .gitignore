@@ -30,3 +30,6 @@ mobile/.packages
 .vscode/
 firebase-debug.log
 firestore-debug.log
+
+# sales backups written by backend/scripts/migrateClients.js
+backend/data/backups/

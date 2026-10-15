@@ -53,3 +53,24 @@ export async function setUserApproved(id, approved) {
   });
   return docToUser(await ref.get());
 }
+
+export async function setUserRole(id, role) {
+  if (!['admin', 'salesman'].includes(role)) {
+    const err = new Error('role must be admin or salesman');
+    err.status = 400;
+    throw err;
+  }
+  const db = getFirestore();
+  const ref = db.collection(COLLECTION).doc(id);
+  const existing = await ref.get();
+  if (!existing.exists) {
+    const err = new Error('User not found');
+    err.status = 404;
+    throw err;
+  }
+  await ref.update({
+    role,
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+  return docToUser(await ref.get());
+}
