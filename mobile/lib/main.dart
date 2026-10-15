@@ -54,6 +54,13 @@ class LeadMobileApp extends StatelessWidget {
   }
 }
 
+/// The admin console lives in the web app; the phone app is for salesmen, so
+/// an admin who signs in here lands in the same lead lists as everyone else.
+/// The mobile console (lib/pages/admin_*.dart) is kept but only reachable in
+/// a build made with `--dart-define=ADMIN_CONSOLE=true`; it needs a backend
+/// the phone can reach (API_BASE_URL).
+const bool kMobileAdminConsole = bool.fromEnvironment('ADMIN_CONSOLE');
+
 class _ApprovedGate extends StatefulWidget {
   const _ApprovedGate();
 
@@ -67,7 +74,7 @@ class _ApprovedGateState extends State<_ApprovedGate> {
   Future<({bool approved, bool isAdmin})> _fetchStatus() async {
     final auth = AuthService();
     final approved = await auth.isCurrentUserApproved();
-    final isAdmin = await auth.isCurrentUserAdmin();
+    final isAdmin = kMobileAdminConsole && await auth.isCurrentUserAdmin();
     return (approved: approved, isAdmin: isAdmin);
   }
 

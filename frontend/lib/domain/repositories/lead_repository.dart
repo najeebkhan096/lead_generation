@@ -8,6 +8,7 @@ import '../entities/multi_search_snapshot.dart';
 import '../entities/state_city_scan_snapshot.dart';
 import '../entities/excel_archive.dart';
 import '../entities/sale.dart';
+import '../entities/client_record.dart';
 import '../entities/sales_user.dart';
 import '../entities/watchlist_entry.dart';
 import '../entities/whatsapp_check_result.dart';
@@ -293,6 +294,7 @@ abstract class LeadRepository {
 
   Future<Sale> createSale({
     required String businessName,
+    String? clientId,
     String? reviewLink,
     String? salesmanId,
     String? salesmanName,
@@ -312,6 +314,7 @@ abstract class LeadRepository {
   Future<Sale> updateSale(
     String id, {
     String? businessName,
+    String? clientId,
     String? reviewLink,
     String? salesmanId,
     String? salesmanName,
@@ -326,6 +329,12 @@ abstract class LeadRepository {
   });
 
   Future<void> deleteSale(String id);
+
+  /// The stored client list: business name + Google Maps link.
+  Future<List<ClientRecord>> listClients();
+  Future<ClientRecord> createClient({required String name, required String mapsUrl});
+  Future<ClientRecord> updateClient(String id, {String? name, String? mapsUrl});
+  Future<void> deleteClient(String id);
 
   /// [salesmanId] scopes the dashboard to one salesman; omit for the
   /// full-team rollup.

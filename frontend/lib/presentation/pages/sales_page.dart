@@ -3,6 +3,8 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/theme/app_theme.dart';
+import '../../core/utils/maps_url.dart';
+import '../../domain/entities/client_record.dart';
 import '../../domain/entities/sale.dart';
 import '../../domain/entities/sales_user.dart';
 import '../../domain/entities/watchlist_entry.dart';
@@ -1075,8 +1077,35 @@ class _SaleFormDialogState extends State<_SaleFormDialog> {
   bool _saving = false;
   String? _error;
 
+  List<ClientRecord> _clients = [];
+  final _businessFocus = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    _businessController.addListener(() => setState(() {}));
+    // The stored client list; the form still works (free text) if it fails.
+    context.read<LeadRepository>().listClients().then((c) {
+      if (mounted) setState(() => _clients = c);
+    }).catchError((_) {});
+  }
+
+  /// The stored client the typed name refers to, if any.
+  ClientRecord? get _matchedClient {
+    final key = clientNameKey(_businessController.text);
+    if (key.isEmpty) return null;
+    for (final c in _clients) {
+      if (clientNameKey(c.name) == key) return c;
+    }
+    return null;
+  }
+
+  /// A link is asked for only when the client has none stored yet.
+  bool get _needsLink => _businessController.text.trim().isNotEmpty && _matchedClient?.hasMapsUrl != true;
+
   @override
   void dispose() {
+    _businessFocus.dispose();
     _businessController.dispose();
     _linkController.dispose();
     _priceController.dispose();
@@ -1090,10 +1119,21 @@ class _SaleFormDialogState extends State<_SaleFormDialog> {
       setState(() => _error = 'Business name is required');
       return;
     }
-    final link = _linkController.text.trim();
-    if (link.isNotEmpty && !(Uri.tryParse(link)?.hasScheme ?? false)) {
-      setState(() => _error = 'Enter the full Google Maps link (starting with https://)');
-      return;
+    // A client is its name + Google Maps link: both are required unless the
+    // stored client already has a link.
+    final matched = _matchedClient;
+    String? mapsUrl = matched?.hasMapsUrl == true ? matched!.mapsUrl : null;
+    if (mapsUrl == null) {
+      final raw = _linkController.text.trim();
+      if (raw.isEmpty) {
+        setState(() => _error = 'Paste the business\'s Google Maps link');
+        return;
+      }
+      mapsUrl = normalizeMapsUrl(raw);
+      if (mapsUrl == null) {
+        setState(() => _error = 'That is not a Google Maps link');
+        return;
+      }
     }
     final priceText = _priceController.text.trim();
     if (priceText.isNotEmpty && (double.tryParse(priceText) ?? -1) < 0) {
@@ -1103,7 +1143,6 @@ class _SaleFormDialogState extends State<_SaleFormDialog> {
     final price = double.tryParse(_priceController.text.trim()) ?? 0;
     final employeeAmount = double.tryParse(_employeeAmountController.text.trim()) ?? 0;
     final salesman = widget.salesmen.where((s) => s.id == _salesmanId).firstOrNull;
-    final reviewLink = _linkController.text.trim().isEmpty ? null : _linkController.text.trim();
 
     setState(() {
       _saving = true;
@@ -1111,9 +1150,17 @@ class _SaleFormDialogState extends State<_SaleFormDialog> {
     });
     try {
       final repo = context.read<LeadRepository>();
+      var client = matched;
+      if (client == null) {
+        client = await repo.createClient(name: businessName, mapsUrl: mapsUrl);
+      } else if (!client.hasMapsUrl) {
+        client = await repo.updateClient(client.id, mapsUrl: mapsUrl);
+      }
+      final reviewLink = client.mapsUrl;
       if (widget.sale == null) {
         await repo.createSale(
-          businessName: businessName,
+          businessName: client.name,
+          clientId: client.id,
           reviewLink: reviewLink,
           salesmanId: salesman?.id,
           salesmanName: salesman?.name,
@@ -1126,7 +1173,8 @@ class _SaleFormDialogState extends State<_SaleFormDialog> {
       } else {
         await repo.updateSale(
           widget.sale!.id,
-          businessName: businessName,
+          businessName: client.name,
+          clientId: client.id,
           reviewLink: reviewLink,
           salesmanId: salesman?.id,
           salesmanName: salesman?.name,
@@ -1158,19 +1206,64 @@ class _SaleFormDialogState extends State<_SaleFormDialog> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             mainAxisSize: MainAxisSize.min,
             children: [
-              TextField(
-                controller: _businessController,
-                decoration: const InputDecoration(labelText: 'Business name'),
-                textCapitalization: TextCapitalization.words,
-                enabled: !_saving,
+              RawAutocomplete<String>(
+                textEditingController: _businessController,
+                focusNode: _businessFocus,
+                optionsBuilder: (value) {
+                  final q = clientNameKey(value.text);
+                  if (q.isEmpty) return const Iterable<String>.empty();
+                  return _clients
+                      .map((c) => c.name)
+                      .where((n) => clientNameKey(n).contains(q) && clientNameKey(n) != q)
+                      .take(6);
+                },
+                fieldViewBuilder: (context, controller, focusNode, _) => TextField(
+                  controller: controller,
+                  focusNode: focusNode,
+                  decoration: const InputDecoration(labelText: 'Business name', hintText: 'Pick a client or type a new one'),
+                  textCapitalization: TextCapitalization.words,
+                  enabled: !_saving,
+                ),
+                optionsViewBuilder: (context, onSelected, options) => Align(
+                  alignment: Alignment.topLeft,
+                  child: Material(
+                    elevation: 0,
+                    color: AppTheme.surface,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      side: const BorderSide(color: AppTheme.neutral200),
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxHeight: 220, maxWidth: 440),
+                      child: ListView(
+                        padding: EdgeInsets.zero,
+                        shrinkWrap: true,
+                        children: [for (final o in options) ListTile(dense: true, title: Text(o), onTap: () => onSelected(o))],
+                      ),
+                    ),
+                  ),
+                ),
               ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _linkController,
-                decoration: const InputDecoration(labelText: 'Google Maps link', hintText: 'https://maps.app.goo.gl/...'),
-                keyboardType: TextInputType.url,
-                enabled: !_saving,
-              ),
+              if (_needsLink) ...[
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _linkController,
+                  decoration: InputDecoration(
+                    labelText: 'Google Maps link',
+                    hintText: 'https://maps.app.goo.gl/...',
+                    helperText: _matchedClient == null ? 'New client: paste its Google Maps link' : 'This client has no link yet',
+                  ),
+                  keyboardType: TextInputType.url,
+                  enabled: !_saving,
+                ),
+              ] else if (_matchedClient != null) ...[
+                const SizedBox(height: 8),
+                const Text(
+                  'Existing client, Google Maps link saved',
+                  style: TextStyle(fontSize: 12, color: AppTheme.faint),
+                ),
+              ],
               const SizedBox(height: 12),
               Row(
                 children: [

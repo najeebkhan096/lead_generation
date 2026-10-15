@@ -90,6 +90,12 @@ class SettingsPage extends StatelessWidget {
                       subtitle: 'Approve salespeople for the mobile app',
                       onTap: () => context.push('/users'),
                     ),
+                    _SettingsItem(
+                      icon: AppIcons.store,
+                      title: 'Clients',
+                      subtitle: 'Business names and their Google Maps links',
+                      onTap: () => context.push('/clients'),
+                    ),
                   ],
                 ),
               ],

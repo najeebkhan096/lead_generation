@@ -8,6 +8,7 @@ import '../../domain/entities/multi_search_snapshot.dart';
 import '../../domain/entities/state_city_scan_snapshot.dart';
 import '../../domain/entities/excel_archive.dart';
 import '../../domain/entities/sale.dart';
+import '../../domain/entities/client_record.dart';
 import '../../domain/entities/sales_user.dart';
 import '../../domain/entities/watchlist_entry.dart';
 import '../../domain/entities/whatsapp_check_result.dart';
@@ -340,6 +341,7 @@ class LeadRepositoryImpl implements LeadRepository {
   @override
   Future<Sale> createSale({
     required String businessName,
+    String? clientId,
     String? reviewLink,
     String? salesmanId,
     String? salesmanName,
@@ -354,6 +356,7 @@ class LeadRepositoryImpl implements LeadRepository {
   }) =>
       _remote.createSale(
         businessName: businessName,
+        clientId: clientId,
         reviewLink: reviewLink,
         salesmanId: salesmanId,
         salesmanName: salesmanName,
@@ -374,6 +377,7 @@ class LeadRepositoryImpl implements LeadRepository {
   Future<Sale> updateSale(
     String id, {
     String? businessName,
+    String? clientId,
     String? reviewLink,
     String? salesmanId,
     String? salesmanName,
@@ -389,6 +393,7 @@ class LeadRepositoryImpl implements LeadRepository {
       _remote.updateSale(
         id,
         businessName: businessName,
+        clientId: clientId,
         reviewLink: reviewLink,
         salesmanId: salesmanId,
         salesmanName: salesmanName,
@@ -404,6 +409,20 @@ class LeadRepositoryImpl implements LeadRepository {
 
   @override
   Future<void> deleteSale(String id) => _remote.deleteSale(id);
+
+  @override
+  Future<List<ClientRecord>> listClients() => _remote.listClients();
+
+  @override
+  Future<ClientRecord> createClient({required String name, required String mapsUrl}) =>
+      _remote.createClient(name: name, mapsUrl: mapsUrl);
+
+  @override
+  Future<ClientRecord> updateClient(String id, {String? name, String? mapsUrl}) =>
+      _remote.updateClient(id, name: name, mapsUrl: mapsUrl);
+
+  @override
+  Future<void> deleteClient(String id) => _remote.deleteClient(id);
 
   @override
   Future<SalesStats> getSalesStats({String? salesmanId}) => _remote.getSalesStats(salesmanId: salesmanId);

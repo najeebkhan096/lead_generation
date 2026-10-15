@@ -13,6 +13,7 @@ import '../../domain/entities/multi_search_snapshot.dart';
 import '../../domain/entities/state_city_scan_snapshot.dart';
 import '../../domain/entities/excel_archive.dart';
 import '../../domain/entities/sale.dart';
+import '../../domain/entities/client_record.dart';
 import '../../domain/entities/sales_user.dart';
 import '../../domain/entities/watchlist_entry.dart';
 import '../../domain/entities/whatsapp_check_result.dart';
@@ -608,6 +609,51 @@ class LeadRemoteDataSource {
         .toList();
   }
 
+  Future<List<ClientRecord>> listClients() async {
+    final response = await _client.get(_uri(ApiConstants.clients));
+    final body = _tryDecode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['error'] ?? 'Failed to load clients');
+    }
+    return (body['clients'] as List<dynamic>? ?? [])
+        .map((e) => ClientRecord.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<ClientRecord> createClient({required String name, required String mapsUrl}) async {
+    final response = await _client.post(
+      _uri(ApiConstants.clients),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'businessName': name, 'mapsUrl': mapsUrl}),
+    );
+    final body = _tryDecode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['error'] ?? 'Failed to add client');
+    }
+    return ClientRecord.fromJson(body['client'] as Map<String, dynamic>);
+  }
+
+  Future<ClientRecord> updateClient(String id, {String? name, String? mapsUrl}) async {
+    final response = await _client.patch(
+      _uri(ApiConstants.clientUpdate(id)),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'businessName': ?name, 'mapsUrl': ?mapsUrl}),
+    );
+    final body = _tryDecode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['error'] ?? 'Failed to update client');
+    }
+    return ClientRecord.fromJson(body['client'] as Map<String, dynamic>);
+  }
+
+  Future<void> deleteClient(String id) async {
+    final response = await _client.delete(_uri(ApiConstants.clientUpdate(id)));
+    if (response.statusCode >= 400) {
+      final body = _tryDecode(response.body);
+      throw Exception(body['error'] ?? 'Failed to delete client');
+    }
+  }
+
   static const _twilioTestTimeout = Duration(seconds: 20);
 
   /// The backend's own message; or, for a 404 without one (a server started
@@ -1120,6 +1166,7 @@ class LeadRemoteDataSource {
 
   Future<Sale> createSale({
     required String businessName,
+    String? clientId,
     String? reviewLink,
     String? salesmanId,
     String? salesmanName,
@@ -1137,6 +1184,7 @@ class LeadRemoteDataSource {
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({
         'businessName': businessName,
+        'clientId': ?clientId,
         'reviewLink': ?reviewLink,
         'salesmanId': ?salesmanId,
         'salesmanName': ?salesmanName,
@@ -1173,6 +1221,7 @@ class LeadRemoteDataSource {
   Future<Sale> updateSale(
     String id, {
     String? businessName,
+    String? clientId,
     String? reviewLink,
     String? salesmanId,
     String? salesmanName,
@@ -1190,6 +1239,7 @@ class LeadRemoteDataSource {
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({
         'businessName': ?businessName,
+        'clientId': ?clientId,
         'reviewLink': ?reviewLink,
         'salesmanId': ?salesmanId,
         'salesmanName': ?salesmanName,

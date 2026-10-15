@@ -76,6 +76,8 @@ class ApiConstants {
   static String emailValidatedLeads(String id) => '/api/email-validated-scans/$id/leads';
   static String emailValidatedDelete(String id) => '/api/email-validated-scans/$id';
 
+  static const String clients = '/api/clients';
+  static String clientUpdate(String id) => '/api/clients/$id';
   static const String sales = '/api/sales';
   static const String salesStats = '/api/sales/stats';
   static const String salesScanReviews = '/api/sales/scan-reviews';
