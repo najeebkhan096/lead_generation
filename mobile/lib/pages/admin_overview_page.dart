@@ -94,13 +94,18 @@ class _Body extends StatelessWidget {
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
       children: [
-        if (data.error != null) ...[
+        if (data.error != null || data.warning != null) ...[
           AdminCard(
             child: Row(
               children: [
                 Icon(AppIcons.alert, size: 18, color: t.danger),
                 const SizedBox(width: 10),
-                Expanded(child: Text('Showing the last loaded data. ${data.error}', style: text.bodySmall)),
+                Expanded(
+                  child: Text(
+                    data.error != null ? 'Showing the last loaded data. ${data.error}' : data.warning!,
+                    style: text.bodySmall,
+                  ),
+                ),
               ],
             ),
           ),

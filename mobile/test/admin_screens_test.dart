@@ -20,12 +20,16 @@ class FakeAdminRepository extends AdminRepository {
   final List<({bool restore, bool apply})> archiveCalls = [];
   int archiveMatches = 2;
   Object? failWith;
+  Object? clientsFailWith;
 
   @override
   Future<List<SalesUser>> listUsers() async => users;
 
   @override
-  Future<List<ClientRecord>> listClients() async => clients;
+  Future<List<ClientRecord>> listClients() async {
+    if (clientsFailWith != null) throw clientsFailWith!;
+    return clients;
+  }
 
   @override
   Future<ClientRecord> createClient({required String name, required String mapsUrl}) async {
@@ -401,6 +405,17 @@ void main() {
     expect(sale['clientId'], 'c1');
     expect(sale['reviewLink'], 'https://maps.app.goo.gl/gym');
     expect(repo.clients, hasLength(1)); // no duplicate client
+  });
+
+  testWidgets('a failing client list does not take the whole console down', (tester) async {
+    final repo = FakeAdminRepository(users: _users, sales: _sales())..clientsFailWith = Exception('Failed to load clients (404)');
+    await pumpAdmin(tester, repo: repo);
+
+    expect(find.text('Ongoing sales'), findsOneWidget); // overview still renders
+    expect(find.textContaining('Couldn\'t load the client list'), findsOneWidget);
+
+    await openTab(tester, 'Clients'); // clients are still derived from the sales
+    expect(find.text('Cafe Roma'), findsOneWidget);
   });
 
   testWidgets('a failed first load shows an error with retry', (tester) async {

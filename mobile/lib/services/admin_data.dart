@@ -20,6 +20,7 @@ class AdminData extends ChangeNotifier {
   bool _loading = false;
   bool _loadedOnce = false;
   String? _error;
+  String? _warning;
 
   AdminSnapshot get snapshot => _snapshot;
 
@@ -33,19 +34,31 @@ class AdminData extends ChangeNotifier {
   /// Last load failure, shown only when there is nothing to show instead.
   String? get error => _error;
 
+  /// A non-fatal problem: something optional failed to load (the client
+  /// list) while sales and users did. The screens still work.
+  String? get warning => _warning;
+
   bool get hasData => _snapshot.sales.isNotEmpty || _snapshot.users.isNotEmpty || _snapshot.clientRecords.isNotEmpty;
 
   Future<void> load() async {
     if (_loading) return;
     _loading = true;
     _error = null;
+    _warning = null;
     notifyListeners();
     try {
-      final results = await Future.wait([_repo.listSales(), _repo.listUsers(), _repo.listClients()]);
+      // Sales and users are essential. The client list is not: if it fails
+      // (e.g. an older backend without /api/clients) the app still shows
+      // everything, with clients derived from the sales.
+      final clients = _repo.listClients().then<List<ClientRecord>?>((c) => c).catchError((Object e) {
+        _warning = 'Couldn\'t load the client list: ${e.toString().replaceFirst('Exception: ', '')}';
+        return null;
+      });
+      final results = await Future.wait([_repo.listSales(), _repo.listUsers(), clients]);
       _snapshot = AdminSnapshot(
         sales: results[0] as List<Sale>,
         users: results[1] as List<SalesUser>,
-        clientRecords: results[2] as List<ClientRecord>,
+        clientRecords: (results[2] as List<ClientRecord>?) ?? _snapshot.clientRecords,
       );
     } catch (e) {
       _error = e.toString().replaceFirst('Exception: ', '');
