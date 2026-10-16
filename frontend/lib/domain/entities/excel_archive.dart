@@ -11,6 +11,8 @@ class ExcelArchive extends Equatable {
     this.totalBusinessesProcessed = 0,
     this.status = 'complete',
     this.createdAt,
+    this.scannedAt,
+    this.kind = 'review',
   });
 
   final String id;
@@ -26,6 +28,30 @@ class ExcelArchive extends Equatable {
   /// finished normally. See multiCategoryOrchestrator.js's checkpointing.
   final String status;
   final DateTime? createdAt;
+
+  /// When the scan ran (falls back to [createdAt] for older archives).
+  /// Fixed for the life of the archive, so it ages even if the file is
+  /// re-saved or a scan is resumed.
+  final DateTime? scannedAt;
+
+  /// 'review' — 1-star-review leads; 'no_website' — the companion file of
+  /// businesses with no website, written alongside it by the same scan.
+  final String kind;
+
+  bool get isNoWebsite => kind == 'no_website';
+
+  /// Days since the scan ran, or null when the date is unknown.
+  int? get ageDays {
+    final when = scannedAt ?? createdAt;
+    return when == null ? null : DateTime.now().difference(when).inDays;
+  }
+
+  /// Old enough that its reviews are stale: delete it and scan again.
+  bool get isStale => (ageDays ?? 0) >= staleAfterDays;
+  static const staleAfterDays = 30;
+
+  /// A finished review scan can be re-run (same category and settings).
+  bool get rescannable => !isNoWebsite && status == 'complete' && categories.isNotEmpty;
 
   /// Whether `/api/excel-scans/:id/resume` can pick this archive back up —
   /// any interrupted ("partial") archive, regardless of which engine made
@@ -47,12 +73,18 @@ class ExcelArchive extends Equatable {
       createdAt: json['createdAt'] is String && (json['createdAt'] as String).isNotEmpty
           ? DateTime.tryParse(json['createdAt'] as String)
           : null,
+      scannedAt: json['scannedAt'] is String && (json['scannedAt'] as String).isNotEmpty
+          ? DateTime.tryParse(json['scannedAt'] as String)
+          : null,
+      kind: (json['kind'] as String?) ?? 'review',
     );
   }
 
   @override
-  List<Object?> get props =>
-      [id, fileName, downloadUrl, categories, countries, totalLeads, totalBusinessesProcessed, status, createdAt];
+  List<Object?> get props => [
+        id, fileName, downloadUrl, categories, countries, totalLeads, totalBusinessesProcessed, status,
+        createdAt, scannedAt, kind,
+      ];
 }
 
 class ExcelArchiveSheet extends Equatable {

@@ -310,6 +310,10 @@ class LeadRepositoryImpl implements LeadRepository {
       _remote.resumeExcelArchive(id, concurrency: concurrency);
 
   @override
+  Future<void> rescanExcelArchive(String id, {int concurrency = 10}) =>
+      _remote.rescanExcelArchive(id, concurrency: concurrency);
+
+  @override
   Future<List<Lead>> getExcelArchiveLeads(String id) => _remote.getExcelArchiveLeads(id);
 
   @override

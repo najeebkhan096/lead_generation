@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { FieldValue } from 'firebase-admin/firestore';
+import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 import { getFirestore, getStorageBucket } from '../../firebase/admin.js';
 
 const COLLECTION = 'excelScans';
@@ -33,6 +33,15 @@ function docToRecord(doc) {
     targetLeadCount: data.targetLeadCount ?? null,
     analyze: data.analyze ?? null,
     concurrency: data.concurrency ?? null,
+    // 'review' — the 1-star-review workbook (one sheet per state).
+    // 'no_website' — its companion: businesses with no website at all,
+    // same sheets, kept in a separate file so each stays simple to read.
+    kind: data.kind || 'review',
+    pairedArchiveId: data.pairedArchiveId ?? null,
+    // When the scan actually ran. Set once and never overwritten, so a
+    // resumed scan keeps its original date; the Archive list uses it to
+    // flag scans old enough to delete and re-scan.
+    scannedAt: (data.scannedAt || data.createdAt)?.toDate?.()?.toISOString() || null,
     createdAt: data.createdAt?.toDate?.()?.toISOString() || null,
     updatedAt: data.updatedAt?.toDate?.()?.toISOString() || null,
   };
@@ -44,6 +53,16 @@ function slugify(text) {
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 60);
+}
+
+/** Companion file / doc id for an archive's no-website leads. Derived, so
+ * a resume or delete can find it without storing a second pointer. */
+export function noWebsiteArchiveId(id) {
+  return `${id}-nowebsite`;
+}
+
+export function noWebsiteFileName(fileName) {
+  return String(fileName).replace(/\.xlsx$/i, '') + '-no-website.xlsx';
 }
 
 export function buildArchiveFileName({ categories, countries }) {
@@ -76,6 +95,9 @@ export async function uploadExcelArchive({
   targetLeadCount,
   analyze,
   concurrency,
+  kind = 'review',
+  pairedArchiveId,
+  scannedAt,
 }) {
   const bucket = getStorageBucket();
   const storagePath = `${STORAGE_PREFIX}/${fileName}`;
@@ -111,6 +133,12 @@ export async function uploadExcelArchive({
       targetLeadCount: targetLeadCount ?? null,
       analyze: analyze ?? null,
       concurrency: concurrency ?? null,
+      kind,
+      pairedArchiveId: pairedArchiveId ?? null,
+      // Written once: a checkpoint or resume must not move the scan date.
+      scannedAt: existing.exists && existing.data().scannedAt
+        ? existing.data().scannedAt
+        : scannedAt ? Timestamp.fromDate(new Date(scannedAt)) : FieldValue.serverTimestamp(),
       createdAt: existing.exists ? existing.data().createdAt : FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     },
@@ -141,7 +169,7 @@ export async function downloadExcelArchiveBuffer(id) {
   return { record, buffer };
 }
 
-export async function deleteExcelArchive(id) {
+async function deleteOneArchive(id) {
   const db = getFirestore();
   const ref = db.collection(COLLECTION).doc(id);
   const doc = await ref.get();
@@ -155,4 +183,11 @@ export async function deleteExcelArchive(id) {
   }
   await ref.delete();
   return true;
+}
+
+/** Deletes an archive and, for a review workbook, its no-website companion. */
+export async function deleteExcelArchive(id) {
+  const ok = await deleteOneArchive(id);
+  if (ok) await deleteOneArchive(noWebsiteArchiveId(id)).catch(() => {});
+  return ok;
 }

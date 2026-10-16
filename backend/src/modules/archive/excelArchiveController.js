@@ -6,7 +6,7 @@ import {
 } from './excelArchiveStore.js';
 import { xlsxBufferToJson, sheetsToLeadsJson } from './exportService.js';
 import { resumeCategoryArchive } from '../scan/multiCategoryOrchestrator.js';
-import { resumeStateCityScan } from '../scan/stateCityOrchestrator.js';
+import { resumeStateCityScan, rescanStateCityArchive } from '../scan/stateCityOrchestrator.js';
 import { US_STATE_CITIES } from '../../data/usStateCities.js';
 
 const US_STATE_NAMES = new Set(US_STATE_CITIES.map((s) => s.state));
@@ -101,6 +101,20 @@ export async function resumeArchive(req, res) {
   } catch (err) {
     const status = err.status || 500;
     return res.status(status).json({ error: err.message || 'Failed to resume archive' });
+  }
+}
+
+/** POST /api/excel-scans/:id/rescan — fresh scan, old archive replaced on completion. */
+export async function rescanArchive(req, res) {
+  try {
+    const { concurrency } = req.body || {};
+    const result = await rescanStateCityArchive({
+      archiveId: req.params.id,
+      concurrency: concurrency != null ? Number(concurrency) : undefined,
+    });
+    return res.status(202).json({ started: true, engine: 'state-city', ...result });
+  } catch (err) {
+    return res.status(err.status || 500).json({ error: err.message || 'Failed to start re-scan' });
   }
 }
 

@@ -9,13 +9,11 @@ import '../../domain/repositories/lead_repository.dart';
 import 'email_validator_page.dart';
 import 'excel_archive_leads_page.dart';
 
-String _timeAgo(DateTime? when) {
-  if (when == null) return '';
-  final diff = DateTime.now().difference(when);
-  if (diff.inMinutes < 1) return 'Just now';
-  if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
-  if (diff.inHours < 24) return '${diff.inHours}h ago';
-  return '${diff.inDays}d ago';
+const _months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+String _scanDate(DateTime when) {
+  final d = when.toLocal();
+  return '${d.day} ${_months[d.month - 1]} ${d.year}';
 }
 
 /// Browses every scan saved as an .xlsx via the Excel Scan page (see
@@ -35,6 +33,7 @@ class _ExcelArchivePageState extends State<ExcelArchivePage> {
   bool _loading = true;
   String? _error;
   String? _resumingId;
+  String? _rescanningId;
 
   LeadRepository get _repo => context.read<LeadRepository>();
 
@@ -64,6 +63,25 @@ class _ExcelArchivePageState extends State<ExcelArchivePage> {
   }
 
   Future<void> _delete(ExcelArchive archive) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete this scan?'),
+        content: Text(
+          archive.isNoWebsite
+              ? 'The no-website file for this scan will be deleted.'
+              : 'The workbook and its no-website file will be deleted. Verified leads already saved are not affected.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete', style: TextStyle(color: AppTheme.danger)),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
     try {
       await _repo.deleteExcelArchive(archive.id);
       await _load();
@@ -92,6 +110,40 @@ class _ExcelArchivePageState extends State<ExcelArchivePage> {
       );
     } finally {
       if (mounted) setState(() => _resumingId = null);
+    }
+  }
+
+  /// Runs the same scan again; the old archive is deleted by the backend
+  /// only after the new one completes, so cancelling loses nothing.
+  Future<void> _rescan(ExcelArchive archive) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Re-scan for the latest reviews?'),
+        content: Text(
+          'This starts a new scan of "${archive.categories.join(', ')}" across every state with the same settings. '
+          'The scan from ${_scanDate(archive.scannedAt ?? archive.createdAt ?? DateTime.now())} is deleted only after '
+          'the new one finishes.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Re-scan')),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    setState(() => _rescanningId = archive.id);
+    try {
+      await _repo.rescanExcelArchive(archive.id);
+      if (!mounted) return;
+      context.push('/scan-progress');
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+      );
+    } finally {
+      if (mounted) setState(() => _rescanningId = null);
     }
   }
 
@@ -136,6 +188,8 @@ class _ExcelArchivePageState extends State<ExcelArchivePage> {
                                   onDelete: () => _delete(archive),
                                   onResume: () => _resume(archive),
                                   resuming: _resumingId == archive.id,
+                                  onRescan: () => _rescan(archive),
+                                  rescanning: _rescanningId == archive.id,
                                 ),
                             ],
                           ),
@@ -185,6 +239,8 @@ class _ArchiveCard extends StatelessWidget {
     required this.onDelete,
     required this.onResume,
     required this.resuming,
+    required this.onRescan,
+    required this.rescanning,
   });
 
   final ExcelArchive archive;
@@ -192,6 +248,8 @@ class _ArchiveCard extends StatelessWidget {
   final VoidCallback onDelete;
   final VoidCallback onResume;
   final bool resuming;
+  final VoidCallback onRescan;
+  final bool rescanning;
 
   @override
   Widget build(BuildContext context) {
@@ -231,6 +289,20 @@ class _ArchiveCard extends StatelessWidget {
                               overflow: TextOverflow.ellipsis,
                             ),
                           ),
+                          if (archive.isNoWebsite) ...[
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: AppTheme.neutral100,
+                                borderRadius: BorderRadius.circular(AppTheme.radiusPill),
+                              ),
+                              child: const Text(
+                                'No website',
+                                style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: AppTheme.neutral600),
+                              ),
+                            ),
+                          ],
                           if (archive.status == 'partial') ...[
                             const SizedBox(width: 8),
                             Container(
@@ -247,8 +319,13 @@ class _ArchiveCard extends StatelessWidget {
                       ),
                       const SizedBox(height: 3),
                       Text(
-                        '${archive.totalLeads} leads · ${archive.countries.join(', ')} · ${_timeAgo(archive.createdAt)}',
-                        style: const TextStyle(fontSize: 12, color: AppTheme.faint),
+                        '${archive.totalLeads} leads · ${archive.countries.join(', ')} · '
+                        '${(archive.scannedAt ?? archive.createdAt) == null ? '' : 'Scanned ${_scanDate((archive.scannedAt ?? archive.createdAt)!)} · ${archive.ageDays == 0 ? 'today' : '${archive.ageDays} days ago'}'}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: archive.isStale ? AppTheme.danger : AppTheme.faint,
+                          fontWeight: archive.isStale ? FontWeight.w700 : FontWeight.w400,
+                        ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -257,6 +334,30 @@ class _ArchiveCard extends StatelessWidget {
                 ),
               ];
               final actions = <Widget>[
+                if (archive.rescannable) ...[
+                  rescanning
+                      ? const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 12),
+                          child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+                        )
+                      : (archive.isStale
+                          ? FilledButton.icon(
+                              onPressed: onRescan,
+                              icon: const Icon(AppIcons.refresh, size: 15),
+                              label: const Text('Re-scan'),
+                              style: FilledButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                minimumSize: Size.zero,
+                                textStyle: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700),
+                              ),
+                            )
+                          : IconButton(
+                              tooltip: 'Re-scan for latest reviews',
+                              icon: const Icon(AppIcons.refresh, size: 18, color: AppTheme.faint),
+                              onPressed: onRescan,
+                            )),
+                  const SizedBox(width: 4),
+                ],
                 if (archive.resumable) ...[
                   resuming
                       ? const Padding(

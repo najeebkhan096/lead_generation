@@ -271,6 +271,9 @@ abstract class LeadRepository {
   /// caller knows whether to open [StateScanPage] or [MultiScanPage].
   Future<String> resumeExcelArchive(String id, {int concurrency = 10});
 
+  /// Re-runs a finished scan; the old archive is replaced when it completes.
+  Future<void> rescanExcelArchive(String id, {int concurrency = 10});
+
   /// Extracts every business in an archive as [Lead]s for display — these
   /// were never saved to Firestore, so [Lead.dbId] is always null.
   Future<List<Lead>> getExcelArchiveLeads(String id);

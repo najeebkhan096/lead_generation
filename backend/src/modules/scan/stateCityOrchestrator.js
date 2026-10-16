@@ -25,8 +25,16 @@ import { scrapeOneCity } from './leadService.js';
 import { US_STATE_CITIES } from '../../data/usStateCities.js';
 import { Mutex } from '../../lib/asyncMutex.js';
 import { leadsToXlsxBuffer, xlsxBufferToJson, sheetsToLeadsJson } from '../archive/exportService.js';
-import { uploadExcelArchive, buildArchiveFileName, getExcelArchive, downloadExcelArchiveBuffer } from '../archive/excelArchiveStore.js';
-import { createSearchRecord, upsertLeadToFirebase } from '../leads/firebaseLeadStore.js';
+import {
+  uploadExcelArchive,
+  buildArchiveFileName,
+  getExcelArchive,
+  downloadExcelArchiveBuffer,
+  deleteExcelArchive,
+  noWebsiteArchiveId,
+  noWebsiteFileName,
+} from '../archive/excelArchiveStore.js';
+import { leadDocId } from '../../lib/leadIdentity.js';
 
 const MIN_CONCURRENCY = 2;
 const MAX_CONCURRENCY = 10;
@@ -95,31 +103,6 @@ function newStateRecord(state, cities) {
   };
 }
 
-/** Saves one just-found lead straight to Firestore — called the instant each
- * business is ready, before the scan moves on to the next one, so a lead is
- * durable in the live database right away instead of only living in the
- * in-memory Excel archive until the whole category finishes. Best-effort: a
- * failure here (e.g. Firestore not configured) is logged and swallowed so it
- * never stops or slows down the scrape itself.
- *
- * Scanning never checks WhatsApp: a lead is saved with its `waLink` and no
- * check result. WhatsApp validation only runs when the user starts it from
- * the Leads page (or the WhatsApp connection page). */
-async function saveLeadLive(job, category, stateRec, city, lead) {
-  const searchId = job.searchIds[category];
-  try {
-    await upsertLeadToFirebase(lead, { searchId, country: 'US' });
-    job.firebaseLeadsSaved = (job.firebaseLeadsSaved || 0) + 1;
-    stateRec.firebaseLeadsSaved = (stateRec.firebaseLeadsSaved || 0) + 1;
-  } catch (err) {
-    logActivity(
-      job,
-      `"${category}" · ${stateRec.state} · ${city} — Firebase save failed for "${lead.business || 'lead'}": ${err.message}`,
-      'warn'
-    );
-  }
-}
-
 /** Scrapes every city in `stateRec` with up to `job.concurrency` workers
  * running at once, mutating `stateRec` (covered/pending/inProgress/failed/
  * leads) live as each city starts and finishes — the source of truth the
@@ -143,7 +126,7 @@ async function scanStateCities(job, category, stateRec) {
       stateRec.activity[city] = 'starting…';
 
       try {
-        const { leads, businessesScraped, websiteLeadsFound } = await scrapeOneCity(
+        const { leads, businessesScraped, websiteLeadsFound, websiteLeads } = await scrapeOneCity(
           category,
           { city, state: stateRec.state },
           {
@@ -157,11 +140,14 @@ async function scanStateCities(job, category, stateRec) {
             },
             shouldStop: () => job.cancelled,
             scrapeLocationFn: job.scrapeLocationFn,
-            onLeadReady: (lead) => saveLeadLive(job, category, stateRec, city, lead),
+            // Nothing is written per lead: results live in the category's
+            // Excel workbooks (see `uploadCategoryArchiveNow`).
+            persistWebsiteLeads: false,
           }
         );
 
         (job.collectedLeadsByState[category][stateRec.state] ??= []).push(...leads);
+        (job.collectedWebsiteByState[category][stateRec.state] ??= []).push(...(websiteLeads || []));
         stateRec.leadsCollected += leads.length;
         stateRec.businessesProcessed += businessesScraped;
         stateRec.websiteLeadsFound += websiteLeadsFound || 0;
@@ -214,11 +200,21 @@ async function uploadCategoryArchiveNow(job, category, { isFinal }) {
   // split for the same reason: a fresh (non-resumed) run has the two
   // equal, so this is a no-op change in that case.
   const sheets = [];
+  const websiteSheets = [];
   for (const state of archive.allStates) {
     const leads = job.collectedLeadsByState[category][state];
     if (leads && leads.length) sheets.push({ name: state, leads });
+    // The same business can turn up in neighbouring cities; keep one row.
+    const seen = new Set();
+    const websiteLeads = (job.collectedWebsiteByState[category][state] || []).filter((l) => {
+      const key = leadDocId(l);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    if (websiteLeads.length) websiteSheets.push({ name: state, leads: websiteLeads });
   }
-  if (!sheets.length) {
+  if (!sheets.length && !websiteSheets.length) {
     if (isFinal) archive.status = 'done';
     return;
   }
@@ -235,6 +231,7 @@ async function uploadCategoryArchiveNow(job, category, { isFinal }) {
       id: archive.id,
       buffer,
       fileName: archive.fileName,
+      scannedAt: job.startedAt,
       categories: [category],
       countries: ['US'],
       totalLeads,
@@ -249,9 +246,49 @@ async function uploadCategoryArchiveNow(job, category, { isFinal }) {
       concurrency: job.concurrency,
     });
 
+    // Businesses with no website, in a companion workbook under the same
+    // scan date. Best-effort: the review workbook above is the scan.
+    if (websiteSheets.length) {
+      try {
+        await uploadExcelArchive({
+          id: noWebsiteArchiveId(archive.id),
+          buffer: await leadsToXlsxBuffer(websiteSheets),
+          fileName: noWebsiteFileName(archive.fileName),
+          scannedAt: job.startedAt,
+          categories: [category],
+          countries: ['US'],
+          totalLeads: websiteSheets.reduce((sum, s) => sum + s.leads.length, 0),
+          totalBusinessesProcessed,
+          status: isFinal ? 'complete' : 'partial',
+          category,
+          completedCountries: [...archive.completedStates],
+          dateRange: job.dateRange,
+          maxResultsPerState: job.maxResultsPerCity,
+          analyze: false,
+          concurrency: job.concurrency,
+          kind: 'no_website',
+          pairedArchiveId: archive.id,
+        });
+      } catch (err) {
+        logActivity(job, `"${category}" no-website workbook upload failed: ${err.message}`, 'warn');
+      }
+    }
+
     archive.status = isFinal ? 'done' : 'partial';
     archive.result = record;
     archive.error = null;
+
+    // A re-scan replaces an older archive — but only now that the new one
+    // is complete, so a cancelled or failed re-scan loses nothing.
+    if (isFinal && archive.replacesArchiveId) {
+      try {
+        await deleteExcelArchive(archive.replacesArchiveId);
+        logActivity(job, `"${category}" — replaced the earlier scan; old archive deleted.`);
+      } catch (err) {
+        logActivity(job, `"${category}" — could not delete the earlier scan: ${err.message}`, 'warn');
+      }
+      archive.replacesArchiveId = null;
+    }
     if (isFinal) {
       logActivity(job, `"${category}" archive finalized: ${record.fileName} (${totalLeads} leads, ${archive.completedStates.size} states).`);
     }
@@ -269,26 +306,6 @@ async function runJob(job) {
       job.currentCategory = category;
       job.categoryStatus[category] = 'running';
       const archive = job.categoryArchives[category];
-
-      // Created once per category, up front, so every lead found while
-      // scanning it can be written straight to Firestore as it's found
-      // (see `saveLeadLive`) instead of only at the very end. Best-effort —
-      // if Firestore isn't configured, `job.searchIds[category]` stays
-      // undefined and `upsertLeadToFirebase` calls fail individually
-      // (logged, swallowed) without touching the scrape itself.
-      if (!job.searchIds[category]) {
-        try {
-          job.searchIds[category] = await createSearchRecord({
-            category,
-            location: 'All US states',
-            dateRange: job.dateRange,
-            nationwide: true,
-            country: 'US',
-          });
-        } catch (err) {
-          logActivity(job, `Could not create Firestore search record for "${category}": ${err.message}`, 'warn');
-        }
-      }
 
       // Tracks whether this run covered every state it was responsible
       // for — a resumed run's "every state" is just its own missing
@@ -364,6 +381,8 @@ export async function startStateCityScan({
   scrapeLocationFn,
   statesOverride,
   resumeArchives,
+  // category -> id of an older archive to delete once the new one completes.
+  replacesArchiveIds,
 }) {
   if (!Array.isArray(categories) || !categories.length) {
     throw new Error('categories array is required');
@@ -388,6 +407,7 @@ export async function startStateCityScan({
   const categoryStates = {};
   const categoryStatus = {};
   const collectedLeadsByState = {};
+  const collectedWebsiteByState = {};
   const categoryArchives = {};
   const archiveMutexes = {};
   for (const category of uniqueCategories) {
@@ -395,6 +415,7 @@ export async function startStateCityScan({
     categoryStates[category] = states.map((s) => newStateRecord(s.state, s.cities));
     categoryStatus[category] = 'pending';
     collectedLeadsByState[category] = {};
+    collectedWebsiteByState[category] = {};
     categoryArchives[category] = {
       id: resume?.id || crypto.randomUUID(),
       fileName: resume?.fileName || buildArchiveFileName({ categories: [category], countries: ['US'] }),
@@ -407,11 +428,15 @@ export async function startStateCityScan({
       status: 'pending', // pending | building | partial | done | failed
       result: null,
       error: null,
+      replacesArchiveId: replacesArchiveIds?.[category] || null,
     };
     archiveMutexes[category] = new Mutex();
 
     for (const [state, leads] of Object.entries(resume?.seedLeadsByState || {})) {
       collectedLeadsByState[category][state] = leads;
+    }
+    for (const [state, leads] of Object.entries(resume?.seedWebsiteByState || {})) {
+      collectedWebsiteByState[category][state] = leads;
     }
   }
 
@@ -432,12 +457,12 @@ export async function startStateCityScan({
     categoryStates,
     categoryStatus,
     collectedLeadsByState,
+    collectedWebsiteByState,
     categoryArchives,
     archiveMutexes,
     activityLog: [],
-    // category -> Firestore `searches/{id}` doc id, created lazily the
-    // first time that category starts scanning (see `runJob`).
-    searchIds: {},
+    // Scans no longer write per-lead Firestore documents (their results
+    // live in the Excel workbooks); kept at 0 for the status payload.
     firebaseLeadsSaved: 0,
   };
 
@@ -512,6 +537,15 @@ export async function resumeStateCityScan({ archiveId, concurrency, scrapeLocati
     statesWithData.push(sheet.name);
   }
 
+  const seedWebsiteByState = {};
+  const companion = await downloadExcelArchiveBuffer(noWebsiteArchiveId(archiveId)).catch(() => null);
+  if (companion) {
+    for (const sheet of await xlsxBufferToJson(companion.buffer)) {
+      if (!allStates.includes(sheet.name) || !sheet.rows.length) continue;
+      seedWebsiteByState[sheet.name] = sheetsToLeadsJson([sheet], `resume-${archiveId}-nw-${sheet.name}`);
+    }
+  }
+
   const completedStates = archive.completedCountries?.length ? archive.completedCountries : statesWithData;
   const missingStates = allStates.filter((s) => !completedStates.includes(s));
   if (!missingStates.length) {
@@ -536,11 +570,39 @@ export async function resumeStateCityScan({ archiveId, concurrency, scrapeLocati
         completedStates,
         priorBusinessesProcessed: archive.totalBusinessesProcessed || 0,
         seedLeadsByState,
+        seedWebsiteByState,
       },
     },
   });
 
   logActivity(currentJob, `Resuming "${category}" — ${missingStates.length} of ${allStates.length} states remaining.`);
+  return result;
+}
+
+/**
+ * Re-runs a finished scan from scratch — same category and settings, every
+ * state — and deletes the old archive (and its no-website companion) only
+ * once the new one has completed. Meant for scans old enough that their
+ * reviews are stale.
+ */
+export async function rescanStateCityArchive({ archiveId, concurrency, scrapeLocationFn } = {}) {
+  const archive = archiveId ? await getExcelArchive(archiveId) : null;
+  const fail = (status, message) => Object.assign(new Error(message), { status });
+  if (!archive) throw fail(404, 'Archive not found');
+  if (archive.kind === 'no_website') throw fail(400, 'Re-scan the review archive; it also refreshes its no-website file.');
+  if (!archive.category) throw fail(400, 'This archive has no category recorded — cannot re-scan.');
+  if (archive.status !== 'complete') throw fail(400, 'Only a finished scan can be re-scanned. Resume it instead.');
+
+  const result = await startStateCityScan({
+    categories: [archive.category],
+    concurrency: concurrency ?? archive.concurrency ?? undefined,
+    dateRange: archive.dateRange || '30',
+    maxResultsPerCity: archive.maxResultsPerState || DEFAULT_MAX_RESULTS_PER_CITY,
+    analyze: archive.analyze || false,
+    scrapeLocationFn,
+    replacesArchiveIds: { [archive.category]: archive.id },
+  });
+  logActivity(currentJob, `Re-scanning "${archive.category}" — the earlier scan is deleted when this one finishes.`);
   return result;
 }
 
@@ -568,9 +630,8 @@ export function getStateCityJobSnapshot() {
       citiesDone,
       leadsCollected,
       businessesProcessed,
-      // Leads already written to Firestore live, as they were found —
-      // see `saveLeadLive`. Distinct from `leadsCollected`, which counts
-      // leads in the in-memory Excel archive regardless of Firestore.
+      // Always 0 now: scans no longer write per-lead Firestore documents.
+      // Kept so the status payload shape does not change.
       firebaseLeadsSaved,
       // Separate lead type entirely (no website found) — never counted
       // in `leadsCollected`/`firebaseLeadsSaved`, which are review leads.

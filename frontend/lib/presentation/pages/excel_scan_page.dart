@@ -131,8 +131,10 @@ class _ExcelScanPageState extends State<ExcelScanPage> {
                     'Scans every US state one at a time — within the active state, cities '
                     'are scraped in parallel across your worker pool. Nothing is saved to '
                     'your Leads list; each category becomes one Excel workbook (one sheet '
-                    'per state), auto-saved to Firebase the instant each state finishes so '
-                    'nothing scanned is ever lost, even if a scan is interrupted.',
+                    'per state) plus a companion workbook of businesses with no website, '
+                    'both stamped with the scan date and auto-saved the instant each state '
+                    'finishes, so nothing is lost if a scan is interrupted. After a month, '
+                    'Re-scan it from the Archive for the latest reviews.',
                     style: Theme.of(context).textTheme.bodyLarge,
                   ),
                   const SizedBox(height: 24),

@@ -61,6 +61,7 @@ class ApiConstants {
   static String excelArchiveLeads(String id) => '/api/excel-scans/$id/leads';
   static String excelArchiveDelete(String id) => '/api/excel-scans/$id';
   static String excelArchiveResume(String id) => '/api/excel-scans/$id/resume';
+  static String excelArchiveRescan(String id) => '/api/excel-scans/$id/rescan';
 
   static const String whatsappValidatedScans = '/api/whatsapp-validated-scans';
   static String whatsappValidatedData(String id) => '/api/whatsapp-validated-scans/$id/data';

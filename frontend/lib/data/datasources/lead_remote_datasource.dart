@@ -1183,6 +1183,20 @@ class LeadRemoteDataSource {
     return (body['engine'] as String?) ?? 'state-city';
   }
 
+  /// Starts the same scan over, from scratch. The backend deletes [id] (and
+  /// its no-website file) only once the new scan completes.
+  Future<void> rescanExcelArchive(String id, {int concurrency = 10}) async {
+    final response = await _client.post(
+      _uri(ApiConstants.excelArchiveRescan(id)),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'concurrency': concurrency}),
+    );
+    final body = _tryDecode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['error'] ?? 'Failed to start re-scan');
+    }
+  }
+
   Future<Sale> createSale({
     required String businessName,
     String? clientId,

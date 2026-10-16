@@ -93,7 +93,7 @@ function normalizeLeadPhone(leads, country = 'US') {
  * logged and swallowed so it never interrupts the review-lead scan it
  * rides alongside.
  */
-async function captureWebsiteLeads(businesses, { location, searchLocation, country = 'US' } = {}) {
+async function captureWebsiteLeads(businesses, { location, searchLocation, country = 'US', persist = true } = {}) {
   if (!businesses?.length) return [];
   try {
     let websiteLeads = filterNoWebsiteLeads(businesses);
@@ -101,7 +101,9 @@ async function captureWebsiteLeads(businesses, { location, searchLocation, count
     websiteLeads = normalizeLeadPhone(websiteLeads, country);
     websiteLeads = websiteLeads.map((l) => ({ ...l, location: location ?? l.location, searchLocation }));
     websiteLeads = dedupeLeads(websiteLeads);
-    await saveWebsiteLeadsToFirebase(websiteLeads, { country });
+    // `persist: false` — the caller keeps them (in its Excel workbook)
+    // instead of one Firestore document per business.
+    if (persist) await saveWebsiteLeadsToFirebase(websiteLeads, { country });
     return websiteLeads;
   } catch (err) {
     console.error('Failed to save website leads:', err.message);
@@ -529,6 +531,9 @@ export async function scrapeOneCity(category, { city, state }, {
   // to save each lead to Firestore immediately instead of waiting for the
   // whole city (or category) to finish. WhatsApp is not checked here.
   onLeadReady,
+  // false: do not write no-website leads to Firestore; they come back in
+  // `websiteLeads` for the caller to store (the Excel-only scan).
+  persistWebsiteLeads = true,
 } = {}) {
   const location = locationQuery({ city, state });
 
@@ -540,7 +545,12 @@ export async function scrapeOneCity(category, { city, state }, {
     shouldStop,
   });
 
-  const websiteLeads = await captureWebsiteLeads(businesses, { location: state, searchLocation: location, country });
+  const websiteLeads = await captureWebsiteLeads(businesses, {
+    location: state,
+    searchLocation: location,
+    country,
+    persist: persistWebsiteLeads,
+  });
 
   let leads = filterRecentOneStarLeads(businesses, { dateRange });
   leads = enrichLeadContacts(leads, country);
@@ -553,7 +563,7 @@ export async function scrapeOneCity(category, { city, state }, {
     await persistReadyLeads(leads, { shouldStop, onLeadReady });
   }
 
-  return { leads, businessesScraped: businesses.length, websiteLeadsFound: websiteLeads.length };
+  return { leads, businessesScraped: businesses.length, websiteLeadsFound: websiteLeads.length, websiteLeads };
 }
 
 /**
