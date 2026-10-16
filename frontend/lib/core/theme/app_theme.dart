@@ -316,6 +316,7 @@ class AppIcons {
   static const tag = LucideIcons.tag600;
   static const calendar = LucideIcons.calendar600;
   static const clock = LucideIcons.clock600;
+  static const logIn = LucideIcons.logIn600;
   static const check = LucideIcons.check600;
   static const checkCircle = LucideIcons.circleCheck600;
   static const alert = LucideIcons.circleAlert600;

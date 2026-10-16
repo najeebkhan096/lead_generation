@@ -285,6 +285,10 @@ class _DashboardBody extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      if (snapshot.stoppedForSignIn) ...[
+                        const _StoppedForSignInBanner(),
+                        const SizedBox(height: 16),
+                      ],
                       _OverallCard(snapshot: snapshot, elapsedMs: elapsedMs),
                       if (snapshot.categories.length > 1) ...[
                         const SizedBox(height: 20),
@@ -314,6 +318,39 @@ class _DashboardBody extends StatelessWidget {
   }
 }
 
+/// Shown when the scan stopped itself because Google asked to sign in: the
+/// saved session ended, so carrying on would have missed reviews.
+class _StoppedForSignInBanner extends StatelessWidget {
+  const _StoppedForSignInBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFDE8E8),
+        borderRadius: BorderRadius.circular(AppTheme.radiusCard),
+        border: Border.all(color: AppTheme.danger.withValues(alpha: 0.3)),
+      ),
+      child: const Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(AppIcons.alert, size: 20, color: AppTheme.danger),
+          SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              'The scan stopped: Google asked to sign in, so the saved session has expired. '
+              'Nothing was missed silently. The city it was on was left out of the results. '
+              'Sign in again on the Excel Scan page, then open the Archive and Resume this scan.',
+              style: TextStyle(fontSize: 13, height: 1.4, color: AppTheme.neutral700),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _OverallCard extends StatelessWidget {
   const _OverallCard({required this.snapshot, required this.elapsedMs});
 
@@ -330,7 +367,7 @@ class _OverallCard extends StatelessWidget {
     final citiesDone = snapshot.categories.fold<int>(0, (s, c) => s + c.citiesDone);
     final leads = snapshot.categories.fold<int>(0, (s, c) => s + c.leadsCollected);
     final businesses = snapshot.categories.fold<int>(0, (s, c) => s + c.businessesProcessed);
-    final websiteLeads = snapshot.categories.fold<int>(0, (s, c) => s + c.websiteLeadsFound);
+    final needsRecheck = snapshot.needsRecheck;
     final percent = citiesTotal > 0 ? (citiesDone / citiesTotal * 100).round() : 0;
     final categoriesDone = snapshot.categories.where((c) => c.status == 'done').length;
 
@@ -379,7 +416,7 @@ class _OverallCard extends StatelessWidget {
                 _StatTile('Cities done', '$citiesDone/$citiesTotal', AppIcons.mapPin),
                 _StatTile('Businesses scanned', '$businesses', AppIcons.search),
                 _StatTile('Review leads found', '$leads', AppIcons.trendingUp),
-                _StatTile('Website leads found', '$websiteLeads', AppIcons.inbox),
+                _StatTile('Not fully read', '$needsRecheck', AppIcons.alert),
               ];
               return GridView.builder(
                 shrinkWrap: true,
@@ -681,8 +718,8 @@ class _StateRow extends StatelessWidget {
                         const SizedBox(height: 2),
                         Text(
                           state.inProgress.isNotEmpty
-                              ? '$label · ${state.citiesDone}/${state.citiesTotal} cities · ${state.inProgress.length} active now · ${state.leadsCollected} leads · ${state.websiteLeadsFound} website'
-                              : '$label · ${state.citiesDone}/${state.citiesTotal} cities · ${state.leadsCollected} leads · ${state.websiteLeadsFound} website',
+                              ? '$label · ${state.citiesDone}/${state.citiesTotal} cities · ${state.inProgress.length} active now · ${state.leadsCollected} leads'
+                              : '$label · ${state.citiesDone}/${state.citiesTotal} cities · ${state.leadsCollected} leads${state.incompleteBusinesses + state.skippedListings > 0 ? ' · ${state.incompleteBusinesses + state.skippedListings} not fully read' : ''}',
                           style: const TextStyle(fontSize: 11.5, color: AppTheme.faint),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,

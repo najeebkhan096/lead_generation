@@ -20,7 +20,7 @@
  */
 
 import crypto from 'crypto';
-import { launchBrowser } from '../../scraper/googleMapsScraper.js';
+import { launchBrowser, checkBrowserSignedIn } from '../../scraper/googleMapsScraper.js';
 import { scrapeOneCity } from './leadService.js';
 import { US_STATE_CITIES } from '../../data/usStateCities.js';
 import { Mutex } from '../../lib/asyncMutex.js';
@@ -31,14 +31,15 @@ import {
   getExcelArchive,
   downloadExcelArchiveBuffer,
   deleteExcelArchive,
-  noWebsiteArchiveId,
-  noWebsiteFileName,
 } from '../archive/excelArchiveStore.js';
-import { leadDocId } from '../../lib/leadIdentity.js';
+import { describeSortDiagnostics, resetSortDiagnostics } from '../../scraper/reviewSort.js';
 
 const MIN_CONCURRENCY = 2;
 const MAX_CONCURRENCY = 10;
 const DEFAULT_CONCURRENCY = 10;
+
+/** Tries per city before it is recorded as failed. */
+const CITY_ATTEMPTS = 2;
 // Listing pages within a city are opened one at a time, so this directly
 // sets a city's worst-case duration (up to 45s per listing on a bad
 // connection) — 160 favors real thoroughness per city; the live
@@ -93,15 +94,22 @@ function newStateRecord(state, cities) {
     leadsCollected: 0,
     businessesProcessed: 0,
     firebaseLeadsSaved: 0,
-    // "No website found" is a completely separate signal from review
-    // leads (see `captureWebsiteLeads`/`websiteLeadStore.js`) — tracked
-    // here purely for the live scan-progress totals, not mixed into
-    // `leadsCollected`.
+    // Kept (always 0) so the status payload keeps its shape: no-website
+    // businesses are no longer scanned for.
     websiteLeadsFound: 0,
+    // Businesses in this state whose reviews could not be proven fully read,
+    // and listings that could not be opened at all (see scrapeOneCity).
+    incompleteBusinesses: 0,
+    skippedListings: 0,
+    // city -> how many times it has been tried (a failed city is retried).
+    attempts: {},
     startedAt: null,
     finishedAt: null,
   };
 }
+
+/** Test hooks: the per-state scanner and its record shape. */
+export { scanStateCities as _scanStateCities, newStateRecord as _newStateRecord };
 
 /** Scrapes every city in `stateRec` with up to `job.concurrency` workers
  * running at once, mutating `stateRec` (covered/pending/inProgress/failed/
@@ -126,7 +134,7 @@ async function scanStateCities(job, category, stateRec) {
       stateRec.activity[city] = 'starting…';
 
       try {
-        const { leads, businessesScraped, websiteLeadsFound, websiteLeads } = await scrapeOneCity(
+        const { leads, businessesScraped, reviewIssues, skippedListings } = await scrapeOneCity(
           category,
           { city, state: stateRec.state },
           {
@@ -140,25 +148,48 @@ async function scanStateCities(job, category, stateRec) {
             },
             shouldStop: () => job.cancelled,
             scrapeLocationFn: job.scrapeLocationFn,
-            // Nothing is written per lead: results live in the category's
-            // Excel workbooks (see `uploadCategoryArchiveNow`).
-            persistWebsiteLeads: false,
           }
         );
 
+        // Google asked to sign in while reading reviews: the session is
+        // missing or has expired, so every further business would be read
+        // without sorting and its 1-star reviews missed. Stop here and keep
+        // this city out of the results so a Resume re-scans it.
+        if (reviewIssues?.signInBlocked > 0 && job.requireSignIn) {
+          stateRec.pending.unshift(city); // not covered: resume must redo it
+          job.stoppedReason = 'google_session_expired';
+          job.cancelled = true;
+          logActivity(
+            job,
+            `"${category}" · ${stateRec.state} · ${city} — Google asked to sign in, so the saved session is missing or expired. ` +
+              'Scan stopped to avoid missing reviews. Sign in to Google again (Excel Scan page, or `npm run maps:login`), then Resume the scan from the Archive.',
+            'error'
+          );
+          return;
+        }
+
         (job.collectedLeadsByState[category][stateRec.state] ??= []).push(...leads);
-        (job.collectedWebsiteByState[category][stateRec.state] ??= []).push(...(websiteLeads || []));
         stateRec.leadsCollected += leads.length;
         stateRec.businessesProcessed += businessesScraped;
-        stateRec.websiteLeadsFound += websiteLeadsFound || 0;
+        stateRec.incompleteBusinesses += reviewIssues?.incomplete || 0;
+        stateRec.skippedListings += skippedListings || 0;
         stateRec.covered.push(city);
         logActivity(
           job,
-          `"${category}" · ${stateRec.state} · ${city} — ${leads.length} lead${leads.length === 1 ? '' : 's'} (${stateRec.covered.length + stateRec.failed.length}/${stateRec.citiesTotal} cities)`
+          `"${category}" · ${stateRec.state} · ${city} — ${leads.length} lead${leads.length === 1 ? '' : 's'} (${stateRec.covered.length + stateRec.failed.length}/${stateRec.citiesTotal} cities)` +
+            (reviewIssues?.incomplete ? ` · ${reviewIssues.incomplete} business${reviewIssues.incomplete === 1 ? '' : 'es'} not fully read` : '') +
+            (skippedListings ? ` · ${skippedListings} listing${skippedListings === 1 ? '' : 's'} skipped` : ''),
+          reviewIssues?.incomplete || skippedListings ? 'warn' : 'info'
         );
       } catch (err) {
-        stateRec.failed.push(city);
-        logActivity(job, `"${category}" · ${stateRec.state} · ${city} — failed: ${err.message}`, 'warn');
+        const tried = (stateRec.attempts[city] = (stateRec.attempts[city] || 0) + 1);
+        if (tried < CITY_ATTEMPTS && !job.cancelled) {
+          stateRec.pending.push(city); // try it again after the others
+          logActivity(job, `"${category}" · ${stateRec.state} · ${city} — failed (${err.message}); will retry`, 'warn');
+        } else {
+          stateRec.failed.push(city);
+          logActivity(job, `"${category}" · ${stateRec.state} · ${city} — failed: ${err.message}`, 'warn');
+        }
       } finally {
         const idx = stateRec.inProgress.indexOf(city);
         if (idx !== -1) stateRec.inProgress.splice(idx, 1);
@@ -175,7 +206,9 @@ async function scanStateCities(job, category, stateRec) {
   // can leave `pending` non-empty here. Marking it 'cancelled' instead of
   // 'done' keeps it correctly excluded from `completedStates`, so a later
   // resume re-scans this state's remaining cities instead of skipping it.
-  stateRec.status = stateRec.pending.length === 0 ? 'done' : 'cancelled';
+  // 'done' only when every city was covered: a state with failed cities is
+  // left 'cancelled' (not in `completedStates`), so a Resume re-scans it.
+  stateRec.status = stateRec.pending.length === 0 && stateRec.failed.length === 0 ? 'done' : 'cancelled';
   stateRec.finishedAt = Date.now();
   logActivity(
     job,
@@ -200,21 +233,11 @@ async function uploadCategoryArchiveNow(job, category, { isFinal }) {
   // split for the same reason: a fresh (non-resumed) run has the two
   // equal, so this is a no-op change in that case.
   const sheets = [];
-  const websiteSheets = [];
   for (const state of archive.allStates) {
     const leads = job.collectedLeadsByState[category][state];
     if (leads && leads.length) sheets.push({ name: state, leads });
-    // The same business can turn up in neighbouring cities; keep one row.
-    const seen = new Set();
-    const websiteLeads = (job.collectedWebsiteByState[category][state] || []).filter((l) => {
-      const key = leadDocId(l);
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
-    if (websiteLeads.length) websiteSheets.push({ name: state, leads: websiteLeads });
   }
-  if (!sheets.length && !websiteSheets.length) {
+  if (!sheets.length) {
     if (isFinal) archive.status = 'done';
     return;
   }
@@ -245,34 +268,6 @@ async function uploadCategoryArchiveNow(job, category, { isFinal }) {
       analyze: job.analyze,
       concurrency: job.concurrency,
     });
-
-    // Businesses with no website, in a companion workbook under the same
-    // scan date. Best-effort: the review workbook above is the scan.
-    if (websiteSheets.length) {
-      try {
-        await uploadExcelArchive({
-          id: noWebsiteArchiveId(archive.id),
-          buffer: await leadsToXlsxBuffer(websiteSheets),
-          fileName: noWebsiteFileName(archive.fileName),
-          scannedAt: job.startedAt,
-          categories: [category],
-          countries: ['US'],
-          totalLeads: websiteSheets.reduce((sum, s) => sum + s.leads.length, 0),
-          totalBusinessesProcessed,
-          status: isFinal ? 'complete' : 'partial',
-          category,
-          completedCountries: [...archive.completedStates],
-          dateRange: job.dateRange,
-          maxResultsPerState: job.maxResultsPerCity,
-          analyze: false,
-          concurrency: job.concurrency,
-          kind: 'no_website',
-          pairedArchiveId: archive.id,
-        });
-      } catch (err) {
-        logActivity(job, `"${category}" no-website workbook upload failed: ${err.message}`, 'warn');
-      }
-    }
 
     archive.status = isFinal ? 'done' : 'partial';
     archive.result = record;
@@ -351,6 +346,21 @@ async function runJob(job) {
 
   job.finishedAt = Date.now();
   job.status = 'done';
+  const allStates = Object.values(job.categoryStates).flat();
+  const notFullyRead = allStates.reduce((n, st) => n + (st.incompleteBusinesses || 0), 0);
+  const skipped = allStates.reduce((n, st) => n + (st.skippedListings || 0), 0);
+  if (notFullyRead || skipped) {
+    logActivity(
+      job,
+      `Coverage: ${notFullyRead} business${notFullyRead === 1 ? '' : 'es'} could not be proven fully read and ${skipped} listing${skipped === 1 ? '' : 's'} could not be opened. ` +
+        'Their reviews may be missing; re-scan to try again.',
+      'warn'
+    );
+  } else if (!job.cancelled) {
+    logActivity(job, 'Coverage: every business was read completely (reviews sorted and read back to the date window).');
+  }
+  const sortSummary = describeSortDiagnostics();
+  if (sortSummary) logActivity(job, sortSummary, sortSummary.includes('not sorted') ? 'warn' : 'info');
   logActivity(job, `Scan finished in ${Math.round((job.finishedAt - job.startedAt) / 1000)}s.`);
 }
 
@@ -383,6 +393,9 @@ export async function startStateCityScan({
   resumeArchives,
   // category -> id of an older archive to delete once the new one completes.
   replacesArchiveIds,
+  // Refuse to scan (and stop mid-scan) without a signed-in Google session:
+  // anonymous visitors cannot sort reviews, so 1-star reviews would be missed.
+  requireSignIn = true,
 }) {
   if (!Array.isArray(categories) || !categories.length) {
     throw new Error('categories array is required');
@@ -407,7 +420,6 @@ export async function startStateCityScan({
   const categoryStates = {};
   const categoryStatus = {};
   const collectedLeadsByState = {};
-  const collectedWebsiteByState = {};
   const categoryArchives = {};
   const archiveMutexes = {};
   for (const category of uniqueCategories) {
@@ -415,7 +427,6 @@ export async function startStateCityScan({
     categoryStates[category] = states.map((s) => newStateRecord(s.state, s.cities));
     categoryStatus[category] = 'pending';
     collectedLeadsByState[category] = {};
-    collectedWebsiteByState[category] = {};
     categoryArchives[category] = {
       id: resume?.id || crypto.randomUUID(),
       fileName: resume?.fileName || buildArchiveFileName({ categories: [category], countries: ['US'] }),
@@ -435,9 +446,6 @@ export async function startStateCityScan({
     for (const [state, leads] of Object.entries(resume?.seedLeadsByState || {})) {
       collectedLeadsByState[category][state] = leads;
     }
-    for (const [state, leads] of Object.entries(resume?.seedWebsiteByState || {})) {
-      collectedWebsiteByState[category][state] = leads;
-    }
   }
 
   const thisJob = {
@@ -447,6 +455,8 @@ export async function startStateCityScan({
     maxResultsPerCity: Math.max(4, Number(maxResultsPerCity) || DEFAULT_MAX_RESULTS_PER_CITY),
     analyze: Boolean(analyze),
     scrapeLocationFn,
+    requireSignIn: Boolean(requireSignIn),
+    stoppedReason: null,
     status: 'running', // running | done
     cancelled: false,
     paused: false,
@@ -457,7 +467,6 @@ export async function startStateCityScan({
     categoryStates,
     categoryStatus,
     collectedLeadsByState,
-    collectedWebsiteByState,
     categoryArchives,
     archiveMutexes,
     activityLog: [],
@@ -467,6 +476,7 @@ export async function startStateCityScan({
   };
 
   currentJob = thisJob;
+  resetSortDiagnostics();
   const totalCities = categoryStates[uniqueCategories[0]].reduce((sum, s) => sum + s.citiesTotal, 0);
   logActivity(
     thisJob,
@@ -485,6 +495,24 @@ export async function startStateCityScan({
     // process itself was restarted.
     currentJob = null;
     throw err;
+  }
+
+  // A scan that cannot sort reviews would quietly miss most 1-star reviews, so
+  // it does not start. (Skipped for the injected scraper used by tests.)
+  if (requireSignIn && !scrapeLocationFn) {
+    const session = await checkBrowserSignedIn(thisJob.browser).catch(() => ({ status: 'unknown' }));
+    if (session.status === 'anonymous' || session.status === 'signed_out') {
+      await thisJob.browser.close().catch(() => {});
+      currentJob = null;
+      const err = new Error(
+        session.status === 'anonymous'
+          ? 'Sign in to Google first: reviews cannot be sorted without it, so 1-star reviews would be missed. Use "Sign in to Google" on the scan page (or `npm run maps:login`).'
+          : 'The saved Google session is signed out or has expired. Sign in again (Sign in to Google on the scan page, or `npm run maps:login`), then start the scan.'
+      );
+      err.status = 409;
+      err.code = 'GOOGLE_SIGN_IN_REQUIRED';
+      throw err;
+    }
   }
   runJob(thisJob).catch((err) => {
     console.error('State/city scan crashed:', err);
@@ -537,15 +565,6 @@ export async function resumeStateCityScan({ archiveId, concurrency, scrapeLocati
     statesWithData.push(sheet.name);
   }
 
-  const seedWebsiteByState = {};
-  const companion = await downloadExcelArchiveBuffer(noWebsiteArchiveId(archiveId)).catch(() => null);
-  if (companion) {
-    for (const sheet of await xlsxBufferToJson(companion.buffer)) {
-      if (!allStates.includes(sheet.name) || !sheet.rows.length) continue;
-      seedWebsiteByState[sheet.name] = sheetsToLeadsJson([sheet], `resume-${archiveId}-nw-${sheet.name}`);
-    }
-  }
-
   const completedStates = archive.completedCountries?.length ? archive.completedCountries : statesWithData;
   const missingStates = allStates.filter((s) => !completedStates.includes(s));
   if (!missingStates.length) {
@@ -570,7 +589,6 @@ export async function resumeStateCityScan({ archiveId, concurrency, scrapeLocati
         completedStates,
         priorBusinessesProcessed: archive.totalBusinessesProcessed || 0,
         seedLeadsByState,
-        seedWebsiteByState,
       },
     },
   });
@@ -620,6 +638,8 @@ export function getStateCityJobSnapshot() {
     const businessesProcessed = states.reduce((sum, s) => sum + s.businessesProcessed, 0);
     const firebaseLeadsSaved = states.reduce((sum, s) => sum + (s.firebaseLeadsSaved || 0), 0);
     const websiteLeadsFound = states.reduce((sum, s) => sum + (s.websiteLeadsFound || 0), 0);
+    const incompleteBusinesses = states.reduce((sum, s) => sum + (s.incompleteBusinesses || 0), 0);
+    const skippedListings = states.reduce((sum, s) => sum + (s.skippedListings || 0), 0);
 
     return {
       category,
@@ -636,6 +656,10 @@ export function getStateCityJobSnapshot() {
       // Separate lead type entirely (no website found) — never counted
       // in `leadsCollected`/`firebaseLeadsSaved`, which are review leads.
       websiteLeadsFound,
+      // Businesses whose reviews could not be proven fully read, and listings
+      // that could not be opened: the scan's own account of what it may have missed.
+      incompleteBusinesses,
+      skippedListings,
       archive: { status: archive.status, result: archive.result, error: archive.error },
       states: states.map((s) => ({
         state: s.state,
@@ -649,6 +673,8 @@ export function getStateCityJobSnapshot() {
         businessesProcessed: s.businessesProcessed,
         firebaseLeadsSaved: s.firebaseLeadsSaved || 0,
         websiteLeadsFound: s.websiteLeadsFound || 0,
+        incompleteBusinesses: s.incompleteBusinesses || 0,
+        skippedListings: s.skippedListings || 0,
         startedAt: s.startedAt,
         finishedAt: s.finishedAt,
       })),
@@ -665,6 +691,7 @@ export function getStateCityJobSnapshot() {
     startedAt: job.startedAt,
     finishedAt: job.finishedAt,
     paused: job.paused,
+    stoppedReason: job.stoppedReason,
     categories,
     activity: job.activityLog.slice(-150).reverse(),
   };

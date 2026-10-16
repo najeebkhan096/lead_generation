@@ -19,6 +19,7 @@ import userRoutes from './modules/users/userRoutes.js';
 import saleRoutes from './modules/sales/saleRoutes.js';
 import clientRoutes from './modules/clients/clientRoutes.js';
 import stateCityScanRoutes from './modules/scan/stateCityScanRoutes.js';
+import mapsSessionRoutes from './modules/scan/mapsSessionRoutes.js';
 import outreachRoutes from './modules/outreach/outreachRoutes.js';
 import twilioTestRoutes from './modules/twilio-test/testLeadRoutes.js';
 import { initFirebase, getFirebaseStatus } from './firebase/admin.js';
@@ -77,6 +78,7 @@ app.use('/api/users', userRoutes);
 app.use('/api/sales', saleRoutes);
 app.use('/api/clients', clientRoutes);
 app.use('/api/state-scan', stateCityScanRoutes);
+app.use('/api/maps-session', mapsSessionRoutes);
 app.use('/api/outreach', outreachRoutes);
 app.use('/api/twilio-test', twilioTestRoutes);
 

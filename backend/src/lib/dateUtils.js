@@ -21,13 +21,11 @@ export function daysForRange(range) {
 /**
  * Convert Google/Bing relative dates like "2 days ago", "Edited a week ago" to Date.
  */
-export function parseRelativeDate(text) {
+export function parseRelativeDate(text, now = new Date()) {
   if (!text || typeof text !== 'string') return null;
 
   let cleaned = text.trim().toLowerCase();
   cleaned = cleaned.replace(/^edited\s+/i, '').trim();
-
-  const now = new Date();
 
   if (cleaned.includes('just now') || cleaned.includes('a moment')) {
     return now;
@@ -86,13 +84,16 @@ export function parseRelativeDate(text) {
   return null;
 }
 
-export function isWithinRange(dateText, rangeKey) {
+export function isWithinRange(dateText, rangeKey, now = new Date()) {
   const days = daysForRange(rangeKey);
-  const parsed = parseRelativeDate(dateText);
+  // One clock reading for both sides: reading it separately for the parsed
+  // date and for the cutoff made a review exactly `days` old fall in or out
+  // depending on the millisecond.
+  const parsed = parseRelativeDate(dateText, now);
   if (!parsed) {
     // Unknown formats: keep for MVP recall
     return true;
   }
-  const cutoff = Date.now() - days * DAY_MS;
+  const cutoff = now.getTime() - days * DAY_MS;
   return parsed.getTime() >= cutoff;
 }

@@ -6,12 +6,11 @@
 import * as googleMaps from '../../scraper/googleMapsScraper.js';
 import * as bing from '../../scraper/bingScraper.js';
 import * as yelp from '../../scraper/yelpScraper.js';
-import { filterRecentOneStarLeads, filterNoWebsiteLeads } from './reviewFilter.js';
+import { filterRecentOneStarLeads } from './reviewFilter.js';
 import { enrichLeadWithAnalysis } from './reviewAnalyzer.js';
 import { normalizePhone, waMeLink } from '../validation/whatsapp/whatsappChecker.js';
 import { locationQuery, shuffleStates } from '../../data/usStates.js';
 import { countryMeta, regionsForCountry } from '../../data/countries.js';
-import { saveWebsiteLeadsToFirebase } from '../leads/websiteLeadStore.js';
 import {
   setLeads,
   appendLeads,
@@ -85,30 +84,21 @@ function normalizeLeadPhone(leads, country = 'US') {
 }
 
 /**
- * Pulls the no-website businesses out of a just-scraped batch and saves
- * them straight to Firestore's `websiteLeads` collection — a second,
- * independent lead signal alongside the 1-star-review `leads` flow, run
- * against every business scraped for ANY category/location (not just the
- * ones that also pass the review filter). Best-effort: a save failure is
- * logged and swallowed so it never interrupts the review-lead scan it
- * rides alongside.
+ * How well a batch's reviews were read, from each business's `reviewAccess`
+ * (see googleMapsScraper.js): `incomplete` businesses could not be proven
+ * fully read, `signInBlocked` of them because Google asked to sign in. A
+ * business without a record (another scraper supplied it) is not counted.
  */
-async function captureWebsiteLeads(businesses, { location, searchLocation, country = 'US', persist = true } = {}) {
-  if (!businesses?.length) return [];
-  try {
-    let websiteLeads = filterNoWebsiteLeads(businesses);
-    if (!websiteLeads.length) return [];
-    websiteLeads = normalizeLeadPhone(websiteLeads, country);
-    websiteLeads = websiteLeads.map((l) => ({ ...l, location: location ?? l.location, searchLocation }));
-    websiteLeads = dedupeLeads(websiteLeads);
-    // `persist: false` — the caller keeps them (in its Excel workbook)
-    // instead of one Firestore document per business.
-    if (persist) await saveWebsiteLeadsToFirebase(websiteLeads, { country });
-    return websiteLeads;
-  } catch (err) {
-    console.error('Failed to save website leads:', err.message);
-    return [];
+export function summarizeReviewAccess(businesses) {
+  let incomplete = 0;
+  let signInBlocked = 0;
+  for (const b of businesses || []) {
+    const access = b.reviewAccess;
+    if (!access || access.complete) continue;
+    incomplete += 1;
+    if (access.status === 'signin_required') signInBlocked += 1;
   }
+  return { incomplete, signInBlocked };
 }
 
 /**
@@ -127,13 +117,14 @@ async function persistReadyLeads(leads, { shouldStop, onLeadReady } = {}) {
   }
 }
 
-async function scrapeLocation(category, location, { maxResults, onProgress, browser, country, shouldStop } = {}) {
+async function scrapeLocation(category, location, { maxResults, onProgress, browser, country, shouldStop, dateRange } = {}) {
   let businesses = await googleMaps.searchBusinesses(category, location, {
     maxResults,
     onProgress,
     browser,
     country,
     shouldStop,
+    dateRange,
   });
 
   if (!businesses.length) {
@@ -185,14 +176,13 @@ export async function findLeads({
     const businesses = await scrapeLocation(category, location, {
       maxResults,
       onProgress,
+      dateRange,
     });
 
     setProgress({
       message: `Filtering for recent 1-star reviews (${businesses.length} businesses)...`,
       processed: businesses.length,
     });
-
-    await captureWebsiteLeads(businesses, { location });
 
     let leads = filterRecentOneStarLeads(businesses, { dateRange });
     leads = enrichLeadContacts(leads);
@@ -423,6 +413,7 @@ export async function scrapeCategoryNationwide(category, {
         browser,
         country,
         shouldStop,
+        dateRange,
       });
     } catch (err) {
       onProgress?.({
@@ -442,8 +433,6 @@ export async function scrapeCategoryNationwide(category, {
 
     businessesScraped += businesses.length;
     onProgress?.({ type: 'businesses-scraped', delta: businesses.length, total: businessesScraped });
-
-    await captureWebsiteLeads(businesses, { location: entry.state, searchLocation: location, country });
 
     let stateLeads = filterRecentOneStarLeads(businesses, { dateRange });
     stateLeads = enrichLeadContacts(stateLeads, country);
@@ -512,11 +501,13 @@ let _citySeq = 0;
  * which cities, in what order, how many at once) and just wants one
  * location scraped end-to-end.
  *
- * Returns `{ leads, businessesScraped, websiteLeadsFound }` — `leads` is
- * the review-lead count (1-star reviews), `websiteLeadsFound` is the
- * separate "no website" signal already saved to its own collection by
- * `captureWebsiteLeads`, reported back here purely so callers can total it
- * up for live scan-progress stats.
+ * Returns `{ leads, businessesScraped, reviewIssues, skippedListings, ... }`:
+ * `leads` are the 1-star-review leads inside `dateRange`; `reviewIssues`
+ * says how many businesses' reviews could NOT be proven fully read (and how
+ * many of those were blocked by Google's sign-in prompt), and
+ * `skippedListings` how many listings could not be opened at all, so the
+ * caller never presents a partly-read city as fully covered. Businesses with
+ * no website are no longer scanned for; `websiteLeads` stays empty.
  */
 export async function scrapeOneCity(category, { city, state }, {
   dateRange = '30',
@@ -531,9 +522,8 @@ export async function scrapeOneCity(category, { city, state }, {
   // to save each lead to Firestore immediately instead of waiting for the
   // whole city (or category) to finish. WhatsApp is not checked here.
   onLeadReady,
-  // false: do not write no-website leads to Firestore; they come back in
-  // `websiteLeads` for the caller to store (the Excel-only scan).
-  persistWebsiteLeads = true,
+  // Accepted for older callers; no-website leads are no longer scanned for.
+  persistWebsiteLeads = true, // eslint-disable-line no-unused-vars
 } = {}) {
   const location = locationQuery({ city, state });
 
@@ -543,15 +533,10 @@ export async function scrapeOneCity(category, { city, state }, {
     browser,
     country,
     shouldStop,
+    dateRange,
   });
 
-  const websiteLeads = await captureWebsiteLeads(businesses, {
-    location: state,
-    searchLocation: location,
-    country,
-    persist: persistWebsiteLeads,
-  });
-
+  const reviewIssues = summarizeReviewAccess(businesses);
   let leads = filterRecentOneStarLeads(businesses, { dateRange });
   leads = enrichLeadContacts(leads, country);
   leads = leads.map((l) => ({ ...l, location: state, searchLocation: location }));
@@ -563,7 +548,14 @@ export async function scrapeOneCity(category, { city, state }, {
     await persistReadyLeads(leads, { shouldStop, onLeadReady });
   }
 
-  return { leads, businessesScraped: businesses.length, websiteLeadsFound: websiteLeads.length, websiteLeads };
+  return {
+    leads,
+    businessesScraped: businesses.length,
+    reviewIssues,
+    skippedListings: businesses.skippedListings || 0,
+    websiteLeadsFound: 0,
+    websiteLeads: [],
+  };
 }
 
 /**

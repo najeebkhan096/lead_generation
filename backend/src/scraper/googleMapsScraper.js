@@ -4,6 +4,19 @@
  */
 
 import { chromium } from 'playwright';
+import { getSessionConfig, profileExists, launchSessionBrowser, probeSignedIn } from './mapsSession.js';
+import {
+  SORT_STATUS,
+  isSortSuccess,
+  setSessionMode,
+  readOneStarCount,
+  openReviewsPanel,
+  sortLowestFirst,
+  sortReviewsWithRetry,
+  loadReviewsToBoundary,
+  scrollReviewPanel,
+  readReviewCards,
+} from './reviewSort.js';
 
 const USER_AGENT =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
@@ -63,30 +76,104 @@ async function withTimeout(promise, ms, label = 'operation') {
   }
 }
 
+export const BROWSER_ARGS = [
+  '--disable-blink-features=AutomationControlled',
+  '--no-sandbox',
+  '--disable-dev-shm-usage',
+  '--lang=en-US',
+  '--disable-setuid-sandbox',
+  '--disable-infobars',
+  '--window-position=0,0',
+  '--ignore-certifcate-errors',
+  '--ignore-certifcate-errors-spki-list',
+];
+
+export const CONTEXT_OPTIONS = {
+  userAgent: USER_AGENT,
+  locale: 'en-US',
+  extraHTTPHeaders: { 'Accept-Language': 'en-US,en;q=0.9' },
+  viewport: { width: 1366, height: 900 },
+};
+
+// A listing gets this long (reading every review in the window can take a
+// while on a busy place) and is tried this many times before it is given up on.
+const PLACE_TIMEOUT_MS = 150000;
+const PLACE_ATTEMPTS = 2;
+
+// How many scraper browsers currently hold the saved profile (a profile can
+// only be open in one browser, so signing in must wait for these to close).
+let openSessionBrowsers = 0;
+export function isSessionProfileInUse() {
+  return openSessionBrowsers > 0;
+}
+
+let warnedSessionFallback = false;
+function warnSessionFallback(message) {
+  if (warnedSessionFallback) return;
+  warnedSessionFallback = true;
+  console.warn(`[maps] ${message} Continuing without a saved Google session.`);
+}
+
+/**
+ * Launches the scraper's browser. With MAPS_PERSISTENT_SESSION on and a saved
+ * profile (see scripts/mapsLogin.mjs) it reuses that signed-in profile;
+ * otherwise, or if the profile cannot be opened (missing, or open in another
+ * process), it launches the usual anonymous browser. Never throws because of
+ * the session.
+ */
 export async function launchBrowser() {
-  return chromium.launch({
-    headless: true,
-    args: [
-      '--disable-blink-features=AutomationControlled',
-      '--no-sandbox',
-      '--disable-dev-shm-usage',
-      '--lang=en-US',
-      '--disable-setuid-sandbox',
-      '--disable-infobars',
-      '--window-position=0,0',
-      '--ignore-certifcate-errors',
-      '--ignore-certifcate-errors-spki-list',
-    ],
-  });
+  const cfg = getSessionConfig();
+  setSessionMode(false);
+  if (cfg.enabled) {
+    if (!profileExists(cfg.profileDir)) {
+      warnSessionFallback(`MAPS_PERSISTENT_SESSION is on but there is no saved profile at ${cfg.profileDir}; run \`npm run maps:login\`.`);
+    } else {
+      try {
+        const browser = await launchSessionBrowser({
+          chromium,
+          profileDir: cfg.profileDir,
+          channel: cfg.channel,
+          args: BROWSER_ARGS,
+          contextOptions: CONTEXT_OPTIONS,
+        });
+        setSessionMode(true);
+        openSessionBrowsers += 1;
+        const close = browser.close;
+        let closed = false;
+        browser.close = async () => {
+          if (!closed) {
+            closed = true;
+            openSessionBrowsers -= 1;
+          }
+          await close();
+        };
+        return browser;
+      } catch (err) {
+        warnSessionFallback(`Could not open the saved Google session (${(err?.message || String(err)).split('\n')[0]}).`);
+      }
+    }
+  }
+  return chromium.launch({ headless: true, args: BROWSER_ARGS });
+}
+
+/**
+ * Whether the scraper's browser is signed in to Google:
+ * 'anonymous' (no saved session in use), or 'signed_in' / 'signed_out' /
+ * 'unknown' for a saved session. Opens Maps once to look.
+ */
+export async function checkBrowserSignedIn(browser) {
+  if (!browser?.isSession) return { status: 'anonymous' };
+  const context = await createContext(browser);
+  const page = await context.newPage();
+  try {
+    return { status: await probeSignedIn(page) };
+  } finally {
+    await page.close().catch(() => {});
+  }
 }
 
 async function createContext(browser) {
-  return browser.newContext({
-    userAgent: USER_AGENT,
-    locale: 'en-US',
-    extraHTTPHeaders: { 'Accept-Language': 'en-US,en;q=0.9' },
-    viewport: { width: 1366, height: 900 },
-  });
+  return browser.newContext(CONTEXT_OPTIONS);
 }
 
 async function dismissConsent(page) {
@@ -154,7 +241,7 @@ async function scrollResultsFeed(page, { maxScrolls = 15, stallLimit = 2 } = {})
  * @param {string} [opts.country] - country code (US/UK/DE/CA) so results
  *   are biased toward that country instead of always the US.
  */
-export async function searchBusinesses(category, location, { maxResults = 10, onProgress, browser: sharedBrowser, country = 'US', shouldStop } = {}) {
+export async function searchBusinesses(category, location, { maxResults = 10, onProgress, browser: sharedBrowser, country = 'US', shouldStop, dateRange = '28' } = {}) {
   const ownsBrowser = !sharedBrowser;
   const browser = sharedBrowser || (await launchBrowser());
   const context = await createContext(browser);
@@ -205,6 +292,7 @@ export async function searchBusinesses(category, location, { maxResults = 10, on
     if (!listings.length) return businesses;
 
     const limit = Math.min(listings.length, maxResults);
+    let skippedListings = 0;
 
     for (let i = 0; i < limit; i++) {
       // Checked between listings, not mid-listing — a cancel takes effect
@@ -216,33 +304,49 @@ export async function searchBusinesses(category, location, { maxResults = 10, on
         onProgress?.('Stopped — cancelled.');
         break;
       }
-      const placePage = await context.newPage();
       const listingName = listings[i].name;
-      try {
-        onProgress?.(
-          `Opening listing ${i + 1}/${limit}${listingName ? `: ${listingName}` : ''}...`
-        );
-        // Held separately from the `withTimeout` race so a timed-out scrape
-        // (which keeps running against `placePage` after it's closed below)
-        // always has its eventual rejection handled — otherwise it lingers
-        // as an unhandled promise holding Playwright Page/Frame/CDP-session
-        // references, which adds up across a multi-hour, thousands-of
-        // -listings scan.
-        const scrapePromise = scrapeOnePlace(placePage, listings[i].href, category, location, country);
-        scrapePromise.catch(() => {});
-        const business = await withTimeout(scrapePromise, 45000, `place ${i + 1}`);
-        if (business?.name) {
-          businesses.push(business);
+      let business = null;
+      let lastError = null;
+      // A listing that times out or fails once is tried again on a fresh page;
+      // silently dropping it would be a business (and its reviews) missed.
+      for (let attempt = 1; attempt <= PLACE_ATTEMPTS && !business; attempt++) {
+        if (shouldStop?.()) break;
+        const placePage = await context.newPage();
+        try {
           onProgress?.(
-            `Collected: ${business.name} (${business.reviews.length}× 1★) [${businesses.length}/${limit}]`
+            `Opening listing ${i + 1}/${limit}${listingName ? `: ${listingName}` : ''}${attempt > 1 ? ` (attempt ${attempt})` : ''}...`
           );
+          // Held separately from the `withTimeout` race so a timed-out scrape
+          // (which keeps running against `placePage` after it's closed below)
+          // always has its eventual rejection handled — otherwise it lingers
+          // as an unhandled promise holding Playwright Page/Frame/CDP-session
+          // references, which adds up across a multi-hour, thousands-of
+          // -listings scan.
+          const scrapePromise = scrapeOnePlace(placePage, listings[i].href, category, location, country, dateRange);
+          scrapePromise.catch(() => {});
+          business = await withTimeout(scrapePromise, PLACE_TIMEOUT_MS, `place ${i + 1}`);
+        } catch (err) {
+          lastError = err;
+        } finally {
+          await placePage.close().catch(() => {});
         }
-      } catch (err) {
-        onProgress?.(`Skipped listing ${i + 1}: ${err.message}`);
-      } finally {
-        await placePage.close().catch(() => {});
+      }
+      if (business?.name) {
+        businesses.push(business);
+        const access = business.reviewAccess;
+        onProgress?.(
+          `Collected: ${business.name} (${business.reviews.length}× 1★)` +
+            (access && !access.complete ? ` [reviews NOT fully read: ${access.status}]` : '') +
+            ` [${businesses.length}/${limit}]`
+        );
+      } else if (!shouldStop?.()) {
+        skippedListings += 1;
+        onProgress?.(`Skipped listing ${i + 1}${listingName ? ` (${listingName})` : ''}: ${lastError?.message || 'no data'}`);
       }
     }
+    // How many listings could not be read even after retrying, so the scan
+    // can report them instead of presenting the city as fully covered.
+    Object.defineProperty(businesses, 'skippedListings', { value: skippedListings, enumerable: false });
   } finally {
     await context.close().catch(() => {});
     if (ownsBrowser) await browser.close();
@@ -251,11 +355,11 @@ export async function searchBusinesses(category, location, { maxResults = 10, on
   return businesses;
 }
 
-async function scrapeOnePlace(page, href, category, location, country) {
+async function scrapeOnePlace(page, href, category, location, country, dateRange) {
   await page.goto(withEnglish(href, country), { waitUntil: 'domcontentloaded', timeout: 30000 });
   await page.waitForTimeout(1500);
   await dismissConsent(page);
-  return extractBusinessFromPlacePage(page, category, location, country);
+  return extractBusinessFromPlacePage(page, category, location, country, dateRange);
 }
 
 async function textOrNull(page, selectors) {
@@ -300,30 +404,74 @@ async function extractPhone(page) {
   ]);
 }
 
-async function extractBusinessFromPlacePage(page, category, location, country) {
+/**
+ * Reads the business's overall rating and review count from the aria-labels
+ * Google puts on them ("4.5 stars", "10,976 reviews"). Exact matches only, so
+ * the rating-bar rows ("5 stars, 7,658 reviews") are never mistaken for either.
+ * Falls back to the looser lookups used before Google's markup changed.
+ */
+export async function readRatingAndReviewCount(page) {
+  await page
+    .waitForSelector('[aria-label*="star" i], [aria-label*="review" i]', { state: 'attached', timeout: 2500 })
+    .catch(() => {});
+
+  const exact = await page
+    .evaluate(() => {
+      let rating = null;
+      let total = null;
+      for (const el of document.querySelectorAll('[aria-label]')) {
+        const label = el.getAttribute('aria-label') || '';
+        if (rating === null) {
+          const m = label.match(/^\s*(\d+(?:\.\d+)?)\s*stars?\s*$/i);
+          if (m) rating = Number(m[1]);
+        }
+        if (total === null) {
+          const m = label.match(/^\s*([\d,]+)\s*reviews?\s*$/i);
+          if (m) total = Number(m[1].replace(/,/g, ''));
+        }
+        if (rating !== null && total !== null) break;
+      }
+      return { rating, total };
+    })
+    .catch(() => ({ rating: null, total: null }));
+
+  let { rating, total: totalReviews } = exact;
+
+  if (rating === null) {
+    // Looser lookup, but never a rating-bar row: those read "5 stars, 7,658
+    // reviews" (a comma), and taking the first match gave every business 5.0.
+    rating = await page
+      .evaluate(() => {
+        for (const el of document.querySelectorAll('[aria-label*="star" i]')) {
+          const label = el.getAttribute('aria-label') || '';
+          if (label.includes(',')) continue;
+          const m = label.match(/(\d+\.?\d*)\s*stars?/i);
+          if (m) return Number(m[1]);
+        }
+        return null;
+      })
+      .catch(() => null);
+  }
+  if (totalReviews === null) {
+    try {
+      const label = await page
+        .locator('span[aria-label$=" reviews"], span[aria-label$=" review"], button[aria-label$=" reviews"]')
+        .first()
+        .getAttribute('aria-label', { timeout: 1000 });
+      const m = label?.replace(/,/g, '').match(/(\d+)\s*reviews?/i);
+      if (m) totalReviews = Number(m[1]);
+    } catch {
+      // ignore
+    }
+  }
+  return { rating, totalReviews };
+}
+
+async function extractBusinessFromPlacePage(page, category, location, country, dateRange) {
   const name = await textOrNull(page, ['h1.DUwDvf', 'h1']);
   if (!name) return null;
 
-  let rating = null;
-  try {
-    const ratingLabel = await page.locator('[aria-label*="stars"]').first().getAttribute('aria-label', { timeout: 2000 });
-    const m = ratingLabel?.match(/(\d+\.?\d*)\s*stars?/i);
-    if (m) rating = Number(m[1]);
-  } catch {
-    // ignore
-  }
-
-  let totalReviews = null;
-  try {
-    const reviewsLabel = await page
-      .locator('button[aria-label*="reviews"]')
-      .first()
-      .getAttribute('aria-label', { timeout: 2000 });
-    const m = reviewsLabel?.replace(/,/g, '').match(/(\d+)\s*reviews?/i);
-    if (m) totalReviews = Number(m[1]);
-  } catch {
-    // ignore
-  }
+  const { rating, totalReviews } = await readRatingAndReviewCount(page);
 
   const address = await textOrNull(page, [
     'button[data-item-id="address"]',
@@ -341,7 +489,7 @@ async function extractBusinessFromPlacePage(page, category, location, country) {
     // ignore
   }
 
-  const reviews = await extractOneStarReviews(page);
+  const { reviews, access: reviewAccess } = await collectOneStarReviews(page, { totalReviews, dateRange });
 
   return {
     name,
@@ -354,105 +502,107 @@ async function extractBusinessFromPlacePage(page, category, location, country) {
     rating,
     totalReviews,
     reviews,
+    // How the reviews were obtained: `sorted: false` means Google did not let
+    // them be sorted lowest-first, so `reviews` holds only the 1-star ones
+    // among the few that were visible, not necessarily all of them.
+    reviewAccess,
     source: 'google_maps',
   };
 }
 
-async function extractOneStarReviews(page) {
-  const reviews = [];
+/**
+ * A business with this many 1-star reviews or fewer is read "Lowest rating"
+ * first: every 1-star review sits at the top, so reading them all is quick.
+ * Busier ones are read "Newest" first, back to the start of the date window.
+ * Either way nothing inside the window is left unread.
+ */
+export const LOWEST_FIRST_MAX_ONE_STAR = 40;
 
+const FULLY_READ = new Set(['older_than_window', 'non_one_star', 'exhausted']);
+
+/**
+ * Collects every 1-star review a business has inside `dateRange` days, and an
+ * `access` record saying whether that is provably all of them.
+ *
+ * `access.complete` is true only when the list was sorted (verified) and then
+ * read to a boundary that guarantees nothing was left below it, or when the
+ * business has no 1-star reviews at all. Anything else is flagged so callers
+ * never take a partial look for a complete one.
+ */
+export async function collectOneStarReviews(page, { totalReviews = null, dateRange = '28' } = {}) {
+  const access = {
+    strategy: null,
+    sorted: false,
+    status: SORT_STATUS.ERROR,
+    detail: '',
+    complete: false,
+    boundary: null,
+    cardsSeen: 0,
+    sampleStars: [],
+    sampleDates: [],
+  };
   try {
-    // 1. Click the "Reviews" tab
-    await page.evaluate(() => {
-      const tabs = Array.from(document.querySelectorAll('button[role="tab"], .hh706e button'));
-      const reviewTab = tabs.find(t => t.textContent?.toLowerCase().includes('reviews'));
-      if (reviewTab) reviewTab.click();
-    });
-    await page.waitForTimeout(2000);
-
-    // 2. Click Sort button
-    const sortClicked = await page.evaluate(() => {
-      const buttons = Array.from(document.querySelectorAll('button[aria-label*="Sort"], button.g67oK'));
-      const sortBtn = buttons.find(b => {
-        const txt = (b.getAttribute('aria-label') || b.textContent || '').toLowerCase();
-        return txt.includes('sort');
-      });
-      if (sortBtn) {
-        sortBtn.click();
-        return true;
-      }
-      return false;
-    });
-
-    if (sortClicked) {
-      await page.waitForTimeout(1000);
-      // 3. Select "Lowest rating"
-      await page.evaluate(() => {
-        const options = Array.from(document.querySelectorAll('[role="menuitem"], [role="menuitemradio"], .fx07Cc'));
-        const lowest = options.find(o => o.textContent?.toLowerCase().includes('lowest'));
-        if (lowest) lowest.click();
-      });
-      await page.waitForTimeout(2000);
+    const panel = await openReviewsPanel(page);
+    if (!panel.opened) {
+      access.status = SORT_STATUS.REVIEWS_TAB_MISSING;
+      access.detail = 'no Reviews tab found';
+      return { reviews: [], access };
     }
 
-    // Scroll a bit to load reviews
-    for (let i = 0; i < 3; i++) {
-      await page.mouse.wheel(0, 2000);
-      await page.waitForTimeout(500);
+    const oneStarCount = await readOneStarCount(page);
+    const preferred = oneStarCount != null && oneStarCount <= LOWEST_FIRST_MAX_ONE_STAR ? 'lowest' : 'newest';
+    const other = preferred === 'lowest' ? 'newest' : 'lowest';
+
+    let order = preferred;
+    let sort = await sortReviewsWithRetry(page, { order, oneStarCount });
+    if (sort.status === SORT_STATUS.SORT_OPTION_MISSING || sort.status === SORT_STATUS.NOT_VERIFIED) {
+      // Cannot order it that way: try the other way before giving up.
+      const second = await sortReviewsWithRetry(page, { order: other, oneStarCount, attempts: 1 });
+      if (second.ok) {
+        order = other;
+        sort = second;
+      }
+    }
+    access.strategy = sort.ok ? order : null;
+    access.sorted = sort.ok;
+    access.status = sort.status;
+    access.detail = sort.detail;
+
+    if (sort.status === SORT_STATUS.NO_ONE_STAR) {
+      access.complete = true;
+      access.boundary = 'no_one_star_reviews';
+      return { reviews: [], access };
     }
 
-    const raw = await page.evaluate(() => {
-      // Common review card classes
-      const cards = Array.from(document.querySelectorAll('div.jftiEf, .G5u69c, .W_S_o'));
-      const seen = new Set();
-      const out = [];
+    let cards;
+    if (sort.ok) {
+      const loaded = await loadReviewsToBoundary(page, { order, windowDays: dateRange });
+      cards = loaded.cards;
+      access.boundary = loaded.boundary;
+      access.complete = FULLY_READ.has(loaded.boundary);
+    } else {
+      // Unsorted: what is visible is all Google gave us.
+      await scrollReviewPanel(page, 3);
+      cards = await readReviewCards(page, { limit: 60 });
+      access.complete = totalReviews != null && cards.length >= totalReviews;
+    }
+    access.cardsSeen = cards.length;
+    access.sampleStars = (sort.sampleStars?.length ? sort.sampleStars : cards.map((c) => c.stars)).slice(0, 10);
+    access.sampleDates = (sort.sampleDates?.length ? sort.sampleDates : cards.map((c) => c.date)).slice(0, 10);
 
-      for (const root of cards) {
-        // Try multiple ways to find stars
-        const starEl = root.querySelector('[aria-label*="star" i], .kvS76c, span[role="img"]');
-        const aria = starEl?.getAttribute('aria-label') || '';
-        const starMatch = aria.match(/(\d+)\s*stars?/i);
-
-        let stars = starMatch ? Number(starMatch[1]) : null;
-        if (stars === null) {
-          // Fallback check for visual stars if aria-label fails
-          const filledStars = root.querySelectorAll('.vzX5Ic').length; // Some themes
-          if (filledStars > 0) stars = filledStars;
-        }
-
-        if (stars !== 1) continue;
-
-        const reviewer = root.querySelector('.d4r55, .TSZ61d')?.textContent?.trim() || 'Anonymous';
-        const date = root.querySelector('.rsqaWe, .DU9u7b')?.textContent?.trim() || 'Unknown';
-        const text = root.querySelector('.wiI7hc, .MyEned')?.textContent?.trim() || '';
-
-        // Try to find a direct link to the review
-        let link = null;
-        const reviewId = root.getAttribute('data-review-id');
-        if (reviewId) {
-          link = `https://www.google.com/maps/reviews/data=!4m3!8m2!3m1!1s${reviewId}?hl=en`;
-        } else {
-          const menuBtn = root.querySelector('button[aria-label*="menu" i]');
-          const id = menuBtn?.getAttribute('data-review-id');
-          if (id) link = `https://www.google.com/maps/reviews/data=!4m3!8m2!3m1!1s${id}?hl=en`;
-        }
-
-        const key = `${reviewer}|${date}|${text.slice(0, 50)}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-
-        out.push({ stars: 1, reviewer, text, date, link });
-        if (out.length >= 15) break;
-      }
-      return out;
-    });
-
-    reviews.push(...raw);
+    const reviews = cards
+      .filter((c) => c.stars === 1)
+      .map(({ reviewer, text, date, link }) => ({ stars: 1, reviewer, text, date, link }));
+    return { reviews, access };
   } catch (err) {
     console.error('Error extracting reviews:', err);
+    access.detail = err?.message || String(err);
+    return { reviews: [], access };
   }
+}
 
-  return reviews;
+async function extractOneStarReviews(page) {
+  return (await collectOneStarReviews(page)).reviews;
 }
 
 export async function scrapePlaceReviews(mapsUrl) {
@@ -469,51 +619,26 @@ export async function scrapePlaceReviews(mapsUrl) {
   }
 }
 
-// Same card/selector logic as extractOneStarReviews, but sorted "Newest"
+// How each page's reviews were sorted, read by scrapeBusinessSnapshot.
+const recentReviewAccess = new WeakMap();
+
+// Same card/selector logic as extractOneStarReviews, but sorted lowest-first
 // and without the 1-star filter — used by the watchlist feature, which
 // needs to notice ANY new review (not just qualifying 1-star ones).
 async function extractRecentReviews(page, { limit = 40 } = {}) {
   const reviews = [];
 
   try {
-    await page.evaluate(() => {
-      const tabs = Array.from(document.querySelectorAll('button[role="tab"], .hh706e button'));
-      const reviewTab = tabs.find(t => t.textContent?.toLowerCase().includes('reviews'));
-      if (reviewTab) reviewTab.click();
-    });
-    await page.waitForTimeout(2000);
-
-    const sortClicked = await page.evaluate(() => {
-      const buttons = Array.from(document.querySelectorAll('button[aria-label*="Sort"], button.g67oK'));
-      const sortBtn = buttons.find(b => {
-        const txt = (b.getAttribute('aria-label') || b.textContent || '').toLowerCase();
-        return txt.includes('sort');
-      });
-      if (sortBtn) {
-        sortBtn.click();
-        return true;
-      }
-      return false;
-    });
-
-    if (sortClicked) {
-      await page.waitForTimeout(1000);
-      await page.evaluate(() => {
-        const options = Array.from(document.querySelectorAll('[role="menuitem"], [role="menuitemradio"], .fx07Cc, .m67qEc div'));
-        // For Watchlist, we want "Lowest rating" to find 1-stars even if they are old or buried.
-        const lowest = options.find(o => {
-          const txt = o.textContent?.toLowerCase() || '';
-          return txt.includes('lowest') || txt.includes('lowest rating');
-        });
-        if (lowest) lowest.click();
-      });
-      await page.waitForTimeout(2500);
-    }
-
-    // Scroll more to load up to 40 reviews
-    for (let i = 0; i < 6; i++) {
-      await page.mouse.wheel(0, 2500);
-      await page.waitForTimeout(600);
+    const panel = await openReviewsPanel(page);
+    if (panel.opened) {
+      // For the watchlist/clients scans we want the lowest-rated first so 1-stars
+      // surface even when old or buried. Verified, and reported as the
+      // snapshot's `reviewAccess`, never silently assumed.
+      const sort = await sortLowestFirst(page, { oneStarCount: await readOneStarCount(page) });
+      recentReviewAccess.set(page, { sorted: sort.ok, status: sort.status, detail: sort.detail });
+      await scrollReviewPanel(page, 6);
+    } else {
+      recentReviewAccess.set(page, { sorted: false, status: SORT_STATUS.REVIEWS_TAB_MISSING, detail: 'no Reviews tab found' });
     }
 
     const raw = await page.evaluate((maxCount) => {
@@ -583,7 +708,7 @@ async function extractRecentReviews(page, { limit = 40 } = {}) {
 // Navigates directly to a single business's Maps URL and captures a
 // point-in-time snapshot (name, rating, most recent reviews) — used by the
 // watchlist feature to detect new reviews on manually-tracked businesses.
-export async function scrapeBusinessSnapshot(mapsUrl, country) {
+export async function scrapeBusinessSnapshot(mapsUrl, country, { dateRange } = {}) {
   const browser = await launchBrowser();
   const context = await createContext(browser);
   const page = await context.newPage();
@@ -608,28 +733,21 @@ export async function scrapeBusinessSnapshot(mapsUrl, country) {
 
     const name = await textOrNull(page, ['h1.DUwDvf', 'h1']);
 
-    let rating = null;
-    try {
-      const ratingLabel = await page.locator('[aria-label*="stars"]').first().getAttribute('aria-label', { timeout: 2000 });
-      const m = ratingLabel?.match(/(\d+\.?\d*)\s*stars?/i);
-      if (m) rating = Number(m[1]);
-    } catch {
-      // ignore
-    }
+    const { rating, totalReviews } = await readRatingAndReviewCount(page);
 
-    let totalReviews = null;
-    try {
-      const reviewsLabel = await page
-        .locator('button[aria-label*="reviews"]')
-        .first()
-        .getAttribute('aria-label', { timeout: 2000 });
-      const m = reviewsLabel?.replace(/,/g, '').match(/(\d+)\s*reviews?/i);
-      if (m) totalReviews = Number(m[1]);
-    } catch {
-      // ignore
+    // With a `dateRange` the caller wants every 1-star review inside it (the
+    // clients / sales scans): read them completely, exactly as the main scan
+    // does. Without one (the watchlist) it is the lowest-rated few, as before.
+    let reviews;
+    let reviewAccess;
+    if (dateRange) {
+      const collected = await collectOneStarReviews(page, { totalReviews, dateRange });
+      reviews = collected.reviews;
+      reviewAccess = collected.access;
+    } else {
+      reviews = await extractRecentReviews(page, { limit: 10 });
+      reviewAccess = recentReviewAccess.get(page);
     }
-
-    const reviews = await extractRecentReviews(page, { limit: 10 });
 
     return {
       name,
@@ -637,6 +755,9 @@ export async function scrapeBusinessSnapshot(mapsUrl, country) {
       rating,
       totalReviews,
       reviews,
+      // Whether the reviews were verifiably sorted lowest-first; when not,
+      // an empty `reviews` must not be read as "no 1-star reviews".
+      reviewAccess: reviewAccess || { sorted: false, status: SORT_STATUS.ERROR, complete: false, detail: 'not attempted' },
     };
   } finally {
     await browser.close();

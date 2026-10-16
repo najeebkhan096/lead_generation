@@ -5,6 +5,7 @@ import '../entities/lead.dart';
 import '../entities/lead_page.dart';
 import '../entities/validation_start.dart';
 import '../entities/multi_search_snapshot.dart';
+import '../entities/maps_session_status.dart';
 import '../entities/state_city_scan_snapshot.dart';
 import '../entities/excel_archive.dart';
 import '../entities/sale.dart';
@@ -128,6 +129,13 @@ abstract class LeadRepository {
   /// Each category's results are packaged into one .xlsx workbook (one
   /// sheet per state), checkpointed to Firebase Storage the instant each
   /// state finishes — see [StateCityScanSnapshot].
+  /// Whether the scraper's Google account is signed in (scans need it).
+  Future<MapsSessionStatus> getMapsSessionStatus({bool refresh = false});
+
+  /// Opens a Google sign-in window on the computer running the backend; you
+  /// sign in there by hand and close it.
+  Future<void> startMapsLogin();
+
   Future<void> startStateScan({
     required List<String> categories,
     int concurrency = 10,

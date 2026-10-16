@@ -229,6 +229,10 @@ class _ExcelArchiveEmailValidatorPageState extends State<ExcelArchiveEmailValida
           'mapsUrl': l.mapsUrl,
           'rating': l.rating,
           'totalReviews': l.totalReviews,
+          // The archive's own type decides which verified list (1-star or
+          // no-website) these land in. Without it the backend had nothing to
+          // go on and filed every archive email as "no website".
+          'sourceType': widget.archive.isNoWebsite ? 'website' : 'review',
         },
     ];
     try {

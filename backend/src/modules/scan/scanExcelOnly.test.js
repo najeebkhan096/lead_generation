@@ -1,10 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { scrapeOneCity } from './leadService.js';
-import {
-  noWebsiteArchiveId,
-  noWebsiteFileName,
-} from '../archive/excelArchiveStore.js';
+import { scrapeOneCity, summarizeReviewAccess } from './leadService.js';
 
 const noSite = {
   name: 'No Site Cafe',
@@ -19,19 +15,36 @@ const noSite = {
   source: 'google_maps',
 };
 
-test('persistWebsiteLeads:false hands no-website businesses back instead of writing them', async () => {
-  const result = await scrapeOneCity(
-    'cafe',
-    { city: 'Austin', state: 'TX' },
-    { dateRange: '30', scrapeLocationFn: async () => [noSite], persistWebsiteLeads: false },
-  );
-  assert.equal(result.websiteLeadsFound, 1);
-  assert.equal(result.websiteLeads.length, 1);
-  assert.equal(result.websiteLeads[0].business ?? result.websiteLeads[0].name, 'No Site Cafe');
-  assert.equal(result.websiteLeads[0].location, 'TX');
+test('businesses with no website are no longer scanned for or returned', async () => {
+  const result = await scrapeOneCity('cafe', { city: 'Austin', state: 'TX' }, { dateRange: '28', scrapeLocationFn: async () => [noSite] });
+  assert.equal(result.websiteLeadsFound, 0);
+  assert.deepEqual(result.websiteLeads, []);
+  assert.equal(result.leads.length, 0, 'a business without a 1-star review is not a lead');
+  assert.equal(result.businessesScraped, 1);
 });
 
-test('the no-website companion archive id and file name are derived from the review archive', () => {
-  assert.equal(noWebsiteArchiveId('abc-123'), 'abc-123-nowebsite');
-  assert.equal(noWebsiteFileName('cafe-us-2026-10-16T01-02-03-000Z.xlsx'), 'cafe-us-2026-10-16T01-02-03-000Z-no-website.xlsx');
+test('the date window is handed to the scraper', async () => {
+  let seen;
+  await scrapeOneCity('cafe', { city: 'Austin', state: 'TX' }, {
+    dateRange: '28',
+    scrapeLocationFn: async (_c, _l, opts) => { seen = opts.dateRange; return []; },
+  });
+  assert.equal(seen, '28');
+});
+
+test('review problems are counted per city, split out when Google asked to sign in', () => {
+  const ok = { reviewAccess: { complete: true, status: 'ok' } };
+  const noRecord = {};
+  const unsorted = { reviewAccess: { complete: false, status: 'sort_not_verified' } };
+  const blocked = { reviewAccess: { complete: false, status: 'signin_required' } };
+  assert.deepEqual(summarizeReviewAccess([ok, noRecord]), { incomplete: 0, signInBlocked: 0 });
+  assert.deepEqual(summarizeReviewAccess([ok, unsorted, blocked, blocked]), { incomplete: 3, signInBlocked: 2 });
+  assert.deepEqual(summarizeReviewAccess(undefined), { incomplete: 0, signInBlocked: 0 });
+});
+
+test('skipped listings reported by the scraper are passed on', async () => {
+  const businesses = [noSite];
+  Object.defineProperty(businesses, 'skippedListings', { value: 3, enumerable: false });
+  const result = await scrapeOneCity('cafe', { city: 'Austin', state: 'TX' }, { dateRange: '28', scrapeLocationFn: async () => businesses });
+  assert.equal(result.skippedListings, 3);
 });

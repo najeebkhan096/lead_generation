@@ -1,4 +1,5 @@
 import { scanClientReviews } from './clientReviewScanner.js';
+import { launchBrowser, checkBrowserSignedIn } from '../../scraper/googleMapsScraper.js';
 import { listClients, createClient, updateClient, deleteClient } from './clientStore.js';
 
 const fail = (res, err, fallback) => res.status(err.status || 500).json({ error: err.message || fallback });
@@ -46,6 +47,21 @@ export async function scanReviews(req, res) {
   if (scanning) return res.status(409).json({ error: 'A client review scan is already running' });
   scanning = true;
   try {
+    // Reading reviews completely needs a signed-in Google account; without it
+    // every client would come back "could not be fully checked".
+    const probe = await launchBrowser();
+    let session;
+    try {
+      session = await checkBrowserSignedIn(probe);
+    } finally {
+      await probe.close().catch(() => {});
+    }
+    if (session.status === 'anonymous' || session.status === 'signed_out') {
+      return res.status(409).json({
+        code: 'GOOGLE_SIGN_IN_REQUIRED',
+        error: 'Sign in to Google first (Sign in to Google on the Excel Scan page, or `npm run maps:login`): without it Google hides most reviews and 1-star reviews would be missed.',
+      });
+    }
     const { dateRange } = req.body || {};
     const days = Number(dateRange);
     const results = await scanClientReviews({

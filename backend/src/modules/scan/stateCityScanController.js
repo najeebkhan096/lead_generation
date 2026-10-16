@@ -7,7 +7,7 @@ import {
 } from './stateCityOrchestrator.js';
 
 export async function startScan(req, res) {
-  const { categories, concurrency = 10, dateRange = '30', maxResultsPerCity = 160, analyze = false } = req.body || {};
+  const { categories, concurrency = 10, dateRange = '30', maxResultsPerCity = 160, analyze = false, allowUnsignedScan = false } = req.body || {};
 
   if (!Array.isArray(categories) || !categories.length) {
     return res.status(400).json({ error: 'categories array is required' });
@@ -20,6 +20,8 @@ export async function startScan(req, res) {
       dateRange: String(dateRange),
       maxResultsPerCity: Number(maxResultsPerCity) || 160,
       analyze: Boolean(analyze),
+      // Only for emergencies: scanning without a Google session misses reviews.
+      requireSignIn: allowUnsignedScan !== true,
     });
 
     return res.status(202).json({
@@ -29,7 +31,7 @@ export async function startScan(req, res) {
     });
   } catch (err) {
     const status = err.status || 500;
-    return res.status(status).json({ error: err.message || 'Failed to start scan' });
+    return res.status(status).json({ error: err.message || 'Failed to start scan', code: err.code });
   }
 }
 

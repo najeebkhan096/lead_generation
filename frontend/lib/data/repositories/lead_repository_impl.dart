@@ -5,6 +5,7 @@ import '../../domain/entities/lead.dart';
 import '../../domain/entities/lead_page.dart';
 import '../../domain/entities/validation_start.dart';
 import '../../domain/entities/multi_search_snapshot.dart';
+import '../../domain/entities/maps_session_status.dart';
 import '../../domain/entities/state_city_scan_snapshot.dart';
 import '../../domain/entities/excel_archive.dart';
 import '../../domain/entities/sale.dart';
@@ -139,6 +140,12 @@ class LeadRepositoryImpl implements LeadRepository {
   @override
   Future<WhatsAppCheckResult> checkWhatsAppNumber(String phone) =>
       _remote.checkWhatsApp(phone);
+
+  @override
+  Future<MapsSessionStatus> getMapsSessionStatus({bool refresh = false}) => _remote.getMapsSessionStatus(refresh: refresh);
+
+  @override
+  Future<void> startMapsLogin() => _remote.startMapsLogin();
 
   @override
   Future<void> startStateScan({

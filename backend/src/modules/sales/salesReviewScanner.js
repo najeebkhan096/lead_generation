@@ -55,7 +55,7 @@ export async function scanSaleReviews({ dateRange = '30', salesmanId, dedupe = f
     }
 
     try {
-      const snapshot = await scrapeBusinessSnapshot(url, 'US');
+      const snapshot = await scrapeBusinessSnapshot(url, 'US', { dateRange });
       const matches = (snapshot.reviews || []).filter((r) => {
         return r.stars === 1 && isWithinRange(r.date, dateRange);
       });

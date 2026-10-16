@@ -39,6 +39,8 @@ class StateCityProgress extends Equatable {
     this.waValidated = 0,
     this.waChecked = 0,
     this.websiteLeadsFound = 0,
+    this.incompleteBusinesses = 0,
+    this.skippedListings = 0,
     this.startedAt,
     this.finishedAt,
   });
@@ -66,6 +68,11 @@ class StateCityProgress extends Equatable {
   /// A completely separate lead type ("no website found") — never counted
   /// in `leadsCollected`/`waValidated`, which are review leads.
   final int websiteLeadsFound;
+
+  /// Businesses whose reviews could not be proven fully read, and listings
+  /// that could not be opened: what the scan may have missed in this state.
+  final int incompleteBusinesses;
+  final int skippedListings;
   final DateTime? startedAt;
   final DateTime? finishedAt;
 
@@ -88,6 +95,8 @@ class StateCityProgress extends Equatable {
       waValidated: (json['waValidated'] as num?)?.toInt() ?? 0,
       waChecked: (json['waChecked'] as num?)?.toInt() ?? 0,
       websiteLeadsFound: (json['websiteLeadsFound'] as num?)?.toInt() ?? 0,
+      incompleteBusinesses: (json['incompleteBusinesses'] as num?)?.toInt() ?? 0,
+      skippedListings: (json['skippedListings'] as num?)?.toInt() ?? 0,
       startedAt: ms(json['startedAt']),
       finishedAt: ms(json['finishedAt']),
     );
@@ -134,6 +143,8 @@ class CategoryStateProgress extends Equatable {
     this.waValidated = 0,
     this.waChecked = 0,
     this.websiteLeadsFound = 0,
+    this.incompleteBusinesses = 0,
+    this.skippedListings = 0,
     this.states = const [],
   });
 
@@ -156,6 +167,10 @@ class CategoryStateProgress extends Equatable {
 
   /// Separate lead type ("no website found") found while scanning.
   final int websiteLeadsFound;
+
+  /// What the scan may have missed in this category (see [StateCityProgress]).
+  final int incompleteBusinesses;
+  final int skippedListings;
   final StateCityArchive archive;
   final List<StateCityProgress> states;
 
@@ -172,6 +187,8 @@ class CategoryStateProgress extends Equatable {
       waValidated: (json['waValidated'] as num?)?.toInt() ?? 0,
       waChecked: (json['waChecked'] as num?)?.toInt() ?? 0,
       websiteLeadsFound: (json['websiteLeadsFound'] as num?)?.toInt() ?? 0,
+      incompleteBusinesses: (json['incompleteBusinesses'] as num?)?.toInt() ?? 0,
+      skippedListings: (json['skippedListings'] as num?)?.toInt() ?? 0,
       archive: StateCityArchive.fromJson((json['archive'] as Map<String, dynamic>?) ?? const {}),
       states: ((json['states'] as List<dynamic>?) ?? const [])
           .map((e) => StateCityProgress.fromJson(e as Map<String, dynamic>))
@@ -215,6 +232,7 @@ class StateCityScanSnapshot extends Equatable {
     this.waValidated = 0,
     this.waChecked = 0,
     this.websiteLeadsFound = 0,
+    this.stoppedReason,
     this.categories = const [],
     this.activity = const [],
   });
@@ -239,10 +257,18 @@ class StateCityScanSnapshot extends Equatable {
   /// Job-wide count of website leads ("no website found") across every
   /// category — a separate lead type entirely, not part of review leads.
   final int websiteLeadsFound;
+
+  /// Why the scan stopped by itself, e.g. `google_session_expired`.
+  final String? stoppedReason;
   final List<CategoryStateProgress> categories;
   final List<StateScanActivityEntry> activity;
 
   bool get hasJob => status != 'idle';
+
+  bool get stoppedForSignIn => stoppedReason == 'google_session_expired';
+
+  /// Businesses not proven fully read plus listings not opened, whole job.
+  int get needsRecheck => categories.fold(0, (n, c) => n + c.incompleteBusinesses + c.skippedListings);
 
   factory StateCityScanSnapshot.fromJson(Map<String, dynamic> json) {
     DateTime? ms(dynamic v) => v == null ? null : DateTime.fromMillisecondsSinceEpoch((v as num).toInt());
@@ -257,6 +283,7 @@ class StateCityScanSnapshot extends Equatable {
       waValidated: (json['waValidated'] as num?)?.toInt() ?? 0,
       waChecked: (json['waChecked'] as num?)?.toInt() ?? 0,
       websiteLeadsFound: (json['websiteLeadsFound'] as num?)?.toInt() ?? 0,
+      stoppedReason: json['stoppedReason'] as String?,
       categories: ((json['categories'] as List<dynamic>?) ?? const [])
           .map((e) => CategoryStateProgress.fromJson(e as Map<String, dynamic>))
           .toList(),

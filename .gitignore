@@ -9,6 +9,10 @@ backend/.env
 backend/public/
 backend/.wwebjs_auth/
 backend/.wwebjs_cache/
+# Google Maps scraper browser profile / session (cookies): never commit
+backend/.browser-profile/
+backend/google-maps-profile/
+**/google-maps-profile/
 
 # Flutter
 frontend/.dart_tool/

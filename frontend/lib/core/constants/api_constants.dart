@@ -8,6 +8,8 @@ class ApiConstants {
     defaultValue: 'http://localhost:3001',
   );
 
+  static const String mapsSessionStatus = '/api/maps-session/status';
+  static const String mapsSessionLogin = '/api/maps-session/login';
   static const String stateScan = '/api/state-scan';
   static const String stateScanStatus = '/api/state-scan/status';
   static const String stateScanCancel = '/api/state-scan/cancel';

@@ -10,6 +10,7 @@ import '../../domain/entities/lead.dart';
 import '../../domain/entities/lead_page.dart';
 import '../../domain/entities/validation_start.dart';
 import '../../domain/entities/multi_search_snapshot.dart';
+import '../../domain/entities/maps_session_status.dart';
 import '../../domain/entities/state_city_scan_snapshot.dart';
 import '../../domain/entities/excel_archive.dart';
 import '../../domain/entities/sale.dart';
@@ -368,6 +369,25 @@ class LeadRemoteDataSource {
   /// time), every US state is scanned in order; within the active state,
   /// up to [concurrency] cities are scraped at once. See
   /// `stateCityOrchestrator.js` for the full sequencing.
+  Future<MapsSessionStatus> getMapsSessionStatus({bool refresh = false}) async {
+    final response = await _client
+        .get(_uri(ApiConstants.mapsSessionStatus).replace(queryParameters: refresh ? {'refresh': '1'} : null))
+        .timeout(const Duration(seconds: 60)); // a real check opens a browser
+    final body = _tryDecode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['error'] ?? 'Could not check the Google sign-in');
+    }
+    return MapsSessionStatus.fromJson(body);
+  }
+
+  Future<void> startMapsLogin() async {
+    final response = await _client.post(_uri(ApiConstants.mapsSessionLogin)).timeout(const Duration(seconds: 60));
+    if (response.statusCode >= 400) {
+      final body = _tryDecode(response.body);
+      throw Exception(body['error'] ?? 'Could not open the Google sign-in window');
+    }
+  }
+
   Future<void> startStateScan({
     required List<String> categories,
     int concurrency = 10,

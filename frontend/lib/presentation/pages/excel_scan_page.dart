@@ -4,7 +4,9 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/constants/business_categories.dart';
 import '../../core/theme/app_theme.dart';
+import '../../domain/entities/maps_session_status.dart';
 import '../../domain/repositories/lead_repository.dart';
+import '../widgets/google_session_card.dart';
 import '../../domain/entities/state_city_scan_snapshot.dart';
 
 /// Configures and starts a scan — for each category (one at a time),
@@ -30,6 +32,7 @@ class _ExcelScanPageState extends State<ExcelScanPage> {
   int _concurrency = 10;
   bool _starting = false;
   StateCityScanSnapshot? _existingJob;
+  MapsSessionStatus? _session;
 
   static const _dateRanges = <String, String>{
     '7': 'Last 7 days',
@@ -88,6 +91,13 @@ class _ExcelScanPageState extends State<ExcelScanPage> {
       return;
     }
 
+    if (googleSessionBlocksScan(_session)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Sign in to Google first (the card above). Without it, 1-star reviews would be missed.')),
+      );
+      return;
+    }
+
     setState(() => _starting = true);
     try {
       await context.read<LeadRepository>().startStateScan(
@@ -108,7 +118,7 @@ class _ExcelScanPageState extends State<ExcelScanPage> {
         context.push('/scan-progress');
         return;
       }
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message), duration: const Duration(seconds: 8)));
     } finally {
       if (mounted) setState(() => _starting = false);
     }
@@ -129,13 +139,19 @@ class _ExcelScanPageState extends State<ExcelScanPage> {
                 children: [
                   Text(
                     'Scans every US state one at a time — within the active state, cities '
-                    'are scraped in parallel across your worker pool. Nothing is saved to '
-                    'your Leads list; each category becomes one Excel workbook (one sheet '
-                    'per state) plus a companion workbook of businesses with no website, '
-                    'both stamped with the scan date and auto-saved the instant each state '
-                    'finishes, so nothing is lost if a scan is interrupted. After a month, '
-                    'Re-scan it from the Archive for the latest reviews.',
+                    'are scraped in parallel across your worker pool. Only 1-star reviews '
+                    'inside the date window are collected, and every business is read '
+                    'completely: reviews are sorted and read back to the start of the '
+                    'window, so none are skipped. Each category becomes one Excel workbook '
+                    '(one sheet per state), stamped with the scan date and saved as each '
+                    'state finishes. After a month, Re-scan it from the Archive.',
                     style: Theme.of(context).textTheme.bodyLarge,
+                  ),
+                  const SizedBox(height: 20),
+                  GoogleSessionCard(
+                    onStatus: (s) {
+                      if (mounted) setState(() => _session = s);
+                    },
                   ),
                   const SizedBox(height: 24),
                   Container(
@@ -351,14 +367,14 @@ class _ExcelScanPageState extends State<ExcelScanPage> {
                   ),
                   const SizedBox(height: 28),
                   ElevatedButton(
-                    onPressed: _starting ? null : _submit,
+                    onPressed: _starting || googleSessionBlocksScan(_session) ? null : _submit,
                     child: _starting
                         ? const SizedBox(
                             height: 22,
                             width: 22,
                             child: CircularProgressIndicator(strokeWidth: 2.4, color: AppTheme.surface),
                           )
-                        : const Text('Start Excel scan'),
+                        : Text(googleSessionBlocksScan(_session) ? 'Sign in to Google to start' : 'Start Excel scan'),
                   ),
                 ],
               ),
