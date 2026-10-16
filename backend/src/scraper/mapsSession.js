@@ -12,6 +12,7 @@
  */
 
 import fs from 'node:fs';
+import { spawn } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -23,12 +24,51 @@ export function defaultProfileDir() {
 }
 
 /**
+ * The installed Google Chrome, if any (MAPS_CHROME_PATH overrides). Used for
+ * the sign-in window and, so the profile stays readable, for scraping too.
+ */
+export function findChrome(env = process.env) {
+  if (env.MAPS_CHROME_PATH) return fs.existsSync(env.MAPS_CHROME_PATH) ? env.MAPS_CHROME_PATH : null;
+  const candidates =
+    process.platform === 'darwin'
+      ? ['/Applications/Google Chrome.app/Contents/MacOS/Google Chrome']
+      : process.platform === 'win32'
+        ? [
+            path.join(process.env['PROGRAMFILES'] || 'C:\\Program Files', 'Google/Chrome/Application/chrome.exe'),
+            path.join(process.env['PROGRAMFILES(X86)'] || 'C:\\Program Files (x86)', 'Google/Chrome/Application/chrome.exe'),
+          ]
+        : ['/usr/bin/google-chrome', '/usr/bin/google-chrome-stable', '/opt/google/chrome/chrome'];
+  return candidates.find((c) => fs.existsSync(c)) || null;
+}
+
+/**
+ * Opens the profile in a NORMAL Chrome window, with nothing driving it, for a
+ * person to sign in. Google refuses sign-in inside browsers controlled by
+ * automation ("this browser may not be secure"); an ordinary window has no
+ * such problem, and the session it saves is what the scraper later reuses.
+ * `closed` resolves with the exit code when the window is closed.
+ */
+export function launchManualLogin({ executable, profileDir, url = 'https://accounts.google.com/', spawnFn = spawn }) {
+  const child = spawnFn(
+    executable,
+    [`--user-data-dir=${profileDir}`, '--no-first-run', '--no-default-browser-check', url],
+    { stdio: 'ignore' },
+  );
+  const closed = new Promise((resolve) => {
+    child.once('exit', (code) => resolve(code ?? 0));
+    child.once('error', () => resolve(-1));
+  });
+  return { child, closed };
+}
+
+/**
  * @param {Record<string,string|undefined>} [env]
  *   MAPS_PERSISTENT_SESSION  true/false to force the saved session on/off.
  *                            Unset (the default) = automatic: used whenever a
  *                            profile has been created by signing in.
  *   MAPS_PROFILE_DIR         browser profile folder (default ~/.leadfinder/google-maps-profile)
- *   MAPS_BROWSER_CHANNEL     e.g. "chrome" to use an installed Google Chrome
+ *   MAPS_BROWSER_CHANNEL     browser to use; defaults to "chrome" when Google Chrome is installed
+ *   MAPS_CHROME_PATH         path to Chrome if it is not in the usual place
  */
 export function getSessionConfig(env = process.env) {
   const raw = (env.MAPS_PERSISTENT_SESSION || '').trim();
@@ -38,7 +78,9 @@ export function getSessionConfig(env = process.env) {
     mode,
     enabled: mode === 'on' || (mode === 'auto' && profileExists(profileDir)),
     profileDir,
-    channel: env.MAPS_BROWSER_CHANNEL || undefined,
+    // The profile is signed in with the real Chrome, so the scraper must open
+    // it with that same Chrome (cookies are tied to the browser that made them).
+    channel: env.MAPS_BROWSER_CHANNEL || (findChrome(env) ? 'chrome' : undefined),
   };
 }
 

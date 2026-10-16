@@ -164,3 +164,45 @@ test('expired session: the diagnostics tell the user to sign in again', () => {
 test('no diagnostics are claimed when nothing was looked up', () => {
   assert.equal(describeSortDiagnostics(), null);
 });
+
+// ---- signing in with the real Chrome ------------------------------------------
+
+import { findChrome, launchManualLogin } from './mapsSession.js';
+
+test('Chrome is found through MAPS_CHROME_PATH, and an invalid path is not used', () => {
+  const fake = path.join(tmp, 'chrome-fake');
+  fs.writeFileSync(fake, '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+  assert.equal(findChrome({ MAPS_CHROME_PATH: fake }), fake);
+  assert.equal(findChrome({ MAPS_CHROME_PATH: path.join(tmp, 'missing-chrome') }), null);
+});
+
+test('the scraper uses Chrome whenever it is installed, unless a browser is chosen explicitly', () => {
+  const fake = path.join(tmp, 'chrome-fake2');
+  fs.writeFileSync(fake, '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+  assert.equal(getSessionConfig({ MAPS_CHROME_PATH: fake }).channel, 'chrome');
+  assert.equal(getSessionConfig({ MAPS_CHROME_PATH: fake, MAPS_BROWSER_CHANNEL: 'msedge' }).channel, 'msedge');
+});
+
+test('manual sign-in opens Chrome on the profile as an ordinary window and reports when it closes', async () => {
+  const log = path.join(tmp, 'chrome-args.txt');
+  const script = path.join(tmp, 'chrome-recorder');
+  fs.writeFileSync(script, `#!/bin/sh\nprintf '%s\\n' "$@" > '${log}'\nexit 0\n`, { mode: 0o755 });
+  const profile = path.join(tmp, 'login-profile');
+
+  const { closed } = launchManualLogin({ executable: script, profileDir: profile });
+  const code = await closed;
+  assert.equal(code, 0);
+
+  const args = fs.readFileSync(log, 'utf8').trim().split('\n');
+  assert.ok(args.includes(`--user-data-dir=${profile}`), 'uses the dedicated profile');
+  assert.ok(args.some((a) => a.startsWith('https://accounts.google.com')), 'opens Google sign-in');
+  // Nothing that drives or disguises the browser: it is an ordinary Chrome window.
+  for (const a of args) {
+    assert.ok(!/remote-debugging|enable-automation|AutomationControlled|headless/i.test(a), a);
+  }
+});
+
+test('a Chrome that cannot start is reported, not left hanging', async () => {
+  const { closed } = launchManualLogin({ executable: path.join(tmp, 'no-such-chrome'), profileDir: path.join(tmp, 'p') });
+  assert.equal(await closed, -1);
+});

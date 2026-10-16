@@ -10,6 +10,8 @@ import { chromium } from 'playwright';
 import {
   getSessionConfig,
   ensureProfileDir,
+  findChrome,
+  launchManualLogin,
   launchSessionBrowser,
   checkSessionStatus,
 } from './mapsSession.js';
@@ -81,6 +83,32 @@ export async function startLogin() {
 
   const cfg = getSessionConfig();
   ensureProfileDir(cfg.profileDir);
+
+  // Preferred: the real Chrome as an ordinary window, nothing driving it,
+  // because Google refuses sign-in inside automation-controlled browsers.
+  const chrome = findChrome();
+  if (chrome) {
+    const { closed } = launchManualLogin({ executable: chrome, profileDir: cfg.profileDir });
+    login = { startedAt: Date.now() };
+    const early = await Promise.race([closed, new Promise((r) => setTimeout(() => r(null), 1500))]);
+    if (early !== null) {
+      // It ended almost at once: it did not open (or handed over to a Chrome
+      // already using this profile).
+      login = null;
+      throw fail(
+        409,
+        early === 0
+          ? 'This Google profile is already open in another Chrome window. Use that window, or close it and try again.'
+          : 'Chrome could not be opened for sign-in.'
+      );
+    }
+    closed.then(() => {
+      login = null;
+      last = null; // force a fresh check next time
+      runCheck().catch(() => {});
+    });
+    return { started: true, browser: 'chrome' };
+  }
 
   let browser;
   try {
