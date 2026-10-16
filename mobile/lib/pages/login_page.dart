@@ -17,10 +17,12 @@ class _LoginPageState extends State<LoginPage> {
     setState(() => _loading = true);
     try {
       final user = await _authService.signInWithGoogle();
-      if (user == null && mounted) {
-        final reason = _authService.lastError;
+      // Backing out of the Google account picker is not an error: say
+      // nothing. Only a real failure gets a message.
+      final reason = _authService.lastError;
+      if (user == null && reason != null && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(reason == null ? 'Sign in cancelled' : 'Sign in failed: $reason')),
+          SnackBar(content: Text(reason)),
         );
       }
     } finally {

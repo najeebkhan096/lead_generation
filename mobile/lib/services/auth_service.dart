@@ -31,20 +31,35 @@ class AuthService {
       return user;
     } on FirebaseAuthException catch (e) {
       print('Error signing in with Google: $e');
-      lastError = e.message ?? e.code;
+      lastError = _friendly(e.code, e.message);
       return null;
     } on PlatformException catch (e) {
       print('Error signing in with Google: $e');
       // e.g. ApiException 10 (this build's signing SHA-1 is not registered in
       // Firebase) or access_denied (account not allowed by the OAuth consent
       // screen). Both look like a plain "cancelled" otherwise.
-      lastError = '${e.code}: ${e.message ?? ''}'.trim();
+      lastError = _friendly(e.code, e.message);
       return null;
     } catch (e) {
       print('Error signing in with Google: $e');
-      lastError = e.toString();
+      lastError = 'Something went wrong. Please try again.';
       return null;
     }
+  }
+
+  /// A message a person can act on; the raw error stays in the log above.
+  static String _friendly(String code, String? message) {
+    final text = '$code ${message ?? ''}'.toLowerCase();
+    if (text.contains('network') || text.contains('timeout') || text.contains('unavailable')) {
+      return 'No internet connection. Check your network and try again.';
+    }
+    if (text.contains('apiexception: 10') || text.contains('developer_error') || text.contains('sign_in_failed')) {
+      return 'Google sign-in is not set up for this build. Contact the admin.';
+    }
+    if (text.contains('access_denied') || text.contains('user-disabled')) {
+      return 'This Google account is not allowed to sign in.';
+    }
+    return 'Sign-in failed. Please try again.';
   }
 
   Future<void> _upsertUserProfile(User user) async {
@@ -132,8 +147,15 @@ class AuthService {
     }
   }
 
+  /// Always ends the Firebase session, even if Google's own sign-out fails
+  /// (offline, plugin error); otherwise one failure there left the user
+  /// signed in with a button that did nothing.
   Future<void> signOut() async {
-    await _googleSignIn.signOut();
+    try {
+      await _googleSignIn.signOut();
+    } catch (e) {
+      print('Google sign-out failed (continuing): $e');
+    }
     await _auth.signOut();
   }
 }

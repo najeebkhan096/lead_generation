@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
@@ -11,6 +13,7 @@ import 'pages/pending_approval_page.dart';
 import 'services/auth_service.dart';
 import 'services/theme_controller.dart';
 import 'theme/app_theme.dart';
+import 'widgets/brand_splash.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -21,8 +24,34 @@ Future<void> main() async {
   runApp(const LeadMobileApp());
 }
 
-class LeadMobileApp extends StatelessWidget {
+class LeadMobileApp extends StatefulWidget {
   const LeadMobileApp({super.key});
+
+  @override
+  State<LeadMobileApp> createState() => _LeadMobileAppState();
+}
+
+class _LeadMobileAppState extends State<LeadMobileApp> {
+  final _navigatorKey = GlobalKey<NavigatorState>();
+  StreamSubscription<User?>? _authSub;
+
+  @override
+  void initState() {
+    super.initState();
+    // Signing out from anywhere (More, the admin console, the waiting page)
+    // must land on the login screen. Screens opened on top of the home page
+    // (More is one) would otherwise stay up over it, so the user would see
+    // nothing happen. Close them all when the session ends.
+    _authSub = FirebaseAuth.instance.authStateChanges().listen((user) {
+      if (user == null) _navigatorKey.currentState?.popUntil((route) => route.isFirst);
+    });
+  }
+
+  @override
+  void dispose() {
+    _authSub?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -30,6 +59,7 @@ class LeadMobileApp extends StatelessWidget {
       valueListenable: ThemeController.mode,
       builder: (context, mode, _) {
         return MaterialApp(
+          navigatorKey: _navigatorKey,
           title: 'Lead Outreach',
           debugShowCheckedModeBanner: false,
           theme: AppTheme.light(),
@@ -38,15 +68,17 @@ class LeadMobileApp extends StatelessWidget {
           home: StreamBuilder<User?>(
             stream: FirebaseAuth.instance.authStateChanges(),
             builder: (context, snapshot) {
+              final Widget page;
               if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Scaffold(
-                  body: Center(child: CircularProgressIndicator()),
-                );
+                page = const BrandSplash(key: ValueKey('splash'));
+              } else if (snapshot.hasData) {
+                // Keyed by account, so switching users never reuses the
+                // previous user's access check.
+                page = _ApprovedGate(key: ValueKey('gate-${snapshot.data!.uid}'));
+              } else {
+                page = const LoginPage(key: ValueKey('login'));
               }
-              if (snapshot.hasData) {
-                return const _ApprovedGate();
-              }
-              return const LoginPage();
+              return AnimatedSwitcher(duration: const Duration(milliseconds: 250), child: page);
             },
           ),
         );
@@ -55,15 +87,14 @@ class LeadMobileApp extends StatelessWidget {
   }
 }
 
-/// The admin console lives in the web app; the phone app is for salesmen, so
-/// an admin who signs in here lands in the same lead lists as everyone else.
-/// The mobile console (lib/pages/admin_*.dart) is kept but only reachable in
-/// a build made with `--dart-define=ADMIN_CONSOLE=true`; it needs a backend
-/// the phone can reach (API_BASE_URL).
-const bool kMobileAdminConsole = bool.fromEnvironment('ADMIN_CONSOLE');
+/// Admins get the admin console on the phone too (`lib/pages/admin_*.dart`);
+/// it reads from the backend (API_BASE_URL), which the phone must be able to
+/// reach. Build with `--dart-define=ADMIN_CONSOLE=false` to send admins to the
+/// salesman screens instead.
+const bool kMobileAdminConsole = bool.fromEnvironment('ADMIN_CONSOLE', defaultValue: true);
 
 class _ApprovedGate extends StatefulWidget {
-  const _ApprovedGate();
+  const _ApprovedGate({super.key});
 
   @override
   State<_ApprovedGate> createState() => _ApprovedGateState();
@@ -94,27 +125,33 @@ class _ApprovedGateState extends State<_ApprovedGate> {
     return access.approved;
   }
 
+  void _retry() {
+    setState(() {
+      _check = _fetchStatus();
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<_Access>(
       future: _check,
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
-          );
-        }
+        final Widget page;
         final data = snapshot.data;
-        if (data?.approved == true) {
-          if (data?.isAdmin == true) {
-            return const AdminNavigationPage();
-          }
-          return const MainNavigationPage();
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          page = const BrandSplash(key: ValueKey('checking'), message: 'Checking your account…');
+        } else if (data?.approved == true) {
+          page = data?.isAdmin == true
+              ? const AdminNavigationPage(key: ValueKey('admin'))
+              : const MainNavigationPage(key: ValueKey('salesman'));
+        } else if (data == null || data.failed) {
+          // The check itself failing (offline, rules) is an error; a clean
+          // "not approved" is the normal first-sign-in state.
+          page = AccessErrorPage(key: const ValueKey('error'), onRetry: _retry);
+        } else {
+          page = PendingApprovalPage(key: const ValueKey('pending'), onCheckAgain: _recheck);
         }
-        // The check itself failing (offline, rules) is an error; a clean
-        // "not approved" is the normal first-sign-in state.
-        if (data == null || data.failed) return const AccessErrorPage();
-        return PendingApprovalPage(onCheckAgain: _recheck);
+        return AnimatedSwitcher(duration: const Duration(milliseconds: 250), child: page);
       },
     );
   }

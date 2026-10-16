@@ -255,8 +255,11 @@ class _LeadCollectionPageState<T> extends State<LeadCollectionPage<T>> {
     String subtitle() {
       if (c.loading && c.items.isEmpty) return 'Loading…';
       if (c.items.isEmpty && !searching && c.category == null) return widget.emptySubtitle;
-      final n = visible.length;
-      final more = c.hasMore && !searching ? '+' : '';
+      // The true total when the list can count itself; otherwise only what
+      // has loaded so far, marked with '+' while more remains.
+      final counted = !searching && c.total != null;
+      final n = counted ? (c.total! > visible.length ? c.total! : visible.length) : visible.length;
+      final more = !counted && c.hasMore && !searching ? '+' : '';
       final noun = n == 1 ? widget.noun : '${widget.noun}es';
       if (searching && c.hasMore && !capped) return 'Searching… $n found so far';
       final base = '$n$more $noun${capped ? ' found in the newest ${c.documentsRead}' : ''}';

@@ -118,20 +118,35 @@ class _VerifiedLeadsPageState extends State<VerifiedLeadsPage> {
       ],
       controllerFor: (status) {
         final contactedList = status == _contacted;
+        Query<Map<String, dynamic>> base(String? category) {
+          Query<Map<String, dynamic>> q =
+              (widget.collectionQuery ?? FirebaseFirestore.instance.collection)(kind.collection)
+                  .where('sourceType', isEqualTo: signal.sourceType);
+          if (category != null) q = q.where('category', isEqualTo: category);
+          return q;
+        }
+
+        // Contacted: ordering by `contactedAt` also leaves out every lead that
+        // has none, so this is exactly the contacted ones.
+        Query<Map<String, dynamic>> contactedQuery(String? category) =>
+            base(category).orderBy('contactedAt', descending: true);
+
+        Future<int> countOf(Query<Map<String, dynamic>> q) async => (await q.count().get()).count ?? 0;
+
         return PagedQueryController<VerifiedLead>(
+          // The list's true size, so the header says "125 businesses" and not
+          // "58+" while only the first pages have loaded. New is everything
+          // minus the contacted (`status` can be unset, which Firestore
+          // cannot filter for).
+          counter: (category) async {
+            final contacted = await countOf(contactedQuery(category));
+            if (contactedList) return contacted;
+            final all = await countOf(base(category));
+            return all > contacted ? all - contacted : 0;
+          },
           segments: [
-            (category) {
-              Query<Map<String, dynamic>> q =
-                  (widget.collectionQuery ?? FirebaseFirestore.instance.collection)(kind.collection)
-                      .where('sourceType', isEqualTo: signal.sourceType);
-              if (category != null) q = q.where('category', isEqualTo: category);
-              // Contacted: ordering by `contactedAt` also leaves out every
-              // lead that has none, so this list is exactly the contacted
-              // ones, most recently contacted first. New: by verified date,
-              // with contacted leads dropped (`status` can be unset, which
-              // Firestore cannot filter for).
-              return contactedList ? q.orderBy('contactedAt', descending: true) : q.orderBy('updatedAt', descending: true);
-            },
+            // New: by verified date, with contacted leads dropped.
+            (category) => contactedList ? contactedQuery(category) : base(category).orderBy('updatedAt', descending: true),
           ],
           map: (doc) => VerifiedLead.fromData(
             Lead.fromDoc(doc),

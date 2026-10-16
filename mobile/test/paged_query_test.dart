@@ -106,6 +106,60 @@ List<_Doc> _docs(int n, {String prefix = 'd', Map<String, dynamic> data = const 
 Future<void> settle() => Future<void>.delayed(const Duration(milliseconds: 5));
 
 void main() {
+  test('reports the list\'s true total from its counter, not just what has loaded', () async {
+    final rows = _Collection(_docs(125));
+    final c = PagedQueryController<String>(
+      segments: [(category) => _FakeQuery(rows)],
+      map: (doc) => doc.id,
+      pageSize: 30,
+      counter: (category) async => rows.rows.length,
+    );
+
+    await c.refresh();
+    await settle();
+    expect(c.items, hasLength(30), reason: 'only the first page is loaded');
+    expect(c.hasMore, isTrue);
+    expect(c.total, 125, reason: 'the header can say 125, not "30+"');
+    c.dispose();
+  });
+
+  test('the total follows the list when it changes', () async {
+    final rows = _Collection(_docs(40));
+    var counted = 40;
+    final c = PagedQueryController<String>(
+      segments: [(category) => _FakeQuery(rows)],
+      map: (doc) => doc.id,
+      pageSize: 30,
+      counter: (category) async => counted,
+    );
+
+    await c.refresh();
+    await settle();
+    expect(c.total, 40);
+
+    counted = 39; // a lead was contacted: it leaves the list
+    rows.set(_docs(40).sublist(1)); // the first one, inside the loaded window
+    await Future<void>.delayed(const Duration(milliseconds: 900));
+    expect(c.total, 39);
+    c.dispose();
+  });
+
+  test('a failing counter leaves the total unknown instead of breaking the list', () async {
+    final rows = _Collection(_docs(10));
+    final c = PagedQueryController<String>(
+      segments: [(category) => _FakeQuery(rows)],
+      map: (doc) => doc.id,
+      counter: (category) async => throw StateError('count unavailable'),
+    );
+
+    await c.refresh();
+    await settle();
+    expect(c.items, hasLength(10));
+    expect(c.total, isNull);
+    expect(c.error, isNull);
+    c.dispose();
+  });
+
   test('listens to one page, grows by a page on loadMore, and stops at the end', () async {
     final rows = _Collection(_docs(70));
     final c = PagedQueryController<String>(

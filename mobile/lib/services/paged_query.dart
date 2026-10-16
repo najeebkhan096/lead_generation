@@ -32,7 +32,14 @@ class PagedQueryController<T> extends ChangeNotifier {
     this.include,
     this.pageSize = 30,
     this.maxEmptyPages = 6,
+    this.counter,
   }) : assert(segments.isNotEmpty);
+
+  /// The true size of the list for a category (`null` = all), read with a
+  /// server-side count rather than by loading it. Optional: without it a list
+  /// can only say how many it has loaded so far ("58+"). Re-run after the
+  /// list changes, so the total follows leads moving in and out of it.
+  final Future<int> Function(String? category)? counter;
 
   final List<SegmentQuery> segments;
   final T Function(QueryDoc doc) map;
@@ -72,6 +79,13 @@ class PagedQueryController<T> extends ChangeNotifier {
 
   List<T> _items = const [];
 
+  int? _total;
+  Timer? _totalTimer;
+
+  /// The list's true size, once counted; null until then (or without a
+  /// [counter], or if counting failed).
+  int? get total => _total;
+
   List<T> get items => _items;
   String? get category => _category;
   bool get loading => _loading;
@@ -98,6 +112,8 @@ class PagedQueryController<T> extends ChangeNotifier {
     _cancelAll();
     _error = null;
     _loading = true;
+    _total = null;
+    _loadTotal();
     _loadingMore = false;
     _wanted = pageSize;
     _items = const [];
@@ -144,6 +160,9 @@ class PagedQueryController<T> extends ChangeNotifier {
     segment.sub = segment.query.limit(limit).snapshots().listen(
       (snap) {
         if (generation != _generation || segment.limit != limit) return; // superseded
+        // A change after the first snapshot (a lead contacted here or on
+        // another phone, a new one from the web console) moves the total.
+        if (segment.received && !_sameDocs(segment.docs, snap.docs)) _scheduleTotal();
         segment.docs = snap.docs;
         segment.received = true;
         _reconcile(generation);
@@ -155,6 +174,36 @@ class PagedQueryController<T> extends ChangeNotifier {
         _notify();
       },
     );
+  }
+
+  static bool _sameDocs(List<QueryDoc> a, List<QueryDoc> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i].id != b[i].id) return false;
+    }
+    return true;
+  }
+
+  void _scheduleTotal() {
+    if (counter == null) return;
+    _totalTimer?.cancel();
+    _totalTimer = Timer(const Duration(milliseconds: 700), _loadTotal);
+  }
+
+  /// Counts the list on the server (a single aggregate read). Best-effort: on
+  /// failure the list keeps showing its loaded count with a '+'.
+  Future<void> _loadTotal() async {
+    final count = counter;
+    if (count == null) return;
+    final generation = _generation;
+    try {
+      final n = await count(_category);
+      if (_disposed || generation != _generation) return;
+      _total = n;
+      notifyListeners();
+    } catch (_) {
+      // Leave `total` as it was.
+    }
   }
 
   /// Recomputes the visible items from the latest snapshots and, if the list
@@ -223,6 +272,7 @@ class PagedQueryController<T> extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _totalTimer?.cancel();
     _generation += 1;
     _cancelAll();
     super.dispose();

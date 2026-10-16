@@ -3,10 +3,14 @@ import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
 import '../theme/app_theme.dart';
 
-/// Shown when a signed-in mobile user cannot load the app. Intentionally
-/// generic — do not mention account approval or permissions here.
+/// Shown when the account check itself fails (offline, a backend error), as
+/// opposed to the user simply not being approved yet (see
+/// [PendingApprovalPage]). Intentionally generic about the cause.
 class AccessErrorPage extends StatelessWidget {
-  const AccessErrorPage({super.key});
+  const AccessErrorPage({super.key, this.onRetry});
+
+  /// Re-runs the account check; hidden when null.
+  final VoidCallback? onRetry;
 
   @override
   Widget build(BuildContext context) {
@@ -28,12 +32,24 @@ class AccessErrorPage extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Something went wrong. Please try again later.',
+                  'We could not check your account. Check your connection and try again.',
                   style: Theme.of(context).textTheme.bodyLarge,
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 24),
-                OutlinedButton(
+                if (onRetry != null) ...[
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
+                      onPressed: onRetry,
+                      icon: const Icon(AppIcons.refresh, size: 18),
+                      label: const Text('Try again'),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                ],
+                TextButton(
                   onPressed: () => AuthService().signOut(),
                   child: const Text('Sign out'),
                 ),
