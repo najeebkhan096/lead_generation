@@ -7,6 +7,7 @@ import 'pages/access_error_page.dart';
 import 'pages/admin_navigation_page.dart';
 import 'pages/login_page.dart';
 import 'pages/main_navigation_page.dart';
+import 'pages/pending_approval_page.dart';
 import 'services/auth_service.dart';
 import 'services/theme_controller.dart';
 import 'theme/app_theme.dart';
@@ -69,16 +70,33 @@ class _ApprovedGate extends StatefulWidget {
 }
 
 class _ApprovedGateState extends State<_ApprovedGate> {
-  late final Future<({bool approved, bool isAdmin})> _check = _fetchStatus();
+  late Future<_Access> _check = _fetchStatus();
 
-  Future<({bool approved, bool isAdmin})> _fetchStatus() async {
+  Future<_Access> _fetchStatus() async {
     final access = await AuthService().loadAccess();
-    return (approved: access.approved, isAdmin: kMobileAdminConsole && access.isAdmin);
+    return (
+      approved: access.approved,
+      isAdmin: kMobileAdminConsole && access.isAdmin,
+      failed: access.failed,
+    );
+  }
+
+  /// "Check again" on the waiting page. Only rebuilds the gate once the
+  /// account is approved, so a still-waiting user is not bounced through a
+  /// spinner.
+  Future<bool> _recheck() async {
+    final access = await _fetchStatus();
+    if (mounted && access.approved) {
+      setState(() {
+        _check = Future.value(access);
+      });
+    }
+    return access.approved;
   }
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<({bool approved, bool isAdmin})>(
+    return FutureBuilder<_Access>(
       future: _check,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
@@ -93,8 +111,13 @@ class _ApprovedGateState extends State<_ApprovedGate> {
           }
           return const MainNavigationPage();
         }
-        return const AccessErrorPage();
+        // The check itself failing (offline, rules) is an error; a clean
+        // "not approved" is the normal first-sign-in state.
+        if (data == null || data.failed) return const AccessErrorPage();
+        return PendingApprovalPage(onCheckAgain: _recheck);
       },
     );
   }
 }
+
+typedef _Access = ({bool approved, bool isAdmin, bool failed});

@@ -76,10 +76,11 @@ class AuthService {
   /// when it is missing. Signing in fires `authStateChanges` (and so the
   /// approval gate) before [signInWithGoogle] has written a first-time user's
   /// profile, so without this a new user's first check finds no document and
-  /// is wrongly shown the error page.
-  Future<({bool approved, bool isAdmin})> loadAccess() async {
+  /// is wrongly shown the error page. [failed] means the check itself errored
+  /// (offline, rules), as opposed to the user simply not being approved.
+  Future<({bool approved, bool isAdmin, bool failed})> loadAccess() async {
     final user = _auth.currentUser;
-    if (user == null) return (approved: false, isAdmin: false);
+    if (user == null) return (approved: false, isAdmin: false, failed: false);
     try {
       final ref = FirebaseFirestore.instance.collection('users').doc(user.uid);
       var snap = await ref.get();
@@ -88,10 +89,10 @@ class AuthService {
         snap = await ref.get();
       }
       final data = snap.data();
-      return (approved: data?['approved'] == true, isAdmin: data?['role'] == 'admin');
+      return (approved: data?['approved'] == true, isAdmin: data?['role'] == 'admin', failed: false);
     } catch (e) {
       print('Error loading access: $e');
-      return (approved: false, isAdmin: false);
+      return (approved: false, isAdmin: false, failed: true);
     }
   }
 

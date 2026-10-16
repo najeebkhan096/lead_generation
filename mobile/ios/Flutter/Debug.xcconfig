@@ -1,2 +1,7 @@
 #include? "Pods/Target Support Files/Pods-Runner/Pods-Runner.debug.xcconfig"
 #include "Generated.xcconfig"
+
+// Simulator builds are arm64-only (Apple-silicon Macs). Without this Xcode
+// builds an x86_64 slice too and merges them (CreateUniversalBinary), which
+// roughly doubles the build's disk use. Re-add x86_64 for an Intel Mac.
+EXCLUDED_ARCHS[sdk=iphonesimulator*] = i386 x86_64
