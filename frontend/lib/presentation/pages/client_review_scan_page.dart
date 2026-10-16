@@ -102,7 +102,20 @@ class _ClientReviewScanPageState extends State<ClientReviewScanPage> {
         ),
       );
     }
-    final results = _results ?? const <SaleReviewScanResult>[];
+    return ScanResultsView(results: _results ?? const <SaleReviewScanResult>[], days: scanWindowDays);
+  }
+}
+
+/// The outcome of a 1★ review scan: clients with fresh 1★ reviews first, then
+/// the ones that could not be scanned. Used by both scan pages.
+class ScanResultsView extends StatelessWidget {
+  const ScanResultsView({super.key, required this.results, required this.days});
+
+  final List<SaleReviewScanResult> results;
+  final int days;
+
+  @override
+  Widget build(BuildContext context) {
     final flagged = results.where((r) => r.newReviews.isNotEmpty).toList();
     final notScanned = results.where((r) => r.skipped || r.error != null).toList();
     final clean = results.length - flagged.length - notScanned.length;
@@ -111,8 +124,8 @@ class _ClientReviewScanPageState extends State<ClientReviewScanPage> {
       children: [
         Text(
           flagged.isEmpty
-              ? 'No 1★ reviews in the last $scanWindowDays days'
-              : '${flagged.length} client${flagged.length == 1 ? '' : 's'} with 1★ reviews in the last $scanWindowDays days',
+              ? 'No 1★ reviews in the last $days days'
+              : '${flagged.length} client${flagged.length == 1 ? '' : 's'} with 1★ reviews in the last $days days',
           style: Theme.of(context).textTheme.titleLarge,
         ),
         const SizedBox(height: 4),

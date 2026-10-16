@@ -18,8 +18,9 @@ class _LoginPageState extends State<LoginPage> {
     try {
       final user = await _authService.signInWithGoogle();
       if (user == null && mounted) {
+        final reason = _authService.lastError;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Sign in failed or cancelled')),
+          SnackBar(content: Text(reason == null ? 'Sign in cancelled' : 'Sign in failed: $reason')),
         );
       }
     } finally {

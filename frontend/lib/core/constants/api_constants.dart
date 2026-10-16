@@ -78,6 +78,7 @@ class ApiConstants {
 
   static const String clients = '/api/clients';
   static String clientUpdate(String id) => '/api/clients/$id';
+  static const String clientsScanReviews = '/api/clients/scan-reviews';
   static const String sales = '/api/sales';
   static const String salesStats = '/api/sales/stats';
   static const String salesScanReviews = '/api/sales/scan-reviews';

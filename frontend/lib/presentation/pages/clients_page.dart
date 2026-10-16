@@ -6,6 +6,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/utils/maps_url.dart';
 import '../../domain/entities/client_record.dart';
 import '../../domain/repositories/lead_repository.dart';
+import 'client_scan_results_page.dart';
 
 /// The client list: each client is just a business name and the link to its
 /// Google Maps listing. Both are required when adding one.
@@ -22,6 +23,12 @@ class _ClientsPageState extends State<ClientsPage> {
   bool _loading = true;
   String? _error;
   String _query = '';
+
+  /// Days of reviews to look back over when scanning; 28 matches the
+  /// review-removal window the team works to.
+  static const _scanWindows = [7, 14, 28, 60, 90];
+  int _scanDays = 28;
+  bool _scanning = false;
 
   LeadRepository get _repo => context.read<LeadRepository>();
 
@@ -55,6 +62,35 @@ class _ClientsPageState extends State<ClientsPage> {
         _loading = false;
         _error = e.toString().replaceFirst('Exception: ', '');
       });
+    }
+  }
+
+  /// Scans every client's Google Maps page for 1★ reviews in the chosen
+  /// window, then opens the results on their own page. Each client is a real
+  /// Maps load, so this can take several minutes.
+  Future<void> _scan() async {
+    final withLink = _clients.where((c) => c.hasMapsUrl).length;
+    if (withLink == 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Add a client with a Google Maps link first')),
+      );
+      return;
+    }
+    final days = _scanDays;
+    setState(() => _scanning = true);
+    try {
+      final results = await _repo.scanClientReviews(days: days);
+      if (!mounted) return;
+      setState(() => _scanning = false);
+      await Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => ClientScanResultsPage(results: results, days: days)),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _scanning = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+      );
     }
   }
 
@@ -116,10 +152,27 @@ class _ClientsPageState extends State<ClientsPage> {
             icon: const Icon(AppIcons.refresh, size: 18),
             tooltip: 'Refresh',
           ),
+          DropdownButtonHideUnderline(
+            child: DropdownButton<int>(
+              value: _scanDays,
+              borderRadius: BorderRadius.circular(12),
+              onChanged: _scanning ? null : (v) => setState(() => _scanDays = v ?? _scanDays),
+              items: [for (final d in _scanWindows) DropdownMenuItem(value: d, child: Text('Last $d days'))],
+            ),
+          ),
+          const SizedBox(width: 8),
+          OutlinedButton.icon(
+            onPressed: _loading || _scanning ? null : _scan,
+            icon: _scanning
+                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(AppIcons.search, size: 18),
+            label: Text(_scanning ? 'Scanning…' : 'Scan'),
+          ),
+          const SizedBox(width: 8),
           Padding(
             padding: const EdgeInsets.only(right: 12),
             child: FilledButton.icon(
-              onPressed: _loading ? null : () => _edit(),
+              onPressed: _loading || _scanning ? null : () => _edit(),
               icon: const Icon(AppIcons.plus, size: 18),
               label: const Text('Add client'),
             ),
@@ -159,6 +212,22 @@ class _ClientsPageState extends State<ClientsPage> {
                                 : '${_clients.length} client${_clients.length == 1 ? '' : 's'} · $missing without a Google Maps link',
                             style: const TextStyle(fontSize: 12.5, color: AppTheme.faint, fontWeight: FontWeight.w700),
                           ),
+                          if (_scanning) ...[
+                            const SizedBox(height: 12),
+                            Container(
+                              padding: const EdgeInsets.all(14),
+                              decoration: BoxDecoration(
+                                color: AppTheme.accent100,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Text(
+                                'Scanning every client\'s Google Maps page for 1★ reviews in the last $_scanDays days. '
+                                'Each one loads in turn, so this can take several minutes. Keep this page open; '
+                                'the results open on a new page when it finishes.',
+                                style: const TextStyle(fontSize: 12.5),
+                              ),
+                            ),
+                          ],
                           const SizedBox(height: 12),
                           TextField(
                             controller: _search,

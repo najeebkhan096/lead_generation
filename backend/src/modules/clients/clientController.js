@@ -1,3 +1,4 @@
+import { scanClientReviews } from './clientReviewScanner.js';
 import { listClients, createClient, updateClient, deleteClient } from './clientStore.js';
 
 const fail = (res, err, fallback) => res.status(err.status || 500).json({ error: err.message || fallback });
@@ -35,5 +36,25 @@ export async function removeClient(req, res) {
     return res.json({ success: true });
   } catch (err) {
     return fail(res, err, 'Failed to delete client');
+  }
+}
+
+let scanning = false;
+
+/** POST /api/clients/scan-reviews  { dateRange? } — days, default 28. */
+export async function scanReviews(req, res) {
+  if (scanning) return res.status(409).json({ error: 'A client review scan is already running' });
+  scanning = true;
+  try {
+    const { dateRange } = req.body || {};
+    const days = Number(dateRange);
+    const results = await scanClientReviews({
+      dateRange: Number.isFinite(days) && days > 0 ? String(Math.min(Math.floor(days), 365)) : '28',
+    });
+    return res.json({ results, scannedAt: new Date().toISOString() });
+  } catch (err) {
+    return fail(res, err, 'Client review scan failed');
+  } finally {
+    scanning = false;
   }
 }

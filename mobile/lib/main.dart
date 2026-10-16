@@ -72,10 +72,8 @@ class _ApprovedGateState extends State<_ApprovedGate> {
   late final Future<({bool approved, bool isAdmin})> _check = _fetchStatus();
 
   Future<({bool approved, bool isAdmin})> _fetchStatus() async {
-    final auth = AuthService();
-    final approved = await auth.isCurrentUserApproved();
-    final isAdmin = kMobileAdminConsole && await auth.isCurrentUserAdmin();
-    return (approved: approved, isAdmin: isAdmin);
+    final access = await AuthService().loadAccess();
+    return (approved: access.approved, isAdmin: kMobileAdminConsole && access.isAdmin);
   }
 
   @override

@@ -425,6 +425,9 @@ class LeadRepositoryImpl implements LeadRepository {
   Future<void> deleteClient(String id) => _remote.deleteClient(id);
 
   @override
+  Future<List<SaleReviewScanResult>> scanClientReviews({int days = 28}) => _remote.scanClientReviews(days: days);
+
+  @override
   Future<SalesStats> getSalesStats({String? salesmanId}) => _remote.getSalesStats(salesmanId: salesmanId);
 
   @override

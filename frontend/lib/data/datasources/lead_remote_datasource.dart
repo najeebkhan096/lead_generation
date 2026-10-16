@@ -654,6 +654,25 @@ class LeadRemoteDataSource {
     }
   }
 
+  /// Loads every client's Google Maps page and returns the 1-star reviews from
+  /// the last [days] days. One real Maps load per client, so allow a long wait.
+  Future<List<SaleReviewScanResult>> scanClientReviews({int days = 28}) async {
+    final response = await _client
+        .post(
+          _uri(ApiConstants.clientsScanReviews),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'dateRange': days}),
+        )
+        .timeout(const Duration(minutes: 30));
+    final body = _tryDecode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['error'] ?? 'Client review scan failed');
+    }
+    return (body['results'] as List<dynamic>? ?? [])
+        .map((e) => SaleReviewScanResult.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
   static const _twilioTestTimeout = Duration(seconds: 20);
 
   /// The backend's own message; or, for a 404 without one (a server started

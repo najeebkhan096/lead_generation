@@ -336,6 +336,9 @@ abstract class LeadRepository {
   Future<ClientRecord> updateClient(String id, {String? name, String? mapsUrl});
   Future<void> deleteClient(String id);
 
+  /// 1-star reviews from the last [days] days across every client's Maps page.
+  Future<List<SaleReviewScanResult>> scanClientReviews({int days = 28});
+
   /// [salesmanId] scopes the dashboard to one salesman; omit for the
   /// full-team rollup.
   Future<SalesStats> getSalesStats({String? salesmanId});
