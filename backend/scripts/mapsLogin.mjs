@@ -68,6 +68,7 @@ const result = await checkSessionStatus({
   channel: cfg.channel,
   args: BROWSER_ARGS,
   contextOptions: CONTEXT_OPTIONS,
+  chromePath: cfg.chromePath || undefined,
 });
 console.log(`Session: ${result.status}${result.detail ? ` (${result.detail})` : ''}`);
 console.log(result.status === 'signed_in'

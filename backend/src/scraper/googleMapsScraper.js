@@ -135,6 +135,7 @@ export async function launchBrowser() {
           channel: cfg.channel,
           args: BROWSER_ARGS,
           contextOptions: CONTEXT_OPTIONS,
+          chromePath: cfg.chromePath || undefined,
         });
         setSessionMode(true);
         openSessionBrowsers += 1;

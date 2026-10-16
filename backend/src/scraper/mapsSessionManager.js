@@ -42,6 +42,7 @@ function runCheck() {
     channel: cfg.channel,
     args: BROWSER_ARGS,
     contextOptions: CONTEXT_OPTIONS,
+    chromePath: cfg.chromePath || undefined,
   })
     .then(remember)
     .finally(() => {

@@ -206,3 +206,61 @@ test('a Chrome that cannot start is reported, not left hanging', async () => {
   const { closed } = launchManualLogin({ executable: path.join(tmp, 'no-such-chrome'), profileDir: path.join(tmp, 'p') });
   assert.equal(await closed, -1);
 });
+
+// ---- the saved login survives: real Chrome, started normally, driven over CDP -----------
+
+import http from 'node:http';
+import { launchSessionBrowser } from './mapsSession.js';
+
+const CHROME = findChrome();
+
+test('a login saved in the profile is still there after Chrome is closed and reopened', { skip: CHROME ? false : 'Google Chrome is not installed' }, async () => {
+  // A local page that sets a persistent cookie, standing in for Google's sign-in cookies.
+  const server = http.createServer((req, res) => {
+    res.setHeader('Set-Cookie', 'leadfinder_login=ok; Max-Age=86400; Path=/');
+    res.setHeader('Content-Type', 'text/html');
+    res.end('<html><body>ok</body></html>');
+  });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  const url = `http://127.0.0.1:${server.address().port}/`;
+  const profileDir = path.join(tmp, 'cdp-profile');
+  ensureProfileDir(profileDir);
+  const open = () => launchSessionBrowser({ chromium, chromePath: CHROME, profileDir, contextOptions: { viewport: { width: 1000, height: 700 } } });
+
+  try {
+    const first = await open();
+    assert.equal(first.isSession, true);
+    assert.equal(first.mode, 'chrome');
+    const ctx = await first.newContext();
+    const page = await ctx.newPage();
+    assert.deepEqual(await page.evaluate(() => [innerWidth, innerHeight]).catch(() => null) && true, true);
+    await page.goto(url);
+    await page.close();
+    await ctx.close(); // a no-op: callers close their "context" freely
+    await first.close(); // closes Chrome, saving the cookies
+
+    const second = await open(); // a later scan, same profile
+    try {
+      const cookies = await second.context.cookies();
+      assert.ok(cookies.some((c) => c.name === 'leadfinder_login'), 'the saved login was read back');
+    } finally {
+      await second.close();
+    }
+  } finally {
+    server.close();
+  }
+});
+
+test('opening a profile that is already open fails clearly instead of hanging', { skip: CHROME ? false : 'Google Chrome is not installed' }, async () => {
+  const profileDir = path.join(tmp, 'busy-profile');
+  ensureProfileDir(profileDir);
+  const first = await launchSessionBrowser({ chromium, chromePath: CHROME, profileDir });
+  try {
+    await assert.rejects(
+      () => launchSessionBrowser({ chromium, chromePath: CHROME, profileDir }),
+      /did not start|already open|Could not connect/i,
+    );
+  } finally {
+    await first.close();
+  }
+});

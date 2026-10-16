@@ -17,6 +17,7 @@ const result = await checkSessionStatus({
   channel: cfg.channel,
   args: BROWSER_ARGS,
   contextOptions: CONTEXT_OPTIONS,
+  chromePath: cfg.chromePath || undefined,
 });
 const meaning = {
   signed_in: 'Signed in. Scans use it automatically.',
