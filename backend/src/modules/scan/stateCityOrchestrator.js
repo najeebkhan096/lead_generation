@@ -35,15 +35,17 @@ import {
   downloadExcelArchiveBuffer,
   deleteExcelArchive,
 } from '../archive/excelArchiveStore.js';
-import { describeSortDiagnostics, resetSortDiagnostics } from '../../scraper/reviewSort.js';
+import { describeSortDiagnostics, resetSortDiagnostics, getSortDiagnostics } from '../../scraper/reviewSort.js';
 
-// Measured on a 10-core Mac against live Google: throughput rose with workers
-// up to 6 (1 -> 5/min, 3 -> 19/min, 6 -> 31/min, none failing) and collapsed at
-// 10 (4/min, nearly every listing timing out), after which Google showed its
-// "unusual traffic" check. More workers is not faster past the cliff.
+// How fast pages are opened is set by the shared pace (see rateLimit.js), not by
+// the worker count; workers only need to be numerous enough to keep that pace
+// fed (pace x time to read a business / 60). Before the pace existed, 10
+// workers collapsed and got the network blocked; with every page open metered
+// by the pace they cannot out-run it, so 10 is allowed. The early brake slows
+// the pace if the extra tabs start failing.
 const MIN_CONCURRENCY = 1;
-const MAX_CONCURRENCY = 6;
-const DEFAULT_CONCURRENCY = 5;
+const MAX_CONCURRENCY = 10;
+const DEFAULT_CONCURRENCY = 8;
 
 /** How long a blocked scan waits before it first checks whether Google is serving results again. */
 const BLOCK_COOLDOWN_MS = Number(process.env.MAPS_BLOCK_COOLDOWN_MINUTES || 10) * 60 * 1000;
@@ -298,6 +300,14 @@ async function scanStateCities(job, category, stateRec) {
         stateRec.incompleteBusinesses += reviewIssues?.incomplete || 0;
         stateRec.skippedListings += skippedListings || 0;
         stateRec.duplicatesSkipped += duplicatesSkipped || 0;
+        // Early brake: pages failing to open is what precedes Google's check.
+        if (job.pace?.noteOutcome?.(businessesScraped || 0, skippedListings || 0)) {
+          logActivity(
+            job,
+            `Listings are failing more than usual, so the pace was cut to ${Math.round(job.pace.perMinute)}/min before Google notices. It will climb again if things stay healthy.`,
+            'warn'
+          );
+        }
         stateRec.prefiltered += prefiltered || 0;
         stateRec.covered.push(city);
         noteCityCovered(job, category);
@@ -624,7 +634,10 @@ export async function startStateCityScan({
     blocked: null,
     // Place ids already read, per category: a business shared by neighbouring cities is read once.
     seenPlaces: Object.fromEntries(uniqueCategories.map((c) => [c, seedSeen[c] || new Set()])),
-    coverage: statesOverride ? 'custom' : coverage,
+    // The tier this scan belongs to. A resume passes the archive's own tier along with
+    // the states it still needs, so the archive keeps its label (and a second resume
+    // rebuilds the same city list).
+    coverage: isCoverageTier(coverage) ? coverage : 'custom',
     // name -> { lat, lng, zoom } for the grid points of large cities, per state.
     citySpecs: Object.fromEntries(states.map((st) => [st.state, st.specs || {}])),
     // Pace shared by all workers; finds the rate Google tolerates (see AdaptivePace).
@@ -903,7 +916,9 @@ export function getStateCityJobSnapshot() {
     stoppedReason: job.stoppedReason,
     blocked: job.blocked,
     coverage: job.coverage,
-    pace: job.pace ? { perMinute: job.pace.perMinute, max: job.pace.max } : null,
+    pace: job.pace ? { perMinute: job.pace.perMinute, max: job.pace.max, learnedCap: job.pace.learnedCap ?? null } : null,
+    // How each review lookup went (sorted, sign-in required, ...): why some businesses are "not fully read".
+    sortStats: getSortDiagnostics(),
     categories,
     activity: job.activityLog.slice(-150).reverse(),
   };

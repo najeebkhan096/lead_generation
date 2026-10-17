@@ -450,7 +450,7 @@ class _OverallCard extends StatelessWidget {
             [
               if (snapshot.coverage != null && snapshot.coverage != 'custom') 'Coverage: ${snapshot.coverage}',
               if (snapshot.pacePerMinute != null)
-                'pace ${snapshot.pacePerMinute!.round()}/min (adjusts itself, max ${snapshot.paceMax?.round() ?? '?'})',
+                'pace ${snapshot.pacePerMinute!.round()}/min (tunes itself, ceiling ${snapshot.paceMax?.round() ?? '?'})',
               if (snapshot.skippedWithoutOpening > 0)
                 '${snapshot.skippedWithoutOpening} listings not opened (repeats, or provably no 1-star)',
             ].join(' · '),

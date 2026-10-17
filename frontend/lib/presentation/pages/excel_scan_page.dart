@@ -30,7 +30,7 @@ class _ExcelScanPageState extends State<ExcelScanPage> {
   final List<String> _targetServices = [];
 
   String _dateRange = '365';
-  int _concurrency = 5;
+  int _concurrency = 10;
   String _coverage = 'extended';
   List<CoverageOption> _coverageOptions = const [];
   bool _starting = false;
@@ -370,8 +370,8 @@ class _ExcelScanPageState extends State<ExcelScanPage> {
                           child: Slider(
                             value: _concurrency.toDouble(),
                             min: 1,
-                            max: 6,
-                            divisions: 5,
+                            max: 10,
+                            divisions: 9,
                             activeColor: AppTheme.accent500,
                             label: '$_concurrency workers',
                             onChanged: _starting ? null : (v) => setState(() => _concurrency = v.round()),
@@ -390,9 +390,9 @@ class _ExcelScanPageState extends State<ExcelScanPage> {
                   ),
                   const SizedBox(height: 8),
                   const Text(
-                    'More workers is not faster past about 6: measured here, 6 workers read ~31 businesses a minute, '
-                    'but 10 collapsed to ~4 and made Google show its "unusual traffic" check, which stops the scan. '
-                    '5 is the sweet spot.',
+                    'How fast pages are opened is set by a shared pace that tunes itself to what Google tolerates '
+                    '(it speeds up while things are healthy and backs off at the first sign of trouble). '
+                    'Workers only keep that pace fed, so more of them cannot out-run it. 10 keeps it fully fed.',
                     style: TextStyle(fontSize: 12, height: 1.4, color: AppTheme.faint),
                   ),
                   const SizedBox(height: 24),

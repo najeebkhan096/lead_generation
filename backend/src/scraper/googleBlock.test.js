@@ -67,11 +67,11 @@ test('jitter only ever lengthens the gap, never shortens it below the budget', a
 });
 
 test('the budget can be set from MAPS_MAX_PLACES_PER_MINUTE, with a sane default and ceiling', () => {
-  assert.equal(perMinuteFromEnv({}), 20);
+  assert.equal(perMinuteFromEnv({}), 40);
   assert.equal(perMinuteFromEnv({ MAPS_MAX_PLACES_PER_MINUTE: '12' }), 12);
-  assert.equal(perMinuteFromEnv({ MAPS_MAX_PLACES_PER_MINUTE: 'abc' }), 20);
+  assert.equal(perMinuteFromEnv({ MAPS_MAX_PLACES_PER_MINUTE: 'abc' }), 40);
   assert.equal(perMinuteFromEnv({ MAPS_MAX_PLACES_PER_MINUTE: '99999' }), 120);
-  assert.equal(perMinuteFromEnv({ MAPS_MAX_PLACES_PER_MINUTE: '-3' }), 20);
+  assert.equal(perMinuteFromEnv({ MAPS_MAX_PLACES_PER_MINUTE: '-3' }), 40);
 });
 
 // ---- the pace that finds its own level --------------------------------------------
@@ -117,4 +117,69 @@ test('the spacing between pages follows the current rate', async () => {
   pace.next = 0;
   await Promise.all([pace.acquire(), pace.acquire()]);
   assert.deepEqual(waits, [4000]);
+});
+
+// ---- early brake and memory ---------------------------------------------------------------
+
+function memoryStore(initial = {}) {
+  let data = { ...initial };
+  return { load: () => data, save: (o) => { data = o; }, get: () => data };
+}
+
+test('early brake: when pages start failing, the pace is cut by a quarter before any block', () => {
+  const { pace } = adaptive({ start: 16, max: 16 });
+  assert.equal(pace.noteOutcome(40, 0), false, 'healthy');
+  assert.equal(pace.noteOutcome(10, 1), false, 'a stray failure is not a trend');
+  assert.equal(pace.perMinute, 16);
+  assert.equal(pace.noteOutcome(10, 6), true, 'a run of failures trips the brake');
+  assert.equal(pace.perMinute, 12);
+});
+
+test('the brake judges fresh evidence after it fires, and needs enough reads to judge at all', () => {
+  const { pace } = adaptive({ start: 16, max: 16 });
+  assert.equal(pace.noteOutcome(2, 3), false, 'too few reads to judge');
+  assert.equal(pace.noteOutcome(10, 10), true);
+  assert.equal(pace.noteOutcome(10, 0), false, 'the window was cleared: the slower rate starts clean');
+  assert.equal(pace.perMinute, 12);
+});
+
+test('after a block the rate it was running at caps later scans, and what ran clean is where they start', () => {
+  let now = 1_000_000;
+  const store = memoryStore();
+  const first = new AdaptivePace({ start: 14, max: 40, store, now: () => now, sleep: async () => {}, jitter: 0 });
+  first._set(30);
+  first.noteBlocked();
+  assert.equal(first.perMinute, 15);
+  assert.equal(store.get().blockedAt.rate, 30);
+
+  // A new scan an hour later: capped at 75% of the rate that got us blocked.
+  now += 60 * 60 * 1000;
+  const second = new AdaptivePace({ start: 14, max: 40, store, now: () => now, sleep: async () => {}, jitter: 0 });
+  assert.equal(second.max, 23, '30 x 0.75, rounded');
+  assert.equal(second.learnedCap, 23);
+
+  // Long after, the memory has expired.
+  now += 13 * 60 * 60 * 1000;
+  const third = new AdaptivePace({ start: 14, max: 40, store, now: () => now, sleep: async () => {}, jitter: 0 });
+  assert.equal(third.max, 40);
+  assert.equal(third.learnedCap, null);
+});
+
+test('a rate held for half an hour without trouble is remembered as the next scan\'s starting point', () => {
+  let now = 0;
+  const store = memoryStore();
+  const pace = new AdaptivePace({ start: 20, max: 30, store, now: () => now, sleep: async () => {}, jitter: 0, stepEveryMs: 10 ** 9 });
+  now += 31 * 60 * 1000;
+  pace.noteHealthy();
+  assert.equal(store.get().healthy.rate, 20);
+  const next = new AdaptivePace({ start: 14, max: 30, store, now: () => now, sleep: async () => {}, jitter: 0 });
+  assert.equal(next.perMinute, 17, 'starts at 85% of the proven rate');
+});
+
+test('a broken or missing memory file never stops a scan', () => {
+  const broken = { load: () => { throw new Error('unreadable'); }, save: () => { throw new Error('read-only'); } };
+  const pace = new AdaptivePace({ start: 14, max: 30, store: broken, now: () => 0, sleep: async () => {}, jitter: 0 });
+  assert.equal(pace.perMinute, 14);
+  pace.noteBlocked();
+  assert.equal(pace.perMinute, 7);
 });

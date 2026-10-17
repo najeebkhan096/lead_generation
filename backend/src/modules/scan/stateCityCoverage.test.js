@@ -232,3 +232,28 @@ test('the scan reads Google only, and hands every city the same "already read" s
   assert.ok(seen.every((x) => x.googleOnly === true), 'no Bing/Yelp fallback masking a failure');
   assert.ok(seen.every((x) => x.set === job.seenPlaces['Car Wash']), 'one shared set per category');
 });
+
+test('when listings start failing the scan slows itself down, and says so, before Google blocks it', async () => {
+  const fed = [];
+  const job = makeJob(
+    async (_c, location) => {
+      const list = [oneStarBusiness(`Wash ${location}`)];
+      Object.defineProperty(list, 'skippedListings', { value: 9 });
+      return list;
+    },
+    {
+      concurrency: 1,
+      pace: {
+        perMinute: 18,
+        noteHealthy: () => {},
+        noteOutcome: (read, failed) => { fed.push([read, failed]); return fed.length === 2; },
+      },
+    },
+  );
+  const rec = newStateRecord('Texas', ['Austin', 'Dallas', 'Plano']);
+  await scanStateCities(job, 'Car Wash', rec);
+  assert.deepEqual(fed, [[1, 9], [1, 9], [1, 9]], 'each city\'s reads and failures reach the pace');
+  const warn = job.activityLog.filter((l) => /failing more than usual/.test(l.message));
+  assert.equal(warn.length, 1);
+  assert.match(warn[0].message, /18\/min/);
+});

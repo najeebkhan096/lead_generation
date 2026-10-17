@@ -9,7 +9,7 @@ import {
 } from './stateCityOrchestrator.js';
 
 export async function startScan(req, res) {
-  const { categories, concurrency = 10, dateRange = '30', maxResultsPerCity = 160, analyze = false, allowUnsignedScan = false, coverage = 'standard' } = req.body || {};
+  const { categories, concurrency = 8, dateRange = '30', maxResultsPerCity = 160, analyze = false, allowUnsignedScan = false, coverage = 'standard' } = req.body || {};
 
   if (!Array.isArray(categories) || !categories.length) {
     return res.status(400).json({ error: 'categories array is required' });

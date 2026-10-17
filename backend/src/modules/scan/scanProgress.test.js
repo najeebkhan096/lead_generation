@@ -150,3 +150,18 @@ test('a dead browser is replaced before the next city, once, whatever the number
   await _ensureBrowserForTests(job, async () => { launches += 1; return fresh; });
   assert.equal(launches, 1, 'a healthy browser is left alone');
 });
+
+test('a resumed scan keeps the archive\'s coverage tier, so a second resume rebuilds the same cities', async () => {
+  const { startStateCityScan, getStateCityJobSnapshot, _resetStateCityJobForTests } = await import('./stateCityOrchestrator.js');
+  _resetStateCityJobForTests();
+  process.env.MAPS_PERSISTENT_SESSION = 'false';
+  await startStateCityScan({
+    categories: ['Auto'],
+    coverage: 'extended',
+    statesOverride: [{ state: 'Texas', cities: ['Austin'], specs: {} }], // what a resume passes: only the states still needed
+    requireSignIn: false,
+    scrapeLocationFn: async () => [],
+  });
+  for (let i = 0; i < 100 && getStateCityJobSnapshot()?.status !== 'done'; i++) await new Promise((r) => setTimeout(r, 50));
+  assert.equal(getStateCityJobSnapshot().coverage, 'extended');
+});
