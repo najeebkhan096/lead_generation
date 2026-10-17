@@ -45,6 +45,12 @@ export function placeHtml({
   sort = 'works',
   withTabs = true,
   pageSize = 0,
+  // Review snippets on the Overview tab, which carry data-review-id like real cards.
+  overviewSnippets = false,
+  // Like a restaurant page: a tall header pushes the cards below the visible
+  // area, they are drawn only once the panel is scrolled to them, and choosing
+  // a sort scrolls back to the top and empties the list again.
+  lazyBelowFold = false,
 } = {}) {
   const bars = Object.entries(histogram)
     .sort((a, b) => b[0] - a[0])
@@ -64,15 +70,19 @@ export function placeHtml({
            ${sort === 'nooption' ? '' : '<div role="menuitemradio" data-sort="lowest">Lowest rating</div>'}
          </div>`;
 
-  const panelInner = `<table>${bars}</table>${sortControl}<div id="list" style="height:200px;overflow-y:auto"></div>`;
+  const listStyle = lazyBelowFold ? 'min-height:900px' : 'height:200px;overflow-y:auto'; // lazy: Maps reserves the list's height
+  const panelInner = lazyBelowFold
+    ? `<div style="height:300px">header: order online, summary</div><table>${bars}</table>${sortControl}<div style="height:900px">topic chips</div><div id="list" style="${listStyle}"></div>`
+    : `<table>${bars}</table>${sortControl}<div id="list" style="${listStyle}"></div>`;
 
   return `<!doctype html><html><body>
   <h1 class="DUwDvf">${esc(name)}</h1>
   <span role="img" aria-label="${rating} stars "></span>
   <span aria-label="${totalReviews.toLocaleString('en-US')} reviews">(${totalReviews.toLocaleString('en-US')})</span>
   ${withTabs ? '<div role="tablist"><button role="tab" aria-label="Overview of Test">Overview</button><button role="tab" id="reviewsTab" aria-label="Reviews for Test">Reviews</button></div>' : ''}
+  ${overviewSnippets ? '<div id="overview"><div data-review-id="snippet-1"><span>Order: brownie, latte</span></div></div>' : ''}
   <!-- like Maps, the review list does not exist until the Reviews tab is opened -->
-  <div id="reviewsPanel"></div>
+  <div id="reviewsPanel" ${lazyBelowFold ? 'style="height:700px;overflow-y:auto"' : ''}></div>
   <div role="dialog" id="signin" style="display:none">
     <p>Sign-in to get the best of Google Maps</p>
     <button id="dismiss">Dismiss</button><button>Sign in</button>
@@ -80,6 +90,7 @@ export function placeHtml({
   <script>
     const mode = ${JSON.stringify(sort)};
     const PAGE = ${JSON.stringify(pageSize)};
+    const LAZY = ${JSON.stringify(lazyBelowFold)};
     const PANEL = ${JSON.stringify(panelInner)};
     let ordered = ${JSON.stringify(data)};
     let shown = PAGE > 0 ? PAGE : ordered.length;
@@ -87,6 +98,11 @@ export function placeHtml({
     function render() {
       const list = document.getElementById('list');
       if (!list) return;
+      if (LAZY) {
+        const panel = document.getElementById('reviewsPanel');
+        // Cards exist only once the panel has been scrolled near them.
+        if (panel.scrollTop + panel.clientHeight < 1450) { list.innerHTML = ''; return; }
+      }
       list.innerHTML = ordered.slice(0, shown).map((r) =>
         '<div class="jftiEf fontBodyMedium" data-review-id="' + r.id + '">' +
         '<button aria-label="Actions" data-review-id="' + r.id + '"></button>' +
@@ -97,6 +113,7 @@ export function placeHtml({
     }
     function mount() {
       document.getElementById('reviewsPanel').innerHTML = PANEL;
+      if (LAZY) document.getElementById('reviewsPanel').addEventListener('scroll', render);
       render();
       document.getElementById('list').addEventListener('scroll', (e) => {
         const el = e.target;
@@ -111,6 +128,8 @@ export function placeHtml({
     document.addEventListener('click', (e) => {
       const t = e.target;
       if (t.closest('#reviewsTab')) {
+        t.closest('#reviewsTab').setAttribute('aria-selected', 'true');
+        const ov = document.getElementById('overview'); if (ov) ov.style.display = 'none';
         mount();
       } else if (t.closest('#sort')) {
         if (mode === 'signin') document.getElementById('signin').style.display = 'block';
@@ -127,8 +146,9 @@ export function placeHtml({
         else if (by === 'newest') ordered = base.slice().sort((a, b) => a.age - b.age);
         else ordered = base.slice();
         shown = PAGE > 0 ? PAGE : ordered.length;
+        if (LAZY) document.getElementById('reviewsPanel').scrollTop = 0; // back to the top: list empties
         render();
-        document.getElementById('list').scrollTop = 0;
+        if (!LAZY) document.getElementById('list').scrollTop = 0;
       }
     });
   </script></body></html>`;

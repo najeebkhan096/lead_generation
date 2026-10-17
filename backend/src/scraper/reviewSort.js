@@ -175,7 +175,9 @@ export async function readReviewCards(page, { limit = 60 } = {}) {
   return page.evaluate(({ sel, max }) => {
     const all = Array.from(document.querySelectorAll(sel));
     // Top-level cards only: a card contains several nested data-review-id nodes.
-    const roots = all.filter((el) => !el.parentElement?.closest(sel));
+    // Only visible ones: hidden leftovers (e.g. review snippets from another
+    // tab) are not part of the review list.
+    const roots = all.filter((el) => !el.parentElement?.closest(sel) && el.getClientRects().length > 0);
     const seen = new Set();
     const out = [];
     for (const root of roots) {
@@ -233,19 +235,36 @@ export async function readOneStarCount(page) {
   }
 }
 
-/** Clicks the place's "Reviews" tab (unless its reviews are already showing). */
+/**
+ * Opens the place's "Reviews" tab and waits for the review list.
+ *
+ * Whether it is already open is read from the tab's own selected state, not
+ * from whether review elements exist: the Overview tab shows review snippets
+ * that carry the same attributes, so mistaking them for the list left the
+ * Overview open and the sort acting on the wrong panel.
+ */
 export async function openReviewsPanel(page) {
   try {
-    if (await page.locator(CARD_SELECTOR).count()) return { opened: true };
-
     let tab = page.getByRole('tab', { name: /reviews/i }).first();
+    // The tabs appear a moment after the title on a heavy page.
+    await tab.waitFor({ state: 'attached', timeout: 8000 }).catch(() => {});
     if (!(await tab.count())) {
       tab = page.locator('button[role="tab"], .hh706e button').filter({ hasText: /reviews/i }).first();
     }
-    if (!(await tab.count())) return { opened: false };
 
-    await tab.click({ timeout: 4000 });
-    await page.waitForSelector(CARD_SELECTOR, { state: 'attached', timeout: 5000 }).catch(() => {});
+    if (!(await tab.count())) {
+      // No tab UI at all: treat review cards on the page as the list.
+      return { opened: (await page.locator(CARD_SELECTOR).count()) > 0 };
+    }
+
+    if ((await tab.getAttribute('aria-selected').catch(() => null)) !== 'true') {
+      await tab.click({ timeout: 4000 });
+    }
+    // Ready once review cards are actually on screen. The Sort control appears
+    // before the list has loaded, and choosing a sort mid-load leaves the list
+    // empty, so waiting for the control alone is not enough. (A business with
+    // no reviews never shows a card; the wait then just times out.)
+    await renderReviewList(page);
     return { opened: true };
   } catch {
     return { opened: false };
@@ -253,29 +272,54 @@ export async function openReviewsPanel(page) {
 }
 
 /**
- * Scrolls the reviews list itself. A wheel event goes to whatever is under the
- * pointer, which is often the map, so find the scrollable ancestor of the
- * first card and scroll that.
+ * Scrolls the reviews panel. A wheel event goes to whatever is under the
+ * pointer, which is often the map, so find the panel's own scrollable element:
+ * the nearest scrollable ancestor of a review card or, before any card has
+ * rendered, of the Sort control.
+ *
+ * `by` = a number of pixels to move down, or omitted to jump to the bottom
+ * (which is what loads the next batch of reviews).
  */
-export async function scrollReviewPanel(page, times = 3) {
+export async function scrollReviewPanel(page, times = 3, { by } = {}) {
   for (let i = 0; i < times; i++) {
     const scrolled = await page
-      .evaluate((sel) => {
-        let el = document.querySelector(sel);
+      .evaluate(({ sel, distance }) => {
+        const anchor =
+          Array.from(document.querySelectorAll(sel)).find((e) => e.getClientRects().length) ||
+          document.querySelector('button[aria-label*="Sort" i]');
+        let el = anchor;
         while (el && el !== document.body) {
           const oy = getComputedStyle(el).overflowY;
           if ((oy === 'auto' || oy === 'scroll') && el.scrollHeight > el.clientHeight) {
-            el.scrollTop = el.scrollHeight;
+            el.scrollTop = distance == null ? el.scrollHeight : el.scrollTop + distance;
             return true;
           }
           el = el.parentElement;
         }
         return false;
-      }, CARD_SELECTOR)
+      }, { sel: CARD_SELECTOR, distance: by ?? null })
       .catch(() => false);
-    if (!scrolled) await page.mouse.wheel(0, 2000).catch(() => {});
+    if (!scrolled) await page.mouse.wheel(0, by ?? 2000).catch(() => {});
     await page.waitForTimeout(600);
   }
+}
+
+/**
+ * Makes the review list render. Maps draws review cards only once they are
+ * near the visible area, and on a place with a tall header (restaurants: order
+ * online, rating bars, an AI summary, topic chips) the first card starts far
+ * below it, so nothing renders until the panel is scrolled. Scrolls down a bit
+ * at a time until a card is visible (or it gives up).
+ */
+export async function renderReviewList(page, { ms = PANEL_READY_MS } = {}) {
+  const started = Date.now();
+  while (Date.now() - started < ms) {
+    if ((await readReviewCards(page, { limit: 3 })).length > 0) return true;
+    await page.waitForTimeout(500);
+    // Give the list a moment to appear on its own, then start scrolling for it.
+    if (Date.now() - started > 1200) await scrollReviewPanel(page, 1, { by: 500 });
+  }
+  return (await readReviewCards(page, { limit: 3 })).length > 0;
 }
 
 function sortControl(page) {
@@ -284,6 +328,12 @@ function sortControl(page) {
     .or(page.locator('button[aria-label*="Sort" i], button.g67oK'))
     .first();
 }
+
+/** How long to wait for the first review cards after opening the Reviews tab. */
+const PANEL_READY_MS = 12000;
+
+/** How long to wait for the list to settle into the chosen order. */
+const SORT_SETTLE_MS = 7000;
 
 const OPTION_NAME = { lowest: /lowest/i, newest: /newest/i };
 
@@ -309,6 +359,9 @@ function sortOption(page, order) {
 export async function sortReviews(page, { order = 'lowest', oneStarCount = null, now = new Date() } = {}) {
   const done = (status, detail, cards = []) => {
     recordSort(status);
+    if (process.env.MAPS_DEBUG) {
+      console.error(`[maps-debug] sort ${order}: ${status} - ${detail} | stars ${JSON.stringify(cards.map((c) => c.stars))} | dates ${JSON.stringify(cards.map((c) => c.date))}`);
+    }
     if (status === SORT_STATUS.SIGN_IN_REQUIRED) warnSignInOnce();
     return {
       ok: isSortSuccess(status),
@@ -350,17 +403,35 @@ export async function sortReviews(page, { order = 'lowest', oneStarCount = null,
     }
     await option.click({ timeout: 3000 });
 
-    // Give the list time to reorder, then prove it did.
-    await page.waitForTimeout(1500);
-    if (await detectSignInPrompt(page)) {
-      await dismissSignInPrompt(page);
-      return done(SORT_STATUS.SIGN_IN_REQUIRED, 'Google asked to sign in after choosing a sort order');
-    }
-    const cards = await readReviewCards(page, { limit: 12 });
-    const check =
+    // The list reorders a moment after the choice (longer on a heavy, signed-in
+    // page). Poll until the order is confirmed rather than judging one early
+    // snapshot, and fail only if it still is not after the deadline.
+    const verify = (cards) =>
       order === 'newest'
         ? verifyNewestFirst(cards.map((c) => c.date), now)
         : verifyLowestFirst(cards.map((c) => c.stars), oneStarCount);
+    let cards = [];
+    let check = { verified: false, reason: 'no_reviews_visible' };
+    const deadline = Date.now() + SORT_SETTLE_MS;
+    do {
+      await page.waitForTimeout(900);
+      if (await detectSignInPrompt(page)) {
+        await dismissSignInPrompt(page);
+        return done(SORT_STATUS.SIGN_IN_REQUIRED, 'Google asked to sign in after choosing a sort order');
+      }
+      cards = await readReviewCards(page, { limit: 12 });
+      if (!cards.length) {
+        // Re-sorting redraws the list; it may again sit below the fold.
+        await scrollReviewPanel(page, 1, { by: 500 });
+        cards = await readReviewCards(page, { limit: 12 });
+      }
+      if (process.env.MAPS_DEBUG) {
+        const dom = await page.evaluate(() => ({ byId: document.querySelectorAll('[data-review-id]').length, visById: Array.from(document.querySelectorAll('[data-review-id]')).filter((e) => e.getClientRects().length).length, jfti: document.querySelectorAll('div.jftiEf').length, visJfti: Array.from(document.querySelectorAll('div.jftiEf')).filter((e) => e.getClientRects().length).length, w: innerWidth, h: innerHeight })).catch(() => null);
+        console.error(`[maps-debug]   poll: cards ${cards.length} | dom ${JSON.stringify(dom)}`);
+      }
+      check = verify(cards);
+    } while (!check.verified && Date.now() < deadline);
+
     return check.verified
       ? done(SORT_STATUS.OK, `verified ${order === 'newest' ? 'newest' : 'lowest-rating'}-first`, cards)
       : done(SORT_STATUS.NOT_VERIFIED, `order not confirmed (${check.reason})`, cards);

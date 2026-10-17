@@ -143,7 +143,7 @@ class _GoogleSessionCardState extends State<GoogleSessionCard> {
       body = _error ?? 'Is the backend running?';
     } else if (waiting) {
       title = 'Sign in in the Google window';
-      body = 'A Google window opened on the computer running the backend. Sign in there with your dedicated account, then close the window. This page updates by itself.';
+      body = 'A Chrome window opened on the computer running the backend. Sign in there with the Google account to use. The window closes by itself once you are signed in, and this page updates on its own.';
     } else if (inUse) {
       title = 'A scan is using the Google account';
       body = 'To sign in again, stop the scan first.';

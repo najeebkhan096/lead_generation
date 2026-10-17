@@ -118,3 +118,12 @@ domTest('no Reviews tab: nothing is invented and the status says why', async (pa
   assert.equal(access.status, SORT_STATUS.REVIEWS_TAB_MISSING);
   assert.equal(access.complete, false);
 });
+
+domTest('a restaurant-style page (tall header, lazily drawn cards) is read completely', async (page) => {
+  const reviews = [...manyReviews(18, { stars: 1, date: '1 week ago', prefix: 'One' }), ...manyReviews(12, { stars: 5, prefix: 'Five' })];
+  await page.setContent(placeHtml({ sort: 'works', lazyBelowFold: true, reviews, histogram: { 1: 18, 5: 12 } }));
+  const { reviews: found, access } = await collectOneStarReviews(page, { totalReviews: 30, dateRange: '28' });
+  assert.equal(access.sorted, true);
+  assert.equal(access.complete, true);
+  assert.equal(found.length, 18);
+});

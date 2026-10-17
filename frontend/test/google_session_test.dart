@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lead_generation_app/domain/entities/coverage_option.dart';
 import 'package:lead_generation_app/domain/entities/maps_session_status.dart';
 import 'package:lead_generation_app/domain/entities/state_city_scan_snapshot.dart';
 import 'package:lead_generation_app/presentation/widgets/google_session_card.dart';
@@ -41,5 +42,39 @@ void main() {
     expect(snap.needsRecheck, 7);
     expect(StateCityScanSnapshot.fromJson({'status': 'done'}).stoppedForSignIn, isFalse);
     expect(StateCityScanSnapshot.fromJson({'status': 'done'}).needsRecheck, 0);
+  });
+
+  test('a scan paused by Google\'s check carries when it began and when it will look again', () {
+    final snap = StateCityScanSnapshot.fromJson({
+      'active': true,
+      'status': 'running',
+      'paused': true,
+      'blocked': {'since': 1792000000000, 'retryAt': 1792000600000, 'checks': 2},
+    });
+    expect(snap.blocked, isNotNull);
+    expect(snap.blocked!.checks, 2);
+    expect(snap.blocked!.retryAt!.difference(snap.blocked!.since), const Duration(minutes: 10));
+    expect(StateCityScanSnapshot.fromJson({'status': 'running'}).blocked, isNull);
+  });
+
+  test('coverage tiers and the scan\'s pace and skip counts are read from the backend', () {
+    final option = CoverageOption.fromJson({'tier': 'extended', 'label': 'Extended', 'searches': 1678, 'businesses': 28190, 'hours': 23.5});
+    expect(option.searches, 1678);
+    expect(option.hours, 23.5);
+
+    final snap = StateCityScanSnapshot.fromJson({
+      'status': 'running',
+      'coverage': 'extended',
+      'pace': {'perMinute': 14, 'max': 20},
+      'categories': [
+        {'category': 'Auto', 'duplicatesSkipped': 40, 'prefiltered': 12},
+        {'category': 'Cafe', 'duplicatesSkipped': 8, 'prefiltered': 0},
+      ],
+    });
+    expect(snap.coverage, 'extended');
+    expect(snap.pacePerMinute, 14);
+    expect(snap.paceMax, 20);
+    expect(snap.skippedWithoutOpening, 60);
+    expect(StateCityScanSnapshot.fromJson({'status': 'running'}).pacePerMinute, isNull);
   });
 }

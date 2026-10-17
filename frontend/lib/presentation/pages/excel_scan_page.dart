@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/constants/business_categories.dart';
 import '../../core/theme/app_theme.dart';
+import '../../domain/entities/coverage_option.dart';
 import '../../domain/entities/maps_session_status.dart';
 import '../../domain/repositories/lead_repository.dart';
 import '../widgets/google_session_card.dart';
@@ -29,7 +30,9 @@ class _ExcelScanPageState extends State<ExcelScanPage> {
   final List<String> _targetServices = [];
 
   String _dateRange = '365';
-  int _concurrency = 10;
+  int _concurrency = 5;
+  String _coverage = 'extended';
+  List<CoverageOption> _coverageOptions = const [];
   bool _starting = false;
   StateCityScanSnapshot? _existingJob;
   MapsSessionStatus? _session;
@@ -46,6 +49,16 @@ class _ExcelScanPageState extends State<ExcelScanPage> {
   void initState() {
     super.initState();
     _checkExistingJob();
+    _loadCoverage();
+  }
+
+  Future<void> _loadCoverage() async {
+    try {
+      final options = await context.read<LeadRepository>().getScanCoverage();
+      if (mounted) setState(() => _coverageOptions = options);
+    } catch (_) {
+      // The tiers still work without the size estimates.
+    }
   }
 
   // Detects a scan already running on the backend (started earlier, or
@@ -104,6 +117,7 @@ class _ExcelScanPageState extends State<ExcelScanPage> {
             categories: List.from(_targetServices),
             concurrency: _concurrency,
             dateRange: _dateRange,
+            coverage: _coverage,
           );
       if (!mounted) return;
       context.pushReplacement('/scan-progress');
@@ -319,6 +333,15 @@ class _ExcelScanPageState extends State<ExcelScanPage> {
                     ),
                     const SizedBox(height: 16),
                   ],
+                  Text('Coverage', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontSize: 14.5)),
+                  const SizedBox(height: 8),
+                  _CoveragePicker(
+                    options: _coverageOptions,
+                    selected: _coverage,
+                    enabled: !_starting,
+                    onSelected: (tier) => setState(() => _coverage = tier),
+                  ),
+                  const SizedBox(height: 20),
                   Text('Date range', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontSize: 14.5)),
                   const SizedBox(height: 8),
                   DropdownButtonFormField<String>(
@@ -346,9 +369,9 @@ class _ExcelScanPageState extends State<ExcelScanPage> {
                         Expanded(
                           child: Slider(
                             value: _concurrency.toDouble(),
-                            min: 2,
-                            max: 10,
-                            divisions: 8,
+                            min: 1,
+                            max: 6,
+                            divisions: 5,
                             activeColor: AppTheme.accent500,
                             label: '$_concurrency workers',
                             onChanged: _starting ? null : (v) => setState(() => _concurrency = v.round()),
@@ -365,7 +388,14 @@ class _ExcelScanPageState extends State<ExcelScanPage> {
                       ],
                     ),
                   ),
-                  const SizedBox(height: 28),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'More workers is not faster past about 6: measured here, 6 workers read ~31 businesses a minute, '
+                    'but 10 collapsed to ~4 and made Google show its "unusual traffic" check, which stops the scan. '
+                    '5 is the sweet spot.',
+                    style: TextStyle(fontSize: 12, height: 1.4, color: AppTheme.faint),
+                  ),
+                  const SizedBox(height: 24),
                   ElevatedButton(
                     onPressed: _starting || googleSessionBlocksScan(_session) ? null : _submit,
                     child: _starting
@@ -386,3 +416,85 @@ class _ExcelScanPageState extends State<ExcelScanPage> {
   }
 }
 
+/// Standard / Extended / Maximum: how many places the scan searches, and what
+/// that means in businesses and hours. A bigger tier finds more leads and takes
+/// longer; the scan paces itself to what Google tolerates, so the hours are an
+/// estimate of an unbroken run.
+class _CoveragePicker extends StatelessWidget {
+  const _CoveragePicker({required this.options, required this.selected, required this.enabled, required this.onSelected});
+
+  final List<CoverageOption> options;
+  final String selected;
+  final bool enabled;
+  final ValueChanged<String> onSelected;
+
+  static const _blurb = {
+    'standard': 'The 10 largest cities in every state.',
+    'extended': 'Every city and town of 25,000+ people. The most leads per hour.',
+    'maximum': 'Every place of 5,000+ people, plus a grid of search points across large cities, which Google caps at ~120 results per search.',
+  };
+
+  String _duration(double hours) {
+    if (hours < 1) return 'under an hour';
+    if (hours < 48) return 'about ${hours.round()} hours';
+    return 'about ${(hours / 24).toStringAsFixed(1)} days';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tiers = options.isNotEmpty
+        ? options
+        : const [
+            CoverageOption(tier: 'standard', label: 'Standard', searches: 501, businesses: 0, hours: 0),
+            CoverageOption(tier: 'extended', label: 'Extended', searches: 0, businesses: 0, hours: 0),
+            CoverageOption(tier: 'maximum', label: 'Maximum', searches: 0, businesses: 0, hours: 0),
+          ];
+    return Column(
+      children: [
+        for (final o in tiers)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(AppTheme.radius),
+              onTap: enabled ? () => onSelected(o.tier) : null,
+              child: Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: o.tier == selected ? AppTheme.accent100 : AppTheme.surface,
+                  borderRadius: BorderRadius.circular(AppTheme.radius),
+                  border: Border.all(color: o.tier == selected ? AppTheme.accent500 : AppTheme.neutral200, width: o.tier == selected ? 1.6 : 1),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(o.tier == selected ? AppIcons.shieldCheck : AppIcons.mapPin, size: 18, color: AppTheme.accent700),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            o.tier == 'extended' ? '${o.label} (recommended)' : o.label,
+                            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(_blurb[o.tier] ?? '', style: const TextStyle(fontSize: 12.5, height: 1.35, color: AppTheme.neutral700)),
+                          if (o.searches > 0 && o.hours > 0) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              '${o.searches} searches · ~${o.businesses} businesses to read · ${_duration(o.hours)}',
+                              style: const TextStyle(fontSize: 12, color: AppTheme.faint, fontWeight: FontWeight.w600),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}

@@ -10,6 +10,7 @@ import '../../domain/entities/lead.dart';
 import '../../domain/entities/lead_page.dart';
 import '../../domain/entities/validation_start.dart';
 import '../../domain/entities/multi_search_snapshot.dart';
+import '../../domain/entities/coverage_option.dart';
 import '../../domain/entities/maps_session_status.dart';
 import '../../domain/entities/state_city_scan_snapshot.dart';
 import '../../domain/entities/excel_archive.dart';
@@ -388,9 +389,22 @@ class LeadRemoteDataSource {
     }
   }
 
+  /// The scan's coverage tiers with their rough size and time.
+  Future<List<CoverageOption>> getScanCoverage() async {
+    final response = await _client.get(_uri(ApiConstants.stateScanCoverage)).timeout(const Duration(seconds: 20));
+    final body = _tryDecode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['error'] ?? 'Could not load the coverage options');
+    }
+    return (body['tiers'] as List<dynamic>? ?? [])
+        .map((e) => CoverageOption.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
   Future<void> startStateScan({
     required List<String> categories,
-    int concurrency = 10,
+    int concurrency = 5,
+    String coverage = 'standard',
     String dateRange = '30',
     int maxResultsPerCity = 160,
     bool analyze = false,
@@ -405,6 +419,7 @@ class LeadRemoteDataSource {
             'dateRange': dateRange,
             'maxResultsPerCity': maxResultsPerCity,
             'analyze': analyze,
+            'coverage': coverage,
           }),
         )
         .timeout(const Duration(seconds: 30));

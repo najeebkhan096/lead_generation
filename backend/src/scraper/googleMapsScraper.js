@@ -5,6 +5,9 @@
 
 import { chromium } from 'playwright';
 import { getSessionConfig, profileExists, launchSessionBrowser, probeSignedIn } from './mapsSession.js';
+import { GoogleBlockedError, throwIfBlocked } from './googleBlock.js';
+import { placeIdFromHref } from '../lib/placeId.js';
+import { sharedPace } from './rateLimit.js';
 import {
   SORT_STATUS,
   isSortSuccess,
@@ -45,9 +48,29 @@ function glFor(country) {
   return GL_BY_COUNTRY[String(country || 'US').toUpperCase()] || 'us';
 }
 
-function buildSearchUrl(category, location, country) {
+function buildSearchUrl(category, location, country, center) {
+  if (center) {
+    // Search the map around a point (a grid cell of a large city) instead of by place name.
+    const zoom = center.zoom || 14;
+    return `https://www.google.com/maps/search/${encodeURIComponent(category)}/@${center.lat},${center.lng},${zoom}z?hl=en&gl=${glFor(country)}`;
+  }
   const query = encodeURIComponent(`${category} in ${location}`);
   return `https://www.google.com/maps/search/${query}?hl=en&gl=${glFor(country)}`;
+}
+
+/**
+ * True when a business PROVABLY has no 1-star review, from the rating and
+ * review count Google shows beside it in the result list, so its page need not
+ * be opened. The displayed rating r is the average, rounded to 0.1, so the true
+ * average is at least r - 0.05; with k one-star reviews among n the average is
+ * at most 5 - 4k/n. A 1-star review is therefore possible only if
+ * n * (5 - r + 0.05) >= 4. Exact, not a guess: nothing it skips could have
+ * held a lead. (Unknown rating or count: never skipped.)
+ */
+export function cannotHaveOneStar(rating, reviews) {
+  if (reviews === 0) return true;
+  if (!Number.isFinite(rating) || !Number.isFinite(reviews) || reviews < 0) return false;
+  return reviews * (5 - rating + 0.05) < 4;
 }
 
 function withEnglish(url, country) {
@@ -60,6 +83,20 @@ function withEnglish(url, country) {
   } catch {
     return url;
   }
+}
+
+export { placeIdFromHref };
+
+/** Rejects as soon as `shouldStop()` turns true, so a cancel is not stuck behind a slow page. */
+function raceWithCancel(promise, shouldStop) {
+  if (!shouldStop) return promise;
+  let timer;
+  const cancelled = new Promise((_, reject) => {
+    timer = setInterval(() => {
+      if (shouldStop()) reject(new Error('cancelled'));
+    }, 500);
+  });
+  return Promise.race([promise, cancelled]).finally(() => clearInterval(timer));
 }
 
 async function withTimeout(promise, ms, label = 'operation') {
@@ -97,7 +134,7 @@ export const CONTEXT_OPTIONS = {
 
 // A listing gets this long (reading every review in the window can take a
 // while on a busy place) and is tried this many times before it is given up on.
-const PLACE_TIMEOUT_MS = 150000;
+const PLACE_TIMEOUT_MS = 70000;
 const PLACE_ATTEMPTS = 2;
 
 // How many scraper browsers currently hold the saved profile (a profile can
@@ -136,6 +173,8 @@ export async function launchBrowser() {
           args: BROWSER_ARGS,
           contextOptions: CONTEXT_OPTIONS,
           chromePath: cfg.chromePath || undefined,
+          // MAPS_HEADFUL=true shows the Chrome window while scanning.
+          headless: !/^(1|true|yes|on)$/i.test(process.env.MAPS_HEADFUL || ''),
         });
         setSessionMode(true);
         openSessionBrowsers += 1;
@@ -242,27 +281,69 @@ async function scrollResultsFeed(page, { maxScrolls = 15, stallLimit = 2 } = {})
  * @param {string} [opts.country] - country code (US/UK/DE/CA) so results
  *   are biased toward that country instead of always the US.
  */
-export async function searchBusinesses(category, location, { maxResults = 10, onProgress, browser: sharedBrowser, country = 'US', shouldStop, dateRange = '28' } = {}) {
+/**
+ * Searches Google Maps for `category` in `location` and reads each listing.
+ *
+ * The returned array carries (non-enumerable) facts about the search itself:
+ *   searchStatus      'ok' | 'no_results' (Google genuinely found nothing) |
+ *                     'feed_missing' (no result list appeared: a layout change
+ *                     or a page that is not results, NOT an empty city)
+ *   listingsFound     listings in the result list
+ *   duplicatesSkipped listings already read for another city (`seenPlaceIds`)
+ *   skippedListings   listings that could not be opened even after retrying
+ * Throws GoogleBlockedError when Google shows its "unusual traffic" check.
+ *
+ * @param {Set<string>} [seenPlaceIds] place ids already read in this scan: a
+ *   business listed by several neighbouring cities is read once.
+ */
+export async function searchBusinesses(category, location, {
+  maxResults = 10,
+  onProgress,
+  browser: sharedBrowser,
+  country = 'US',
+  shouldStop,
+  dateRange = '28',
+  seenPlaceIds,
+  center,
+  feedTimeoutMs = 15000,
+  pace = sharedPace(),
+} = {}) {
   const ownsBrowser = !sharedBrowser;
   const browser = sharedBrowser || (await launchBrowser());
   const context = await createContext(browser);
   const page = await context.newPage();
   const businesses = [];
+  const meta = { searchStatus: 'ok', listingsFound: 0, duplicatesSkipped: 0, skippedListings: 0, prefiltered: 0 };
 
   try {
     onProgress?.(`Opening Google Maps for "${category}" in ${location}...`);
-    await page.goto(buildSearchUrl(category, location, country), {
+    await page.goto(buildSearchUrl(category, location, country, center), {
       waitUntil: 'domcontentloaded',
       timeout: 60000,
     });
     await page.waitForTimeout(2500);
+    await throwIfBlocked(page);
     await dismissConsent(page);
 
     try {
       // Wait for any listing-like link or the feed container
-      await page.waitForSelector('a[href*="/maps/place"], [role="feed"], .m67qEc', { timeout: 25000 });
+      await page.waitForSelector('a[href*="/maps/place"], [role="feed"], .m67qEc', { timeout: feedTimeoutMs });
     } catch {
-      onProgress?.('No results found. Google might be showing a different layout or blocking the request.');
+      // Not an empty city: no result list appeared at all. It may be Google's
+      // check (then this throws), otherwise a layout change or a slow page.
+      await throwIfBlocked(page);
+      // Google says so in words when a search genuinely has nothing.
+      const saysNothing = await page
+        .getByText(/can.?t find|no results found|did not match any/i)
+        .first()
+        .isVisible({ timeout: 500 })
+        .catch(() => false);
+      meta.searchStatus = saysNothing ? 'no_results' : 'feed_missing';
+      onProgress?.(
+        saysNothing
+          ? 'Google found no results for this search.'
+          : 'Google returned no result list for this search (not the same as "no results").'
+      );
       return businesses;
     }
 
@@ -273,6 +354,22 @@ export async function searchBusinesses(category, location, { maxResults = 10, on
     const listings = await page.evaluate(() => {
       const seen = new Set();
       const out = [];
+      const num = (t) => {
+        const n = Number(String(t).replace(/[^\d.]/g, ''));
+        return Number.isFinite(n) && String(t).trim() !== '' ? n : null;
+      };
+      // The rating and review count Google shows on the result card.
+      const cardFacts = (a) => {
+        const card = a.closest('[role="article"]') || a.parentElement?.parentElement || a.parentElement;
+        if (!card) return { rating: null, reviews: null };
+        for (const el of card.querySelectorAll('[aria-label]')) {
+          const m = (el.getAttribute('aria-label') || '').match(/(\d(?:\.\d)?)\s*stars?\s+([\d,]+)\s*reviews?/i);
+          if (m) return { rating: Number(m[1]), reviews: Number(m[2].replace(/,/g, '')) };
+        }
+        const r = card.querySelector('.MW4etd');
+        const c = card.querySelector('.UY7F9');
+        return { rating: r ? num(r.textContent) : null, reviews: c ? num(c.textContent) : null };
+      };
       // Look for all links that look like place listings
       const links = Array.from(document.querySelectorAll('a[href*="/maps/place"]'));
       for (const a of links) {
@@ -283,16 +380,43 @@ export async function searchBusinesses(category, location, { maxResults = 10, on
         const ariaLabel = a.getAttribute('aria-label');
         if (nameEl || ariaLabel) {
           seen.add(href);
-          out.push({ href, name: (nameEl?.textContent || ariaLabel || '').trim() });
+          out.push({ href, name: (nameEl?.textContent || ariaLabel || '').trim(), ...cardFacts(a) });
         }
       }
       return out;
     });
 
+    meta.listingsFound = listings.length;
     onProgress?.(`Found ${listings.length} potential businesses.`);
-    if (!listings.length) return businesses;
+    if (!listings.length) {
+      // A result list was there but empty: Google genuinely found nothing.
+      meta.searchStatus = (await page.locator('[role="feed"]').count()) ? 'no_results' : 'feed_missing';
+      return businesses;
+    }
 
-    const limit = Math.min(listings.length, maxResults);
+    // A business listed by several neighbouring cities is read once: claim each
+    // place id now, so concurrent cities do not both read it.
+    const fresh = [];
+    for (const l of listings) {
+      // Provably no 1-star review (from the card's rating and count): nothing to read.
+      if (cannotHaveOneStar(l.rating, l.reviews)) {
+        meta.prefiltered += 1;
+        continue;
+      }
+      const id = placeIdFromHref(l.href);
+      if (id && seenPlaceIds) {
+        if (seenPlaceIds.has(id)) {
+          meta.duplicatesSkipped += 1;
+          continue;
+        }
+        seenPlaceIds.add(id);
+      }
+      fresh.push({ ...l, id });
+    }
+    if (meta.duplicatesSkipped) onProgress?.(`${meta.duplicatesSkipped} already read for another city.`);
+    if (meta.prefiltered) onProgress?.(`${meta.prefiltered} cannot have a 1-star review (from their rating and review count).`);
+
+    const limit = Math.min(fresh.length, maxResults);
     let skippedListings = 0;
 
     for (let i = 0; i < limit; i++) {
@@ -305,13 +429,15 @@ export async function searchBusinesses(category, location, { maxResults = 10, on
         onProgress?.('Stopped — cancelled.');
         break;
       }
-      const listingName = listings[i].name;
+      const listingName = fresh[i].name;
       let business = null;
       let lastError = null;
       // A listing that times out or fails once is tried again on a fresh page;
       // silently dropping it would be a business (and its reviews) missed.
       for (let attempt = 1; attempt <= PLACE_ATTEMPTS && !business; attempt++) {
         if (shouldStop?.()) break;
+        // One shared pace for every worker: stay under the requests-per-minute budget.
+        await pace.acquire();
         const placePage = await context.newPage();
         try {
           onProgress?.(
@@ -323,10 +449,12 @@ export async function searchBusinesses(category, location, { maxResults = 10, on
           // as an unhandled promise holding Playwright Page/Frame/CDP-session
           // references, which adds up across a multi-hour, thousands-of
           // -listings scan.
-          const scrapePromise = scrapeOnePlace(placePage, listings[i].href, category, location, country, dateRange);
+          const scrapePromise = scrapeOnePlace(placePage, fresh[i].href, category, location, country, dateRange);
           scrapePromise.catch(() => {});
-          business = await withTimeout(scrapePromise, PLACE_TIMEOUT_MS, `place ${i + 1}`);
+          business = await raceWithCancel(withTimeout(scrapePromise, PLACE_TIMEOUT_MS, `place ${i + 1}`), shouldStop);
         } catch (err) {
+          // Google's check is not a failed listing: stop here, do not retry through it.
+          if (err instanceof GoogleBlockedError) throw err;
           lastError = err;
         } finally {
           await placePage.close().catch(() => {});
@@ -342,13 +470,18 @@ export async function searchBusinesses(category, location, { maxResults = 10, on
         );
       } else if (!shouldStop?.()) {
         skippedListings += 1;
+        // Let another city's search pick it up rather than lose it for good.
+        if (fresh[i].id && seenPlaceIds) seenPlaceIds.delete(fresh[i].id);
         onProgress?.(`Skipped listing ${i + 1}${listingName ? ` (${listingName})` : ''}: ${lastError?.message || 'no data'}`);
       }
     }
     // How many listings could not be read even after retrying, so the scan
     // can report them instead of presenting the city as fully covered.
-    Object.defineProperty(businesses, 'skippedListings', { value: skippedListings, enumerable: false });
+    meta.skippedListings = skippedListings;
   } finally {
+    for (const [key, value] of Object.entries(meta)) {
+      Object.defineProperty(businesses, key, { value, enumerable: false, configurable: true });
+    }
     await context.close().catch(() => {});
     if (ownsBrowser) await browser.close();
   }
@@ -358,7 +491,12 @@ export async function searchBusinesses(category, location, { maxResults = 10, on
 
 async function scrapeOnePlace(page, href, category, location, country, dateRange) {
   await page.goto(withEnglish(href, country), { waitUntil: 'domcontentloaded', timeout: 30000 });
-  await page.waitForTimeout(1500);
+  await throwIfBlocked(page);
+  // Wait for the place's title to actually render rather than a fixed pause:
+  // a heavier page (signed in) can take several seconds, and reading it too
+  // early finds no name and drops the business.
+  await page.waitForSelector('h1', { state: 'attached', timeout: 15000 }).catch(() => {});
+  await page.waitForTimeout(800);
   await dismissConsent(page);
   return extractBusinessFromPlacePage(page, category, location, country, dateRange);
 }
@@ -512,6 +650,30 @@ async function extractBusinessFromPlacePage(page, category, location, country, d
 }
 
 /**
+ * One light search to learn whether Google is currently serving results:
+ * 'ok', 'blocked' (its "unusual traffic" check is showing) or 'unknown'.
+ * Used before a scan starts and to decide when a paused scan may continue.
+ */
+export async function probeGoogleMaps(browser) {
+  const context = await createContext(browser);
+  const page = await context.newPage();
+  try {
+    await page.goto(buildSearchUrl('restaurants', 'New York, NY', 'US'), { waitUntil: 'domcontentloaded', timeout: 45000 });
+    await page.waitForTimeout(3000);
+    try {
+      await throwIfBlocked(page);
+    } catch (err) {
+      if (err instanceof GoogleBlockedError) return 'blocked';
+    }
+    return (await page.locator('[role="feed"], a[href*="/maps/place"]').count()) ? 'ok' : 'unknown';
+  } catch {
+    return 'unknown';
+  } finally {
+    await page.close().catch(() => {});
+  }
+}
+
+/**
  * A business with this many 1-star reviews or fewer is read "Lowest rating"
  * first: every 1-star review sits at the top, so reading them all is quick.
  * Busier ones are read "Newest" first, back to the start of the date window.
@@ -551,6 +713,11 @@ export async function collectOneStarReviews(page, { totalReviews = null, dateRan
     }
 
     const oneStarCount = await readOneStarCount(page);
+    if (process.env.MAPS_DEBUG) {
+      const pre = await readReviewCards(page, { limit: 60 }).catch(() => []);
+      const tabs = await page.evaluate(() => Array.from(document.querySelectorAll('[role=tab]')).map((t) => (t.getAttribute('aria-label') || '').slice(0, 16) + (t.getAttribute('aria-selected') === 'true' ? '*' : ''))).catch(() => []);
+      console.error(`[maps-debug] before sort: opened ${JSON.stringify(panel)} | 1★ count ${oneStarCount} | visible cards ${pre.length} | tabs ${JSON.stringify(tabs)} | url ${page.url().slice(0, 70)}`);
+    }
     const preferred = oneStarCount != null && oneStarCount <= LOWEST_FIRST_MAX_ONE_STAR ? 'lowest' : 'newest';
     const other = preferred === 'lowest' ? 'newest' : 'lowest';
 

@@ -264,3 +264,30 @@ test('opening a profile that is already open fails clearly instead of hanging', 
     await first.close();
   }
 });
+
+// ---- noticing that a sign-in finished ------------------------------------------------
+
+import { DatabaseSync } from 'node:sqlite';
+import { hasGoogleSignInCookies } from './mapsSession.js';
+
+function profileWithCookies(name, rows) {
+  const dir = path.join(tmp, name);
+  fs.mkdirSync(path.join(dir, 'Default'), { recursive: true });
+  const db = new DatabaseSync(path.join(dir, 'Default', 'Cookies'));
+  db.exec('CREATE TABLE cookies (host_key TEXT, name TEXT, encrypted_value BLOB)');
+  const insert = db.prepare('INSERT INTO cookies VALUES (?, ?, ?)');
+  for (const [host, cookie] of rows) insert.run(host, cookie, Buffer.from('v10secret'));
+  db.close();
+  return dir;
+}
+
+test('a finished sign-in is recognised by Google\'s sign-in cookie names', async () => {
+  const signedIn = profileWithCookies('signed-in', [['.google.com', 'NID'], ['.google.com', 'SID'], ['.google.com', '__Secure-1PSID']]);
+  assert.equal(await hasGoogleSignInCookies(signedIn), true);
+});
+
+test('anonymous Google cookies, other sites\' cookies, or no store at all are not a sign-in', async () => {
+  assert.equal(await hasGoogleSignInCookies(profileWithCookies('anon', [['.google.com', 'NID'], ['.google.com', 'AEC']])), false);
+  assert.equal(await hasGoogleSignInCookies(profileWithCookies('other-site', [['.example.com', 'SID']])), false, 'only Google hosts count');
+  assert.equal(await hasGoogleSignInCookies(path.join(tmp, 'no-store-here')), false);
+});

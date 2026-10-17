@@ -5,6 +5,7 @@ import '../../domain/entities/lead.dart';
 import '../../domain/entities/lead_page.dart';
 import '../../domain/entities/validation_start.dart';
 import '../../domain/entities/multi_search_snapshot.dart';
+import '../../domain/entities/coverage_option.dart';
 import '../../domain/entities/maps_session_status.dart';
 import '../../domain/entities/state_city_scan_snapshot.dart';
 import '../../domain/entities/excel_archive.dart';
@@ -148,12 +149,16 @@ class LeadRepositoryImpl implements LeadRepository {
   Future<void> startMapsLogin() => _remote.startMapsLogin();
 
   @override
+  Future<List<CoverageOption>> getScanCoverage() => _remote.getScanCoverage();
+
+  @override
   Future<void> startStateScan({
     required List<String> categories,
-    int concurrency = 10,
+    int concurrency = 5,
     String dateRange = '30',
     int maxResultsPerCity = 160,
     bool analyze = false,
+    String coverage = 'standard',
   }) =>
       _remote.startStateScan(
         categories: categories,
@@ -161,6 +166,7 @@ class LeadRepositoryImpl implements LeadRepository {
         dateRange: dateRange,
         maxResultsPerCity: maxResultsPerCity,
         analyze: analyze,
+        coverage: coverage,
       );
 
   @override

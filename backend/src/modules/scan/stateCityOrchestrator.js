@@ -20,9 +20,12 @@
  */
 
 import crypto from 'crypto';
-import { launchBrowser, checkBrowserSignedIn } from '../../scraper/googleMapsScraper.js';
+import { launchBrowser, checkBrowserSignedIn, probeGoogleMaps } from '../../scraper/googleMapsScraper.js';
+import { GoogleBlockedError } from '../../scraper/googleBlock.js';
+import { sharedPace, _resetSharedPace } from '../../scraper/rateLimit.js';
+import { buildCoverage, isCoverageTier } from '../../data/usCoverage.js';
+import { completedCitiesFromStates, placeIdsFromLeads, applyResumeProgress, checkpointDue } from './scanProgress.js';
 import { scrapeOneCity } from './leadService.js';
-import { US_STATE_CITIES } from '../../data/usStateCities.js';
 import { Mutex } from '../../lib/asyncMutex.js';
 import { leadsToXlsxBuffer, xlsxBufferToJson, sheetsToLeadsJson } from '../archive/exportService.js';
 import {
@@ -34,9 +37,17 @@ import {
 } from '../archive/excelArchiveStore.js';
 import { describeSortDiagnostics, resetSortDiagnostics } from '../../scraper/reviewSort.js';
 
-const MIN_CONCURRENCY = 2;
-const MAX_CONCURRENCY = 10;
-const DEFAULT_CONCURRENCY = 10;
+// Measured on a 10-core Mac against live Google: throughput rose with workers
+// up to 6 (1 -> 5/min, 3 -> 19/min, 6 -> 31/min, none failing) and collapsed at
+// 10 (4/min, nearly every listing timing out), after which Google showed its
+// "unusual traffic" check. More workers is not faster past the cliff.
+const MIN_CONCURRENCY = 1;
+const MAX_CONCURRENCY = 6;
+const DEFAULT_CONCURRENCY = 5;
+
+/** How long a blocked scan waits before it first checks whether Google is serving results again. */
+const BLOCK_COOLDOWN_MS = Number(process.env.MAPS_BLOCK_COOLDOWN_MINUTES || 10) * 60 * 1000;
+const BLOCK_COOLDOWN_MAX_MS = 60 * 60 * 1000;
 
 /** Tries per city before it is recorded as failed. */
 const CITY_ATTEMPTS = 2;
@@ -74,6 +85,106 @@ async function waitWhilePaused(job) {
   }
 }
 
+/**
+ * Google is showing its "unusual traffic" check. Stop opening pages, say so,
+ * and (once) start a watcher that checks, with growing gaps, whether Google is
+ * serving results again, then resumes the scan by itself. Nothing is retried
+ * through the check and nothing tries to get past it.
+ */
+function enterBlockedPause(job, err) {
+  if (job.blocked) return; // already paused for it
+  job.pace?.noteBlocked?.(); // Google asked for less: find a lower pace
+  job.blocked = { since: Date.now(), retryAt: Date.now() + (job.blockCooldownMs ?? BLOCK_COOLDOWN_MS), checks: 0 };
+  job.paused = true;
+  logActivity(
+    job,
+    `Google is showing its "unusual traffic" check for this network, so the scan is PAUSED. It will check again in ` +
+      `${Math.round((job.blockCooldownMs ?? BLOCK_COOLDOWN_MS) / 60000)} min and continue by itself once Google serves results. ` +
+      'Nothing was lost: the city it was on will be redone. (' + (err?.message || 'blocked').slice(0, 80) + ')',
+    'error'
+  );
+  watchForUnblock(job).catch((e) => logActivity(job, `Block watcher failed: ${e.message}`, 'error'));
+}
+
+async function watchForUnblock(job) {
+  let wait = job.blockCooldownMs ?? BLOCK_COOLDOWN_MS;
+  while (job.blocked && !job.cancelled) {
+    job.blocked.retryAt = Date.now() + wait;
+    // Sleep in short steps so a Cancel is noticed promptly.
+    const until = job.blocked.retryAt;
+    while (Date.now() < until && !job.cancelled) await sleep(Math.min(1000, Math.max(5, until - Date.now())));
+    if (job.cancelled) return;
+
+    job.blocked.checks += 1;
+    const probe = job.probeFn ? await job.probeFn() : await probeGoogleMaps(job.browser);
+    if (probe === 'ok') {
+      logActivity(job, 'Google is serving results again. Scan resumed.');
+      job.blocked = null;
+      job.paused = false;
+      return;
+    }
+    wait = Math.min(Math.round(wait * 1.5), BLOCK_COOLDOWN_MAX_MS);
+    logActivity(job, `Google still shows its check (${probe}). Next look in ${Math.round(wait / 60000) || '<1'} min.`, 'warn');
+  }
+}
+
+/**
+ * A scan can run for a day, so the browser it drives will eventually die (a
+ * crash, the Mac sleeping, memory). If it has, start a new one before the next
+ * city instead of letting every city fail against a dead browser. One restart
+ * at a time, however many workers notice.
+ */
+async function ensureBrowser(job, launch = launchBrowser) {
+  if (job.scrapeLocationFn) return; // tests inject the scraper
+  const b = job.browser;
+  const alive = !b ? false : typeof b.isAlive === 'function' ? b.isAlive() : typeof b.isConnected === 'function' ? b.isConnected() : true;
+  if (alive) return;
+  job.browserRestart ??= (async () => {
+    logActivity(job, 'The scan\'s browser stopped; starting a new one.', 'warn');
+    await b?.close?.().catch(() => {});
+    job.browser = await launch();
+  })().finally(() => {
+    job.browserRestart = null;
+  });
+  await job.browserRestart;
+}
+
+/** Test hook. */
+export { ensureBrowser as _ensureBrowserForTests };
+
+/** A fresh browser between states keeps a very long scan from bloating one Chrome. */
+async function recycleBrowser(job) {
+  if (job.scrapeLocationFn || job.cancelled) return;
+  try {
+    await job.browser?.close?.().catch(() => {});
+    job.browser = await launchBrowser();
+  } catch (err) {
+    logActivity(job, `Could not start a fresh browser (${err.message}); will retry before the next city.`, 'warn');
+    job.browser = null; // ensureBrowser starts one
+  }
+}
+
+/**
+ * After each covered city: save progress now and then, so a restart loses
+ * minutes, not hours. Never blocks a worker and never runs two at once.
+ */
+function noteCityCovered(job, category) {
+  job.pace?.noteHealthy?.();
+  job.checkpoint ??= {};
+  const cp = (job.checkpoint[category] ??= { lastAt: Date.now(), citiesSince: 0, running: false });
+  cp.citiesSince += 1;
+  if (cp.running || !checkpointDue({ now: Date.now(), lastAt: cp.lastAt, citiesSince: cp.citiesSince })) return;
+  if (!job.checkpointFn) return;
+  cp.running = true;
+  Promise.resolve(job.checkpointFn(category))
+    .catch(() => {})
+    .finally(() => {
+      cp.lastAt = Date.now();
+      cp.citiesSince = 0;
+      cp.running = false;
+    });
+}
+
 function newStateRecord(state, cities) {
   return {
     state,
@@ -101,6 +212,10 @@ function newStateRecord(state, cities) {
     // and listings that could not be opened at all (see scrapeOneCity).
     incompleteBusinesses: 0,
     skippedListings: 0,
+    // Listings already read for a neighbouring city (each business is read once).
+    duplicatesSkipped: 0,
+    // Listings whose rating and review count prove they cannot hold a 1-star review.
+    prefiltered: 0,
     // city -> how many times it has been tried (a failed city is retried).
     attempts: {},
     startedAt: null,
@@ -134,9 +249,10 @@ async function scanStateCities(job, category, stateRec) {
       stateRec.activity[city] = 'starting…';
 
       try {
-        const { leads, businessesScraped, reviewIssues, skippedListings } = await scrapeOneCity(
+        await ensureBrowser(job);
+        const { leads, businessesScraped, reviewIssues, skippedListings, duplicatesSkipped, prefiltered } = await scrapeOneCity(
           category,
-          { city, state: stateRec.state },
+          { city, state: stateRec.state, center: job.citySpecs?.[stateRec.state]?.[city] },
           {
             dateRange: job.dateRange,
             maxResults: job.maxResultsPerCity,
@@ -148,8 +264,16 @@ async function scanStateCities(job, category, stateRec) {
             },
             shouldStop: () => job.cancelled,
             scrapeLocationFn: job.scrapeLocationFn,
+            seenPlaceIds: job.seenPlaces?.[category],
           }
         );
+
+        // Cancelled while this city was being read: its results are partial, so
+        // keep none of them and leave the city for a Resume.
+        if (job.cancelled && !job.stoppedReason) {
+          stateRec.pending.unshift(city);
+          return;
+        }
 
         // Google asked to sign in while reading reviews: the session is
         // missing or has expired, so every further business would be read
@@ -173,7 +297,10 @@ async function scanStateCities(job, category, stateRec) {
         stateRec.businessesProcessed += businessesScraped;
         stateRec.incompleteBusinesses += reviewIssues?.incomplete || 0;
         stateRec.skippedListings += skippedListings || 0;
+        stateRec.duplicatesSkipped += duplicatesSkipped || 0;
+        stateRec.prefiltered += prefiltered || 0;
         stateRec.covered.push(city);
+        noteCityCovered(job, category);
         logActivity(
           job,
           `"${category}" · ${stateRec.state} · ${city} — ${leads.length} lead${leads.length === 1 ? '' : 's'} (${stateRec.covered.length + stateRec.failed.length}/${stateRec.citiesTotal} cities)` +
@@ -182,6 +309,22 @@ async function scanStateCities(job, category, stateRec) {
           reviewIssues?.incomplete || skippedListings ? 'warn' : 'info'
         );
       } catch (err) {
+        if (err instanceof GoogleBlockedError || err?.code === 'GOOGLE_BLOCKED') {
+          // Not a failed city: Google asked this network to slow down. Put the
+          // city back, pause every worker, and wait for it to clear.
+          stateRec.pending.unshift(city);
+          enterBlockedPause(job, err);
+          // Wait out the pause (the watcher lifts it), then carry on with the
+          // next city: a worker must survive a block, not end with it.
+          await waitWhilePaused(job);
+          continue;
+        }
+        if (job.cancelled) {
+          // Interrupted by Cancel: not covered and not failed. Back to pending,
+          // so the state is not recorded as done and a Resume redoes the city.
+          stateRec.pending.unshift(city);
+          return;
+        }
         const tried = (stateRec.attempts[city] = (stateRec.attempts[city] || 0) + 1);
         if (tried < CITY_ATTEMPTS && !job.cancelled) {
           stateRec.pending.push(city); // try it again after the others
@@ -267,6 +410,8 @@ async function uploadCategoryArchiveNow(job, category, { isFinal }) {
       targetLeadCount: null,
       analyze: job.analyze,
       concurrency: job.concurrency,
+      coverage: job.coverage,
+      completedCities: completedCitiesFromStates(job.categoryStates[category]),
     });
 
     archive.status = isFinal ? 'done' : 'partial';
@@ -327,6 +472,7 @@ async function runJob(job) {
           fullyCompleted = false;
         }
         await job.archiveMutexes[category].runExclusive(() => uploadCategoryArchiveNow(job, category, { isFinal: false }));
+        await recycleBrowser(job);
       }
 
       job.categoryStatus[category] = fullyCompleted ? 'done' : 'cancelled';
@@ -390,6 +536,9 @@ export async function startStateCityScan({
   analyze = false,
   scrapeLocationFn,
   statesOverride,
+  // How many places to search: 'standard' (10 largest cities per state),
+  // 'extended' (every place of 25,000+) or 'maximum' (5,000+ plus city grids).
+  coverage = 'standard',
   resumeArchives,
   // category -> id of an older archive to delete once the new one completes.
   replacesArchiveIds,
@@ -410,7 +559,12 @@ export async function startStateCityScan({
   if (!uniqueCategories.length) {
     throw new Error('categories array is required');
   }
-  const states = statesOverride || US_STATE_CITIES;
+  if (!statesOverride && !isCoverageTier(coverage)) {
+    const err = new Error(`Unknown coverage "${coverage}". Use standard, extended or maximum.`);
+    err.status = 400;
+    throw err;
+  }
+  const states = statesOverride || buildCoverage(coverage);
   if (!states.length) {
     throw new Error('No state/city data available — check usStateCities.js');
   }
@@ -422,6 +576,7 @@ export async function startStateCityScan({
   const collectedLeadsByState = {};
   const categoryArchives = {};
   const archiveMutexes = {};
+  const seedSeen = {};
   for (const category of uniqueCategories) {
     const resume = resumeArchives?.[category];
     categoryStates[category] = states.map((s) => newStateRecord(s.state, s.cities));
@@ -446,6 +601,14 @@ export async function startStateCityScan({
     for (const [state, leads] of Object.entries(resume?.seedLeadsByState || {})) {
       collectedLeadsByState[category][state] = leads;
     }
+    // Resuming: skip the cities already covered and do not read a business twice.
+    if (resume) {
+      applyResumeProgress(categoryStates[category], resume.completedCities, resume.seedLeadsByState);
+      seedSeen[category] = new Set();
+      for (const leads of Object.values(resume.seedLeadsByState || {})) {
+        for (const id of placeIdsFromLeads(leads)) seedSeen[category].add(id);
+      }
+    }
   }
 
   const thisJob = {
@@ -457,6 +620,18 @@ export async function startStateCityScan({
     scrapeLocationFn,
     requireSignIn: Boolean(requireSignIn),
     stoppedReason: null,
+    // Set while Google's "unusual traffic" check has the scan paused.
+    blocked: null,
+    // Place ids already read, per category: a business shared by neighbouring cities is read once.
+    seenPlaces: Object.fromEntries(uniqueCategories.map((c) => [c, seedSeen[c] || new Set()])),
+    coverage: statesOverride ? 'custom' : coverage,
+    // name -> { lat, lng, zoom } for the grid points of large cities, per state.
+    citySpecs: Object.fromEntries(states.map((st) => [st.state, st.specs || {}])),
+    // Pace shared by all workers; finds the rate Google tolerates (see AdaptivePace).
+    pace: null,
+    checkpoint: {},
+    // Saves a category's progress to its archive (not used when the scraper is injected, i.e. in tests).
+    checkpointFn: null,
     status: 'running', // running | done
     cancelled: false,
     paused: false,
@@ -475,8 +650,13 @@ export async function startStateCityScan({
     firebaseLeadsSaved: 0,
   };
 
+  thisJob.checkpointFn = scrapeLocationFn
+    ? null
+    : (category) => thisJob.archiveMutexes[category].runExclusive(() => uploadCategoryArchiveNow(thisJob, category, { isFinal: false }));
   currentJob = thisJob;
   resetSortDiagnostics();
+  _resetSharedPace();
+  thisJob.pace = sharedPace();
   const totalCities = categoryStates[uniqueCategories[0]].reduce((sum, s) => sum + s.citiesTotal, 0);
   logActivity(
     thisJob,
@@ -514,12 +694,34 @@ export async function startStateCityScan({
       throw err;
     }
   }
+  // Do not start into a Google check: every city would come back empty.
+  if (!scrapeLocationFn) {
+    const state = await probeGoogleMaps(thisJob.browser).catch(() => 'unknown');
+    if (state === 'blocked') {
+      await thisJob.browser.close().catch(() => {});
+      currentJob = null;
+      const err = new Error(
+        'Google is showing its "unusual traffic" check for this network right now, so a scan would only collect empty results. ' +
+          'Wait (it usually clears within hours) and try again. If it persists, open Google Maps in the scanner browser (`npm run maps:open`) and complete the check yourself.'
+      );
+      err.status = 409;
+      err.code = 'GOOGLE_BLOCKED';
+      throw err;
+    }
+  }
   runJob(thisJob).catch((err) => {
     console.error('State/city scan crashed:', err);
     logActivity(thisJob, `Scan crashed: ${err.message}`, 'error');
   });
 
-  return { started: true, categories: uniqueCategories, concurrency: poolSize, totalStates: categoryStates[uniqueCategories[0]].length };
+  return {
+    started: true,
+    categories: uniqueCategories,
+    concurrency: poolSize,
+    totalStates: categoryStates[uniqueCategories[0]].length,
+    coverage: thisJob.coverage,
+    totalSearches: categoryStates[uniqueCategories[0]].reduce((n, st) => n + st.citiesTotal, 0),
+  };
 }
 
 /**
@@ -552,7 +754,8 @@ export async function resumeStateCityScan({ archiveId, concurrency, scrapeLocati
     throw err;
   }
 
-  const stateData = allStatesOverride || US_STATE_CITIES;
+  const coverage = isCoverageTier(archive.coverage) ? archive.coverage : 'standard';
+  const stateData = allStatesOverride || buildCoverage(coverage);
   const allStates = stateData.map((s) => s.state);
 
   const downloaded = await downloadExcelArchiveBuffer(archiveId);
@@ -581,6 +784,7 @@ export async function resumeStateCityScan({ archiveId, concurrency, scrapeLocati
     analyze: archive.analyze || false,
     scrapeLocationFn,
     statesOverride: stateData.filter((s) => missingStates.includes(s.state)),
+    coverage,
     resumeArchives: {
       [category]: {
         id: archive.id,
@@ -589,6 +793,7 @@ export async function resumeStateCityScan({ archiveId, concurrency, scrapeLocati
         completedStates,
         priorBusinessesProcessed: archive.totalBusinessesProcessed || 0,
         seedLeadsByState,
+        completedCities: archive.completedCities || {},
       },
     },
   });
@@ -618,6 +823,7 @@ export async function rescanStateCityArchive({ archiveId, concurrency, scrapeLoc
     maxResultsPerCity: archive.maxResultsPerState || DEFAULT_MAX_RESULTS_PER_CITY,
     analyze: archive.analyze || false,
     scrapeLocationFn,
+    coverage: isCoverageTier(archive.coverage) ? archive.coverage : 'standard',
     replacesArchiveIds: { [archive.category]: archive.id },
   });
   logActivity(currentJob, `Re-scanning "${archive.category}" — the earlier scan is deleted when this one finishes.`);
@@ -660,6 +866,8 @@ export function getStateCityJobSnapshot() {
       // that could not be opened: the scan's own account of what it may have missed.
       incompleteBusinesses,
       skippedListings,
+      duplicatesSkipped: states.reduce((sum, s) => sum + (s.duplicatesSkipped || 0), 0),
+      prefiltered: states.reduce((sum, s) => sum + (s.prefiltered || 0), 0),
       archive: { status: archive.status, result: archive.result, error: archive.error },
       states: states.map((s) => ({
         state: s.state,
@@ -675,6 +883,7 @@ export function getStateCityJobSnapshot() {
         websiteLeadsFound: s.websiteLeadsFound || 0,
         incompleteBusinesses: s.incompleteBusinesses || 0,
         skippedListings: s.skippedListings || 0,
+        duplicatesSkipped: s.duplicatesSkipped || 0,
         startedAt: s.startedAt,
         finishedAt: s.finishedAt,
       })),
@@ -692,6 +901,9 @@ export function getStateCityJobSnapshot() {
     finishedAt: job.finishedAt,
     paused: job.paused,
     stoppedReason: job.stoppedReason,
+    blocked: job.blocked,
+    coverage: job.coverage,
+    pace: job.pace ? { perMinute: job.pace.perMinute, max: job.pace.max } : null,
     categories,
     activity: job.activityLog.slice(-150).reverse(),
   };
@@ -717,6 +929,12 @@ export function pauseStateCityJob() {
 export function resumeStateCityJob() {
   const job = currentJob;
   if (!job || job.status === 'done') return false;
+  if (job.blocked) {
+    // Google's check is still up: resuming now would only be blocked again and
+    // prolong it. The scan continues by itself once Google serves results.
+    logActivity(job, 'Google\'s check is still showing, so the scan stays paused; it resumes by itself once Google serves results.', 'warn');
+    return true;
+  }
   job.paused = false;
   logActivity(job, 'Scan resumed.');
   return true;

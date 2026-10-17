@@ -33,7 +33,13 @@ console.log(`Scan: "${category}" in ${location} · ${max} businesses · 1-star w
 console.log(`Saved Google session: ${cfg.enabled ? `in use (${cfg.profileDir})` : 'NOT in use (anonymous: reviews cannot be sorted, expect misses)'}\n`);
 
 resetSortDiagnostics();
-const businesses = await searchBusinesses(category, location, { maxResults: max, dateRange, onProgress: () => {} });
+const notes = [];
+const businesses = await searchBusinesses(category, location, {
+  maxResults: max,
+  dateRange,
+  // Keep the messages that explain what was skipped or retried.
+  onProgress: (m) => { if (/Skipped|attempt|Found \d+ potential|not fully read|NOT fully/i.test(m)) notes.push(m); },
+});
 
 for (const b of businesses) {
   const a = b.reviewAccess || {};
@@ -46,7 +52,9 @@ for (const b of businesses) {
   }
 }
 
+for (const n of notes) console.log(`  note: ${n}`);
 const leads = filterRecentOneStarLeads(businesses, { dateRange });
 const incomplete = businesses.filter((b) => !b.reviewAccess?.complete).length;
-console.log(`\nBusinesses: ${businesses.length} · fully read: ${businesses.length - incomplete}/${businesses.length} · leads with a 1★ review in the last ${dateRange} days: ${leads.length}`);
+console.log(`\nListings skipped after retrying: ${businesses.skippedListings || 0}`);
+console.log(`Businesses: ${businesses.length} · fully read: ${businesses.length - incomplete}/${businesses.length} · leads with a 1★ review in the last ${dateRange} days: ${leads.length}`);
 console.log(describeSortDiagnostics() || 'No review lookups recorded.');

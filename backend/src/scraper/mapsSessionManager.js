@@ -11,6 +11,8 @@ import {
   getSessionConfig,
   ensureProfileDir,
   findChrome,
+  hasGoogleSignInCookies,
+  waitForProfileFree,
   launchManualLogin,
   launchSessionBrowser,
   checkSessionStatus,
@@ -89,7 +91,7 @@ export async function startLogin() {
   // because Google refuses sign-in inside automation-controlled browsers.
   const chrome = findChrome();
   if (chrome) {
-    const { closed } = launchManualLogin({ executable: chrome, profileDir: cfg.profileDir });
+    const { child, closed } = launchManualLogin({ executable: chrome, profileDir: cfg.profileDir });
     login = { startedAt: Date.now() };
     const early = await Promise.race([closed, new Promise((r) => setTimeout(() => r(null), 1500))]);
     if (early !== null) {
@@ -103,11 +105,44 @@ export async function startLogin() {
           : 'Chrome could not be opened for sign-in.'
       );
     }
-    closed.then(() => {
+
+    // Done when the window's Chrome exits, or as soon as the sign-in shows up
+    // in the profile: on macOS closing the last window does NOT quit Chrome,
+    // so waiting for it to exit would wait forever.
+    let finished = false;
+    const finish = async () => {
+      if (finished) return;
+      finished = true;
+      clearInterval(poll);
+      await waitForProfileFree(cfg.profileDir); // helpers can outlive the main process
       login = null;
       last = null; // force a fresh check next time
       runCheck().catch(() => {});
-    });
+    };
+    const poll = setInterval(async () => {
+      if (finished || !(await hasGoogleSignInCookies(cfg.profileDir))) return;
+      clearInterval(poll);
+      // Give Chrome a moment to finish writing, then close its window ourselves
+      // (a profile can only be open in one browser, and the scanner needs it).
+      await new Promise((r) => setTimeout(r, 4000));
+      child.kill('SIGTERM');
+      await new Promise((resolve) => {
+        const t = setTimeout(() => {
+          child.kill('SIGKILL');
+          resolve();
+        }, 10000);
+        child.once('exit', () => {
+          clearTimeout(t);
+          resolve();
+        });
+        if (child.exitCode !== null) {
+          clearTimeout(t);
+          resolve();
+        }
+      });
+      finish();
+    }, 3000);
+    closed.then(finish);
     return { started: true, browser: 'chrome' };
   }
 

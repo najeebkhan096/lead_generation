@@ -1,3 +1,5 @@
+import { isCoverageTier, describeCoverage, COVERAGE_TIERS } from '../../data/usCoverage.js';
+import { perMinuteFromEnv } from '../../scraper/rateLimit.js';
 import {
   startStateCityScan,
   getStateCityJobSnapshot,
@@ -7,10 +9,14 @@ import {
 } from './stateCityOrchestrator.js';
 
 export async function startScan(req, res) {
-  const { categories, concurrency = 10, dateRange = '30', maxResultsPerCity = 160, analyze = false, allowUnsignedScan = false } = req.body || {};
+  const { categories, concurrency = 10, dateRange = '30', maxResultsPerCity = 160, analyze = false, allowUnsignedScan = false, coverage = 'standard' } = req.body || {};
 
   if (!Array.isArray(categories) || !categories.length) {
     return res.status(400).json({ error: 'categories array is required' });
+  }
+
+  if (!isCoverageTier(coverage)) {
+    return res.status(400).json({ error: 'coverage must be standard, extended or maximum' });
   }
 
   try {
@@ -20,6 +26,7 @@ export async function startScan(req, res) {
       dateRange: String(dateRange),
       maxResultsPerCity: Number(maxResultsPerCity) || 160,
       analyze: Boolean(analyze),
+      coverage,
       // Only for emergencies: scanning without a Google session misses reviews.
       requireSignIn: allowUnsignedScan !== true,
     });
@@ -56,4 +63,13 @@ export function pauseScan(_req, res) {
 export function resumeScan(_req, res) {
   const ok = resumeStateCityJob();
   return res.json({ success: ok });
+}
+
+/** GET /api/state-scan/coverage: the coverage tiers, with their rough size and time. */
+export function getCoverage(_req, res) {
+  const perMinute = perMinuteFromEnv();
+  return res.json({
+    perMinute,
+    tiers: Object.keys(COVERAGE_TIERS).map((tier) => describeCoverage(tier, perMinute)),
+  });
 }

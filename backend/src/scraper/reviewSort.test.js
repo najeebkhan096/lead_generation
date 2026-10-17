@@ -12,6 +12,7 @@ import {
   readReviewCards,
   readOneStarCount,
   openReviewsPanel,
+  renderReviewList,
   detectSignInPrompt,
   resetSortDiagnostics,
   getSortDiagnostics,
@@ -226,4 +227,43 @@ domTest('the card cap stops a runaway list and says so', async (page) => {
   await sortReviews(page, { order: 'newest', oneStarCount: 60 });
   const { boundary } = await loadReviewsToBoundary(page, { order: 'newest', windowDays: '28', maxCards: 30 });
   assert.equal(boundary, 'capped');
+});
+
+// ---- the Overview tab must not be mistaken for the review list -----------------
+
+domTest('Overview review snippets do not stop the Reviews tab being opened', async (page) => {
+  await page.setContent(placeHtml({ sort: 'works', overviewSnippets: true }));
+  // Before the tab is opened, the page already has elements with data-review-id.
+  assert.equal(await page.locator('[data-review-id]').count(), 1);
+  const opened = await openReviewsPanel(page);
+  assert.equal(opened.opened, true);
+  const res = await sortReviews(page, { order: 'lowest', oneStarCount: 298 });
+  assert.equal(res.ok, true, 'the sort ran on the real review list');
+  assert.deepEqual(res.sampleStars, [1, 1, 2, 3, 5, 5]);
+});
+
+domTest('an already selected Reviews tab is not clicked again', async (page) => {
+  await page.setContent(placeHtml({ sort: 'works' }));
+  await openReviewsPanel(page);
+  await page.evaluate(() => { window.__clicks = 0; document.getElementById('reviewsTab').addEventListener('click', () => window.__clicks++); });
+  await openReviewsPanel(page);
+  assert.equal(await page.evaluate(() => window.__clicks), 0);
+});
+
+// ---- a tall header pushes the cards below the fold ---------------------------------------
+
+domTest('cards drawn only after scrolling are found: the panel is scrolled until they render', async (page) => {
+  await page.setContent(placeHtml({ sort: 'works', lazyBelowFold: true }));
+  const opened = await openReviewsPanel(page);
+  assert.equal(opened.opened, true);
+  const cards = await readReviewCards(page);
+  assert.equal(cards.length, 6, 'the list rendered although it started below the visible area');
+});
+
+domTest('re-sorting a list that is drawn lazily still verifies (the emptied list is scrolled back into view)', async (page) => {
+  await page.setContent(placeHtml({ sort: 'works', lazyBelowFold: true }));
+  await openReviewsPanel(page);
+  const res = await sortReviews(page, { order: 'lowest', oneStarCount: 298 });
+  assert.equal(res.ok, true);
+  assert.deepEqual(res.sampleStars, [1, 1, 2, 3, 5, 5]);
 });

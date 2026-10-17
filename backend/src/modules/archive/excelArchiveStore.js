@@ -27,6 +27,10 @@ function docToRecord(doc) {
     // zero countries done yet" apart from "unknown, derive from the
     // workbook's actual sheets instead."
     category: data.category || data.categories?.[0] || null,
+    // Which places the scan covers (standard | extended | maximum) and which
+    // cities it has finished, so a Resume skips them.
+    coverage: data.coverage ?? null,
+    completedCities: data.completedCities ?? null,
     completedCountries: data.completedCountries ?? null,
     dateRange: data.dateRange ?? null,
     maxResultsPerState: data.maxResultsPerState ?? null,
@@ -98,6 +102,8 @@ export async function uploadExcelArchive({
   kind = 'review',
   pairedArchiveId,
   scannedAt,
+  coverage,
+  completedCities,
 }) {
   const bucket = getStorageBucket();
   const storagePath = `${STORAGE_PREFIX}/${fileName}`;
@@ -134,6 +140,8 @@ export async function uploadExcelArchive({
       analyze: analyze ?? null,
       concurrency: concurrency ?? null,
       kind,
+      coverage: coverage ?? null,
+      completedCities: completedCities ?? null,
       pairedArchiveId: pairedArchiveId ?? null,
       // Written once: a checkpoint or resume must not move the scan date.
       scannedAt: existing.exists && existing.data().scannedAt

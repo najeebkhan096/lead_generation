@@ -41,3 +41,15 @@ test('status never returns the profile cookies or any session data, only its fol
   const { body } = await call(getStatus);
   assert.deepEqual(Object.keys(body).sort(), ['detail', 'enabled', 'inUseByScan', 'loginInProgress', 'mode', 'profileDir', 'ready', 'status']);
 });
+
+// ---- coverage tiers endpoint --------------------------------------------------------------
+
+import { getCoverage } from './stateCityScanController.js';
+
+test('the coverage endpoint lists the three tiers with their size and time', async () => {
+  const { body } = await call(getCoverage);
+  assert.deepEqual(body.tiers.map((t) => t.tier), ['standard', 'extended', 'maximum']);
+  assert.equal(body.tiers[0].searches, 501);
+  assert.ok(body.tiers[1].searches > body.tiers[0].searches && body.tiers[2].searches > body.tiers[1].searches);
+  for (const t of body.tiers) assert.ok(t.hours > 0 && t.businesses > 0 && t.label);
+});

@@ -5,6 +5,7 @@ import '../entities/lead.dart';
 import '../entities/lead_page.dart';
 import '../entities/validation_start.dart';
 import '../entities/multi_search_snapshot.dart';
+import '../entities/coverage_option.dart';
 import '../entities/maps_session_status.dart';
 import '../entities/state_city_scan_snapshot.dart';
 import '../entities/excel_archive.dart';
@@ -136,12 +137,16 @@ abstract class LeadRepository {
   /// sign in there by hand and close it.
   Future<void> startMapsLogin();
 
+  /// The scan's coverage tiers (standard / extended / maximum) with rough size and time.
+  Future<List<CoverageOption>> getScanCoverage();
+
   Future<void> startStateScan({
     required List<String> categories,
-    int concurrency = 10,
+    int concurrency = 5,
     String dateRange = '30',
     int maxResultsPerCity = 160,
     bool analyze = false,
+    String coverage = 'standard',
   });
 
   /// Live dashboard snapshot for the current (or most recently finished)

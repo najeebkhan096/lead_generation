@@ -88,6 +88,58 @@ export function getSessionConfig(env = process.env) {
   };
 }
 
+const AUTH_COOKIE_NAMES = ['SID', 'SAPISID', 'APISID', 'HSID', 'SSID', 'LSID', '__Secure-1PSID', '__Secure-3PSID', '__Host-1PLSID', '__Host-3PLSID'];
+
+/**
+ * Whether the profile's cookie store holds Google's sign-in cookies, going by
+ * their NAMES only (cookie values are never read). Lets the app notice that a
+ * person has finished signing in without waiting for them to quit Chrome, which
+ * on macOS stays running after its last window is closed.
+ */
+export async function hasGoogleSignInCookies(profileDir) {
+  const store = ['Default/Network/Cookies', 'Default/Cookies'].map((f) => path.join(profileDir, f)).find((f) => fs.existsSync(f));
+  if (!store) return false;
+  const work = fs.mkdtempSync(path.join(os.tmpdir(), 'leadfinder-ck-'));
+  try {
+    // Read a copy: Chrome keeps its own file open and busy.
+    const copy = path.join(work, 'Cookies');
+    for (const suffix of ['', '-wal', '-shm', '-journal']) {
+      if (fs.existsSync(store + suffix)) fs.copyFileSync(store + suffix, copy + suffix);
+    }
+    const { DatabaseSync } = await import('node:sqlite');
+    const db = new DatabaseSync(copy, { readOnly: true });
+    try {
+      const marks = AUTH_COOKIE_NAMES.map(() => '?').join(',');
+      const row = db
+        .prepare(`SELECT COUNT(*) AS n FROM cookies WHERE host_key LIKE '%google.%' AND name IN (${marks})`)
+        .get(...AUTH_COOKIE_NAMES);
+      return row.n > 0;
+    } finally {
+      db.close();
+    }
+  } catch {
+    return false;
+  } finally {
+    fs.rmSync(work, { recursive: true, force: true });
+  }
+}
+
+/**
+ * Resolves once no process is still using the profile (Chrome's helper
+ * processes can outlive its main process for a moment, and a check started
+ * then would find the profile "busy"). Gives up after `ms` rather than hang.
+ */
+export async function waitForProfileFree(profileDir, ms = 10000) {
+  if (process.platform === 'win32') return;
+  const { execFile } = await import('node:child_process');
+  const inUse = () =>
+    new Promise((resolve) => {
+      execFile('pgrep', ['-f', `user-data-dir=${profileDir}`], (err, stdout) => resolve(!err && stdout.trim().length > 0));
+    });
+  const deadline = Date.now() + ms;
+  while (Date.now() < deadline && (await inUse())) await new Promise((r) => setTimeout(r, 300));
+}
+
 /** A profile exists once a browser has been opened on it (the folder is non-empty). */
 export function profileExists(dir) {
   try {
@@ -102,6 +154,36 @@ export function ensureProfileDir(dir) {
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   return dir;
 }
+
+/**
+ * The ordinary desktop Chrome user-agent for the installed version. Headless
+ * Chrome announces itself as "HeadlessChrome", and Google Maps answers that
+ * with a stripped-down place page (no Reviews tab), so headless runs present
+ * the same user-agent a normal window would. (The scraper has always sent a
+ * normal Chrome user-agent; this keeps the version in step with the real one.)
+ */
+export async function chromeUserAgent(chromePath) {
+  const { execFile } = await import('node:child_process');
+  const version = await new Promise((resolve) => {
+    execFile(chromePath, ['--version'], { timeout: 8000 }, (err, stdout) => resolve(err ? '' : String(stdout)));
+  });
+  const major = (version.match(/(\d+)\.\d+\.\d+\.\d+/) || [])[1];
+  const platform =
+    process.platform === 'darwin' ? 'Macintosh; Intel Mac OS X 10_15_7' : process.platform === 'win32' ? 'Windows NT 10.0; Win64; x64' : 'X11; Linux x86_64';
+  return `Mozilla/5.0 (${platform}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${major || '124'}.0.0.0 Safari/537.36`;
+}
+
+// Scanner Chromes started by this process, killed if it exits without closing them.
+const liveChromes = new Set();
+process.once('exit', () => {
+  for (const child of liveChromes) {
+    try {
+      child.kill('SIGKILL');
+    } catch {
+      // already gone
+    }
+  }
+});
 
 /** A free local TCP port for Chrome's debugging endpoint. */
 function freePort() {
@@ -180,10 +262,12 @@ function sharedContext(context, viewport) {
  */
 async function launchChromeSession({ chromium, chromePath, profileDir, headless = true, viewport, extraArgs = [] }) {
   const port = await freePort();
+  const userAgent = headless ? await chromeUserAgent(chromePath) : null;
   const child = spawn(
     chromePath,
     [
       `--remote-debugging-port=${port}`,
+      ...(userAgent ? [`--user-agent=${userAgent}`] : []),
       `--user-data-dir=${profileDir}`,
       '--no-first-run',
       '--no-default-browser-check',
@@ -195,6 +279,11 @@ async function launchChromeSession({ chromium, chromePath, profileDir, headless 
     ],
     { stdio: 'ignore' },
   );
+
+  // Never leave a scanner Chrome behind if this process ends abnormally: it
+  // would keep the profile locked and the next scan would find it "busy".
+  liveChromes.add(child);
+  child.once('exit', () => liveChromes.delete(child));
 
   let exited = null;
   child.once('exit', (code) => {
@@ -223,11 +312,17 @@ async function launchChromeSession({ chromium, chromePath, profileDir, headless 
     throw new Error('Could not connect to Chrome on the Google profile.');
   }
 
+  let alive = true;
+  browser.on('disconnected', () => {
+    alive = false;
+  });
   const context = browser.contexts()[0] || (await browser.newContext());
   await context.setExtraHTTPHeaders({ 'Accept-Language': 'en-US,en;q=0.9' }).catch(() => {});
   return {
     isSession: true,
     mode: 'chrome',
+    // False once Chrome has died or the connection dropped (a long scan restarts it).
+    isAlive: () => alive && child.exitCode === null,
     context,
     newContext: async () => sharedContext(context, viewport),
     close: async () => {

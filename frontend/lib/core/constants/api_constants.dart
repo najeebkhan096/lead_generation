@@ -12,6 +12,7 @@ class ApiConstants {
   static const String mapsSessionLogin = '/api/maps-session/login';
   static const String stateScan = '/api/state-scan';
   static const String stateScanStatus = '/api/state-scan/status';
+  static const String stateScanCoverage = '/api/state-scan/coverage';
   static const String stateScanCancel = '/api/state-scan/cancel';
   static const String stateScanPause = '/api/state-scan/pause';
   static const String stateScanResume = '/api/state-scan/resume';

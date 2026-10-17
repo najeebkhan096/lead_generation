@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { _scanStateCities as scanStateCities, _newStateRecord as newStateRecord } from './stateCityOrchestrator.js';
+import { GoogleBlockedError } from '../../scraper/googleBlock.js';
 
 const oneStarBusiness = (name, access = { complete: true, status: 'ok', sorted: true }) => ({
   name,
@@ -29,6 +30,7 @@ function makeJob(scrapeLocationFn, extra = {}) {
     stoppedReason: null,
     scrapeLocationFn,
     collectedLeadsByState: { 'Car Wash': {} },
+    seenPlaces: { 'Car Wash': new Set() },
     activityLog: [],
     ...extra,
   };
@@ -125,4 +127,108 @@ test('with sign-in not required (an explicit override) the same block is only co
   assert.equal(job.cancelled, false);
   assert.equal(rec.incompleteBusinesses, 1);
   assert.equal(rec.status, 'done');
+});
+
+// ---- Google's "unusual traffic" check -------------------------------------------------
+
+test('a block pauses every worker, then the scan resumes by itself and finishes the state', async () => {
+  let blockedOnce = false;
+  let probes = 0;
+  const job = makeJob(
+    async (_c, location) => {
+      if (!blockedOnce && location.includes('Dallas')) {
+        blockedOnce = true;
+        throw new GoogleBlockedError('/sorry/index');
+      }
+      return [oneStarBusiness(`Wash ${location}`)];
+    },
+    { concurrency: 2, blockCooldownMs: 30, probeFn: async () => (++probes < 2 ? 'blocked' : 'ok') },
+  );
+  const rec = newStateRecord('Texas', ['Austin', 'Dallas', 'Houston', 'Plano']);
+  await scanStateCities(job, 'Car Wash', rec);
+
+  assert.equal(rec.status, 'done', 'every city was covered once Google cleared');
+  assert.deepEqual(rec.covered.sort(), ['Austin', 'Dallas', 'Houston', 'Plano']);
+  assert.equal(rec.failed.length, 0, 'a block is not a failed city');
+  assert.equal(job.blocked, null);
+  assert.equal(job.paused, false);
+  assert.ok(probes >= 2, 'it looked again after the first look still showed the check');
+  const messages = job.activityLog.map((l) => l.message).join('\n');
+  assert.match(messages, /unusual traffic/);
+  assert.match(messages, /still shows its check/);
+  assert.match(messages, /serving results again\. Scan resumed/);
+  assert.equal(job.activityLog.filter((l) => /unusual traffic/.test(l.message) && l.level === 'error').length, 1, 'reported once, not once per worker');
+});
+
+test('a block that never clears leaves the state unfinished, never "done"', async () => {
+  const job = makeJob(
+    async () => {
+      throw new GoogleBlockedError();
+    },
+    { concurrency: 2, blockCooldownMs: 20, probeFn: async () => 'blocked' },
+  );
+  const rec = newStateRecord('Texas', ['Austin', 'Dallas']);
+  const running = scanStateCities(job, 'Car Wash', rec);
+  await new Promise((r) => setTimeout(r, 300));
+  assert.ok(job.blocked, 'still waiting for Google');
+  assert.equal(rec.covered.length, 0, 'nothing was recorded as covered');
+  job.cancelled = true; // the person gives up
+  await running;
+  assert.notEqual(rec.status, 'done');
+  assert.ok(rec.pending.includes('Austin') || rec.pending.includes('Dallas'), 'the cities go back for a Resume');
+  assert.equal(rec.failed.length, 0);
+});
+
+test('a city interrupted by Cancel is put back, its partial results discarded, and the state is not done', async () => {
+  const job = makeJob(async (_c, location) => {
+    job.cancelled = true; // Cancel is pressed while this city is being read
+    return [oneStarBusiness(`Partial ${location}`)];
+  }, { concurrency: 1 });
+  const rec = newStateRecord('Texas', ['Austin']);
+  await scanStateCities(job, 'Car Wash', rec);
+  assert.equal(rec.covered.length, 0);
+  assert.deepEqual(rec.pending, ['Austin']);
+  assert.equal(rec.leadsCollected, 0);
+  assert.notEqual(rec.status, 'done');
+});
+
+// ---- empty must never mean done --------------------------------------------------------------
+
+test('a city whose search returned no result list fails (retried, then recorded): it is not "0 leads, done"', async () => {
+  const job = makeJob(async (_c, location) => {
+    const list = [];
+    Object.defineProperty(list, 'searchStatus', { value: location.includes('Dallas') ? 'feed_missing' : 'ok' });
+    if (!location.includes('Dallas')) list.push(oneStarBusiness(`Wash ${location}`));
+    return list;
+  });
+  const rec = newStateRecord('Texas', ['Austin', 'Dallas']);
+  await scanStateCities(job, 'Car Wash', rec);
+  assert.deepEqual(rec.failed, ['Dallas']);
+  assert.notEqual(rec.status, 'done');
+  assert.ok(job.activityLog.some((l) => /retry/.test(l.message)));
+});
+
+test('Google genuinely having no results for a city is fine: that city is covered', async () => {
+  const job = makeJob(async () => {
+    const list = [];
+    Object.defineProperty(list, 'searchStatus', { value: 'no_results' });
+    return list;
+  });
+  const rec = newStateRecord('Texas', ['Tiny Town']);
+  await scanStateCities(job, 'Car Wash', rec);
+  assert.equal(rec.status, 'done');
+  assert.deepEqual(rec.covered, ['Tiny Town']);
+});
+
+test('the scan reads Google only, and hands every city the same "already read" set', async () => {
+  const seen = [];
+  const job = makeJob(async (_c, _l, options) => {
+    seen.push({ set: options.seenPlaceIds, googleOnly: options.googleOnly });
+    return [];
+  });
+  const rec = newStateRecord('Texas', ['Austin', 'Dallas']);
+  await scanStateCities(job, 'Car Wash', rec);
+  assert.equal(seen.length >= 2, true);
+  assert.ok(seen.every((x) => x.googleOnly === true), 'no Bing/Yelp fallback masking a failure');
+  assert.ok(seen.every((x) => x.set === job.seenPlaces['Car Wash']), 'one shared set per category');
 });

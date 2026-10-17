@@ -289,6 +289,10 @@ class _DashboardBody extends StatelessWidget {
                         const _StoppedForSignInBanner(),
                         const SizedBox(height: 16),
                       ],
+                      if (snapshot.blocked != null) ...[
+                        _GoogleCheckBanner(info: snapshot.blocked!),
+                        const SizedBox(height: 16),
+                      ],
                       _OverallCard(snapshot: snapshot, elapsedMs: elapsedMs),
                       if (snapshot.categories.length > 1) ...[
                         const SizedBox(height: 20),
@@ -320,6 +324,45 @@ class _DashboardBody extends StatelessWidget {
 
 /// Shown when the scan stopped itself because Google asked to sign in: the
 /// saved session ended, so carrying on would have missed reviews.
+/// Google's "unusual traffic" check has the scan paused. The scan waits and
+/// looks again by itself; nothing is retried through the check.
+class _GoogleCheckBanner extends StatelessWidget {
+  const _GoogleCheckBanner({required this.info});
+
+  final ScanBlockInfo info;
+
+  String _clock(DateTime t) => '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+
+  @override
+  Widget build(BuildContext context) {
+    final retry = info.retryAt;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF4E0),
+        borderRadius: BorderRadius.circular(AppTheme.radiusCard),
+        border: Border.all(color: const Color(0xFFE0A030).withValues(alpha: 0.5)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(AppIcons.clock, size: 20, color: Color(0xFFB36B00)),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              'Paused: Google is showing its "unusual traffic" check for this network (since ${_clock(info.since)}). '
+              'The scan is waiting instead of pushing through it, and nothing is lost: the city it was on will be redone. '
+              '${retry != null ? 'It looks again at ${_clock(retry)}' : 'It looks again soon'}'
+              '${info.checks > 0 ? ' (checked ${info.checks}×)' : ''} and continues by itself once Google serves results again.',
+              style: const TextStyle(fontSize: 13, height: 1.4, color: AppTheme.neutral700),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _StoppedForSignInBanner extends StatelessWidget {
   const _StoppedForSignInBanner();
 
@@ -402,6 +445,17 @@ class _OverallCard extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text('Elapsed ${_formatDuration(elapsedMs)}', style: Theme.of(context).textTheme.bodySmall),
+          const SizedBox(height: 6),
+          Text(
+            [
+              if (snapshot.coverage != null && snapshot.coverage != 'custom') 'Coverage: ${snapshot.coverage}',
+              if (snapshot.pacePerMinute != null)
+                'pace ${snapshot.pacePerMinute!.round()}/min (adjusts itself, max ${snapshot.paceMax?.round() ?? '?'})',
+              if (snapshot.skippedWithoutOpening > 0)
+                '${snapshot.skippedWithoutOpening} listings not opened (repeats, or provably no 1-star)',
+            ].join(' · '),
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
           const SizedBox(height: 20),
           LayoutBuilder(
             builder: (context, constraints) {

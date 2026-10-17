@@ -13,7 +13,8 @@
     "test:validation": "node --test src/modules/validation/*/*.test.js",
     "maps:login": "node scripts/mapsLogin.mjs",
     "maps:session-check": "node scripts/mapsSessionCheck.mjs",
-    "maps:test-scan": "node scripts/mapsTestScan.mjs"
+    "maps:test-scan": "node scripts/mapsTestScan.mjs",
+    "maps:open": "node scripts/mapsOpenProfile.mjs"
   },
   "dependencies": {
     "cheerio": "^1.0.0",

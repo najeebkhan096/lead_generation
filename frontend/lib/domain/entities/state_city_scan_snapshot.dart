@@ -108,6 +108,28 @@ class StateCityProgress extends Equatable {
 
 /// One category's own archive lifecycle within the scan — one workbook per
 /// category, one sheet per state, checkpointed after every state finishes.
+/// Google's "unusual traffic" check has the scan paused; it looks again at
+/// [retryAt] and continues by itself once Google serves results.
+class ScanBlockInfo extends Equatable {
+  const ScanBlockInfo({required this.since, this.retryAt, this.checks = 0});
+
+  final DateTime since;
+  final DateTime? retryAt;
+  final int checks;
+
+  factory ScanBlockInfo.fromJson(Map<String, dynamic> json) {
+    DateTime? ms(dynamic v) => v == null ? null : DateTime.fromMillisecondsSinceEpoch((v as num).toInt());
+    return ScanBlockInfo(
+      since: ms(json['since']) ?? DateTime.now(),
+      retryAt: ms(json['retryAt']),
+      checks: (json['checks'] as num?)?.toInt() ?? 0,
+    );
+  }
+
+  @override
+  List<Object?> get props => [since, retryAt, checks];
+}
+
 class StateCityArchive extends Equatable {
   const StateCityArchive({required this.status, this.result, this.error});
 
@@ -145,6 +167,8 @@ class CategoryStateProgress extends Equatable {
     this.websiteLeadsFound = 0,
     this.incompleteBusinesses = 0,
     this.skippedListings = 0,
+    this.duplicatesSkipped = 0,
+    this.prefiltered = 0,
     this.states = const [],
   });
 
@@ -171,6 +195,11 @@ class CategoryStateProgress extends Equatable {
   /// What the scan may have missed in this category (see [StateCityProgress]).
   final int incompleteBusinesses;
   final int skippedListings;
+
+  /// Listings not opened: repeats of a business already read for a neighbouring
+  /// place, and ones whose rating and review count prove they hold no 1-star.
+  final int duplicatesSkipped;
+  final int prefiltered;
   final StateCityArchive archive;
   final List<StateCityProgress> states;
 
@@ -189,6 +218,8 @@ class CategoryStateProgress extends Equatable {
       websiteLeadsFound: (json['websiteLeadsFound'] as num?)?.toInt() ?? 0,
       incompleteBusinesses: (json['incompleteBusinesses'] as num?)?.toInt() ?? 0,
       skippedListings: (json['skippedListings'] as num?)?.toInt() ?? 0,
+      duplicatesSkipped: (json['duplicatesSkipped'] as num?)?.toInt() ?? 0,
+      prefiltered: (json['prefiltered'] as num?)?.toInt() ?? 0,
       archive: StateCityArchive.fromJson((json['archive'] as Map<String, dynamic>?) ?? const {}),
       states: ((json['states'] as List<dynamic>?) ?? const [])
           .map((e) => StateCityProgress.fromJson(e as Map<String, dynamic>))
@@ -233,6 +264,10 @@ class StateCityScanSnapshot extends Equatable {
     this.waChecked = 0,
     this.websiteLeadsFound = 0,
     this.stoppedReason,
+    this.blocked,
+    this.coverage,
+    this.pacePerMinute,
+    this.paceMax,
     this.categories = const [],
     this.activity = const [],
   });
@@ -260,6 +295,14 @@ class StateCityScanSnapshot extends Equatable {
 
   /// Why the scan stopped by itself, e.g. `google_session_expired`.
   final String? stoppedReason;
+
+  /// Non-null while Google's check has the scan paused.
+  final ScanBlockInfo? blocked;
+
+  /// standard | extended | maximum, and the current page pace (it finds its own level).
+  final String? coverage;
+  final double? pacePerMinute;
+  final double? paceMax;
   final List<CategoryStateProgress> categories;
   final List<StateScanActivityEntry> activity;
 
@@ -268,6 +311,8 @@ class StateCityScanSnapshot extends Equatable {
   bool get stoppedForSignIn => stoppedReason == 'google_session_expired';
 
   /// Businesses not proven fully read plus listings not opened, whole job.
+  int get skippedWithoutOpening => categories.fold(0, (n, c) => n + c.duplicatesSkipped + c.prefiltered);
+
   int get needsRecheck => categories.fold(0, (n, c) => n + c.incompleteBusinesses + c.skippedListings);
 
   factory StateCityScanSnapshot.fromJson(Map<String, dynamic> json) {
@@ -284,6 +329,10 @@ class StateCityScanSnapshot extends Equatable {
       waChecked: (json['waChecked'] as num?)?.toInt() ?? 0,
       websiteLeadsFound: (json['websiteLeadsFound'] as num?)?.toInt() ?? 0,
       stoppedReason: json['stoppedReason'] as String?,
+      blocked: json['blocked'] is Map<String, dynamic> ? ScanBlockInfo.fromJson(json['blocked'] as Map<String, dynamic>) : null,
+      coverage: json['coverage'] as String?,
+      pacePerMinute: ((json['pace'] as Map<String, dynamic>?)?['perMinute'] as num?)?.toDouble(),
+      paceMax: ((json['pace'] as Map<String, dynamic>?)?['max'] as num?)?.toDouble(),
       categories: ((json['categories'] as List<dynamic>?) ?? const [])
           .map((e) => CategoryStateProgress.fromJson(e as Map<String, dynamic>))
           .toList(),

@@ -117,7 +117,7 @@ async function persistReadyLeads(leads, { shouldStop, onLeadReady } = {}) {
   }
 }
 
-async function scrapeLocation(category, location, { maxResults, onProgress, browser, country, shouldStop, dateRange } = {}) {
+async function scrapeLocation(category, location, { maxResults, onProgress, browser, country, shouldStop, dateRange, seenPlaceIds, googleOnly = false, center } = {}) {
   let businesses = await googleMaps.searchBusinesses(category, location, {
     maxResults,
     onProgress,
@@ -125,7 +125,14 @@ async function scrapeLocation(category, location, { maxResults, onProgress, brow
     country,
     shouldStop,
     dateRange,
+    seenPlaceIds,
+    center,
   });
+
+  // The review scan needs Google's own data: Bing and Yelp results carry no
+  // reviews, and falling back to them turned a blocked search into a city
+  // that looked scanned but held one review-less business.
+  if (googleOnly) return businesses;
 
   if (!businesses.length) {
     businesses = await bing.searchBusinesses(category, location, {
@@ -509,7 +516,7 @@ let _citySeq = 0;
  * caller never presents a partly-read city as fully covered. Businesses with
  * no website are no longer scanned for; `websiteLeads` stays empty.
  */
-export async function scrapeOneCity(category, { city, state }, {
+export async function scrapeOneCity(category, { city, state, center }, {
   dateRange = '30',
   maxResults = DEFAULT_PER_STATE,
   analyze = false,
@@ -518,6 +525,9 @@ export async function scrapeOneCity(category, { city, state }, {
   onProgress,
   shouldStop,
   scrapeLocationFn = scrapeLocation,
+  // Place ids already read in this scan, so a business listed by several
+  // neighbouring cities is read once.
+  seenPlaceIds,
   // Called one business at a time — the state-city orchestrator uses this
   // to save each lead to Firestore immediately instead of waiting for the
   // whole city (or category) to finish. WhatsApp is not checked here.
@@ -525,7 +535,8 @@ export async function scrapeOneCity(category, { city, state }, {
   // Accepted for older callers; no-website leads are no longer scanned for.
   persistWebsiteLeads = true, // eslint-disable-line no-unused-vars
 } = {}) {
-  const location = locationQuery({ city, state });
+  // A grid point of a large city is searched around its coordinates; the name is only a label.
+  const location = locationQuery({ city: center?.within || city, state });
 
   const businesses = await scrapeLocationFn(category, location, {
     maxResults,
@@ -534,7 +545,17 @@ export async function scrapeOneCity(category, { city, state }, {
     country,
     shouldStop,
     dateRange,
+    seenPlaceIds,
+    googleOnly: true,
+    center,
   });
+
+  // No result list at all is NOT an empty city: Google did not answer with
+  // results (a layout change, a slow page). Failing here gets the city retried
+  // and, if it keeps happening, recorded as failed, instead of "0 leads, done".
+  if (businesses.searchStatus === 'feed_missing') {
+    throw new Error(`Google returned no result list for ${location}`);
+  }
 
   const reviewIssues = summarizeReviewAccess(businesses);
   let leads = filterRecentOneStarLeads(businesses, { dateRange });
@@ -553,6 +574,9 @@ export async function scrapeOneCity(category, { city, state }, {
     businessesScraped: businesses.length,
     reviewIssues,
     skippedListings: businesses.skippedListings || 0,
+    duplicatesSkipped: businesses.duplicatesSkipped || 0,
+    prefiltered: businesses.prefiltered || 0,
+    listingsFound: businesses.listingsFound || 0,
     websiteLeadsFound: 0,
     websiteLeads: [],
   };
