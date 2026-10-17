@@ -4,36 +4,25 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../domain/entities/lead.dart';
-import '../../domain/entities/outreach.dart';
 import '../../domain/repositories/lead_repository.dart';
 import '../utils/date_format.dart';
 
 /// Navigation payload for `/leads/details` — carries which collection
-/// [lead] came from, since the review-lead flow (WhatsApp outreach
-/// included) and the website-lead flow ("no website found") are two
-/// different signals that this shared details page must not treat the
-/// same way.
+/// [lead] came from. Every lead here is a 1-star review lead.
 class LeadDetailsArgs {
-  const LeadDetailsArgs({required this.lead, this.isWebsiteLead = false});
+  const LeadDetailsArgs({required this.lead});
 
   final Lead lead;
-  final bool isWebsiteLead;
 }
 
 /// Full details for a single saved business. Pops `true` if the lead's
 /// WhatsApp status was manually changed here, so the list it was opened
 /// from knows to refresh.
 class BusinessDetailsPage extends StatefulWidget {
-  const BusinessDetailsPage({super.key, required this.lead, this.isWebsiteLead = false});
+  const BusinessDetailsPage({super.key, required this.lead});
 
   final Lead lead;
 
-  /// Website leads never carry a real WhatsApp signal (see
-  /// `websiteLeadStore.js` on the backend) — hides the WhatsApp detail row
-  /// and status card entirely instead of showing a permanently "not
-  /// checked" status for a lead type WhatsApp validation was never meant
-  /// to apply to.
-  final bool isWebsiteLead;
 
   @override
   State<BusinessDetailsPage> createState() => _BusinessDetailsPageState();
@@ -258,14 +247,6 @@ class _BusinessDetailsPageState extends State<BusinessDetailsPage> {
                             : () => _open(context, lead.website, 'Could not open website'),
                       ),
                       _DetailRow(
-                        icon: AppIcons.mail,
-                        label: 'Email',
-                        value: lead.email,
-                        onTap: lead.email == null
-                            ? null
-                            : () => _open(context, 'mailto:${lead.email}', 'Could not open email app'),
-                      ),
-                      _DetailRow(
                         icon: AppIcons.mapPin,
                         label: 'Address',
                         value: lead.address,
@@ -274,8 +255,7 @@ class _BusinessDetailsPageState extends State<BusinessDetailsPage> {
                             : () => _open(context, lead.mapsUrl, 'No Google Maps link for this business'),
                       ),
                       _DetailRow(icon: AppIcons.mapPinned, label: 'Location', value: lead.location),
-                      if (!widget.isWebsiteLead)
-                        _DetailRow(
+                      _DetailRow(
                           icon: AppIcons.chat,
                           label: 'WhatsApp',
                           value: _whatsAppUrl,
@@ -287,17 +267,14 @@ class _BusinessDetailsPageState extends State<BusinessDetailsPage> {
                     ],
                   ),
                 ),
-                if (!widget.isWebsiteLead) ...[
-                  const SizedBox(height: 20),
-                  _WhatsAppStatusCard(
-                    lead: lead,
-                    updating: _updating,
-                    onMark: _markWhatsApp,
-                  ),
-                ],
+                const SizedBox(height: 20),
+                _WhatsAppStatusCard(
+                  lead: lead,
+                  updating: _updating,
+                  onMark: _markWhatsApp,
+                ),
                 if (lead.dbId != null) ...[
                   const SizedBox(height: 20),
-                  _OutreachPanel(lead: lead, isWebsiteLead: widget.isWebsiteLead),
                 ],
                 if (lead.badReview.text.trim().isNotEmpty) ...[
                   const SizedBox(height: 20),
@@ -440,154 +417,6 @@ class _WhatsAppStatusCard extends StatelessWidget {
   }
 }
 
-class _OutreachPanel extends StatefulWidget {
-  const _OutreachPanel({required this.lead, required this.isWebsiteLead});
-
-  final Lead lead;
-  final bool isWebsiteLead;
-
-  @override
-  State<_OutreachPanel> createState() => _OutreachPanelState();
-}
-
-class _OutreachPanelState extends State<_OutreachPanel> {
-  OutreachRecord? _record;
-  List<OutreachEvent> _events = const [];
-  bool _loading = true;
-  bool _busy = false;
-  String? _error;
-
-  String get _source => widget.isWebsiteLead ? 'websiteLeads' : 'leads';
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-    try {
-      final repo = context.read<LeadRepository>();
-      final record = await repo.ensureOutreachRecord(
-            sourceCollection: _source,
-            sourceLeadId: widget.lead.dbId!,
-          );
-      final detail = await repo.getOutreachRecord(record.id);
-      if (!mounted) return;
-      setState(() {
-        _record = detail.$1;
-        _events = detail.$2;
-        _loading = false;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _error = e.toString().replaceFirst('Exception: ', '');
-        _loading = false;
-      });
-    }
-  }
-
-  Future<void> _run(Future<OutreachRecord> Function(String id) fn) async {
-    final id = _record?.id;
-    if (id == null) return;
-    setState(() => _busy = true);
-    try {
-      final updated = await fn(id);
-      if (!mounted) return;
-      setState(() {
-        _record = updated;
-        _busy = false;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _busy = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
-      );
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final repo = context.read<LeadRepository>();
-    final record = _record;
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: AppTheme.surface,
-        borderRadius: BorderRadius.circular(AppTheme.radiusCard),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('Website outreach', style: Theme.of(context).textTheme.titleLarge),
-          const SizedBox(height: 6),
-          if (_loading)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 12),
-              child: Center(child: CircularProgressIndicator()),
-            )
-          else if (_error != null)
-            Text(_error!, style: const TextStyle(color: AppTheme.danger))
-          else if (record != null) ...[
-            Text('Email: ${record.email ?? 'not found'}${record.emailVerified ? '  verified' : ''}'),
-            const SizedBox(height: 8),
-            _OutreachStatusChip(status: record.outreachStatus),
-            if (record.lastContactedAt != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 6),
-                child: Text('Sent ${formatDate(record.lastContactedAt) ?? record.lastContactedAt.toString()}'),
-              ),
-            if (record.websiteAnalysis != null)
-              Text('Website score: ${record.websiteAnalysis!.score}/100'),
-            if (record.generatedSubject != null) ...[
-              const SizedBox(height: 8),
-              Text('Draft: ${record.generatedSubject}'),
-            ],
-            if (record.lastError != null)
-              Text(record.lastError!, style: const TextStyle(color: AppTheme.danger)),
-            if (_busy) const Padding(padding: EdgeInsets.only(top: 8), child: LinearProgressIndicator()),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                OutlinedButton(
-                  onPressed: _busy ? null : () => _run((id) => repo.outreachProcessLead(id)),
-                  child: const Text('Find & validate email'),
-                ),
-                FilledButton(
-                  onPressed: _busy ? null : () => _run((id) => repo.outreachProcessLead(id, autoSend: true)),
-                  child: const Text('Analyze & send'),
-                ),
-                OutlinedButton(
-                  onPressed: _busy ? null : () => _run((id) => repo.outreachSetStatus(id, OutreachStatus.paused)),
-                  child: const Text('Pause'),
-                ),
-              ],
-            ),
-            if (_events.isNotEmpty) ...[
-              const SizedBox(height: 16),
-              Text('Outreach history', style: Theme.of(context).textTheme.titleMedium),
-              for (final e in _events.take(8))
-                Padding(
-                  padding: const EdgeInsets.only(top: 4),
-                  child: Text('• ${e.label}${e.message == null ? '' : ' — ${e.message}'}'),
-                ),
-            ],
-          ],
-        ],
-      ),
-    );
-  }
-}
-
 class _DetailRow extends StatelessWidget {
   const _DetailRow({
     required this.icon,
@@ -639,40 +468,5 @@ class _DetailRow extends StatelessWidget {
 
     if (onTap == null || !hasValue) return content;
     return InkWell(borderRadius: BorderRadius.circular(AppTheme.radius), onTap: onTap, child: content);
-  }
-}
-
-class _OutreachStatusChip extends StatelessWidget {
-  const _OutreachStatusChip({required this.status});
-  final OutreachStatus status;
-
-  @override
-  Widget build(BuildContext context) {
-    final sent = status.wasSent;
-    final failed = status == OutreachStatus.failed ||
-        status == OutreachStatus.bounced ||
-        status == OutreachStatus.emailInvalid;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: sent
-            ? AppTheme.sage100
-            : failed
-                ? AppTheme.accent100
-                : AppTheme.neutral100,
-        borderRadius: BorderRadius.circular(AppTheme.radiusPill),
-      ),
-      child: Text(
-        status.label,
-        style: TextStyle(
-          fontWeight: FontWeight.w700,
-          color: sent
-              ? AppTheme.sage800
-              : failed
-                  ? AppTheme.accent800
-                  : AppTheme.neutral700,
-        ),
-      ),
-    );
   }
 }

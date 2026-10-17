@@ -9,20 +9,6 @@ import {
   deleteLeadsByCategory,
 } from './firebaseLeadStore.js';
 import {
-  listWebsiteLeads,
-  deleteWebsiteLead,
-  deleteWebsiteLeadsByCategory,
-  getWebsiteLeadCount,
-  clearAllWebsiteLeads,
-} from './websiteLeadStore.js';
-import {
-  listEmailLeads,
-  deleteEmailLead,
-  deleteEmailLeadsByCategory,
-  getEmailLeadCount,
-  clearAllEmailLeads,
-} from '../validation/email/emailLeadStore.js';
-import {
   listWhatsAppLeads,
   deleteWhatsAppLead,
   deleteWhatsAppLeadsByCategory,
@@ -32,9 +18,8 @@ import {
 import { getFirebaseStatus, getFirestore } from '../../firebase/admin.js';
 import { listCategories } from '../../lib/pagination.js';
 import { getOverview, invalidateOverview } from './overview.js';
-import { attachEmailChecks } from '../validation/leadChecks.js';
 
-const CATEGORY_COLLECTIONS = ['leads', 'websiteLeads', 'whatsappLeads', 'emailLeads'];
+const CATEGORY_COLLECTIONS = ['leads', 'whatsappLeads'];
 
 /** The paging/filter parameters every lead list accepts — see lib/pagination.js. */
 function pageParams(req) {
@@ -48,7 +33,7 @@ function pageParams(req) {
 }
 
 /**
- * GET /api/db/categories?collection=leads|websiteLeads|whatsappLeads|emailLeads
+ * GET /api/db/categories?collection=leads|whatsappLeads
  * — distinct categories with counts, for the category filter. Cached
  * server-side; `refresh=1` forces a rescan.
  */
@@ -99,7 +84,6 @@ export async function getSavedLeads(req, res) {
       ...pageParams(req),
       verifiedOnly: req.query.verified === '1',
     });
-    await attachEmailChecks(result.leads);
     return res.json(result);
   } catch (err) {
     const status = err.status || 500;
@@ -163,67 +147,13 @@ export async function deleteSavedLeadsByCategory(req, res) {
 }
 
 /**
- * GET /api/db/website-leads — list businesses discovered during scans that
- * have no website, from Firestore's `websiteLeads` collection.
- */
-export async function getSavedWebsiteLeads(req, res) {
-  try {
-    const result = await listWebsiteLeads({
-      ...pageParams(req),
-      emailOnly: req.query.hasEmail === '1',
-    });
-    await attachEmailChecks(result.leads);
-    return res.json(result);
-  } catch (err) {
-    const status = err.status || 500;
-    return res.status(status).json({ error: err.message || 'Failed to load website leads' });
-  }
-}
-
-/**
- * DELETE /api/db/website-leads/:id — deletes a single saved website lead.
- * `:id` is the Firestore document id (`dbId` in the API response shape).
- */
-export async function deleteSavedWebsiteLead(req, res) {
-  try {
-    await deleteWebsiteLead(req.params.id);
-    return res.json({ success: true });
-  } catch (err) {
-    const status = err.status || 500;
-    return res.status(status).json({ error: err.message || 'Failed to delete website lead' });
-  }
-}
-
-/**
- * DELETE /api/db/website-leads?category=... — deletes every saved website
- * lead in an exact category.
- */
-export async function deleteSavedWebsiteLeadsByCategory(req, res) {
-  try {
-    const category = String(req.query.category || '').trim();
-    if (!category) {
-      return res.status(400).json({ error: 'category query param is required' });
-    }
-    const result = await deleteWebsiteLeadsByCategory(category);
-    return res.json({
-      success: true,
-      ...result,
-      message: `Deleted ${result.deleted} website lead(s) in category "${category}".`,
-    });
-  } catch (err) {
-    const status = err.status || 500;
-    return res.status(status).json({ error: err.message || 'Failed to delete website leads' });
-  }
-}
-
-/**
  * GET /api/db/whatsapp-leads — list leads whose phone number a real
  * WhatsApp check confirmed, from Firestore's `whatsappLeads` collection.
- * Optional `?sourceType=review|website` narrows to one lead signal.
+ * Optional `?sourceType=review` narrows to one lead signal.
  */
 export async function getSavedWhatsAppLeads(req, res) {
   try {
-    const sourceType = ['review', 'website'].includes(req.query.sourceType) ? req.query.sourceType : undefined;
+    const sourceType = req.query.sourceType === 'review' ? 'review' : undefined;
     return res.json(await listWhatsAppLeads({ ...pageParams(req), sourceType }));
   } catch (err) {
     return res.status(err.status || 500).json({ error: err.message || 'Failed to load WhatsApp leads' });
@@ -259,56 +189,6 @@ export async function deleteSavedWhatsAppLeadsByCategory(req, res) {
 }
 
 /**
- * GET /api/db/email-leads — list businesses the email validator found and
- * verified a contact email for, from Firestore's `emailLeads` collection.
- */
-export async function getSavedEmailLeads(req, res) {
-  try {
-    const result = await listEmailLeads(pageParams(req));
-    return res.json(result);
-  } catch (err) {
-    const status = err.status || 500;
-    return res.status(status).json({ error: err.message || 'Failed to load email leads' });
-  }
-}
-
-/**
- * DELETE /api/db/email-leads/:id — deletes a single saved email lead.
- * `:id` is the Firestore document id (`dbId` in the API response shape).
- */
-export async function deleteSavedEmailLead(req, res) {
-  try {
-    await deleteEmailLead(req.params.id);
-    return res.json({ success: true });
-  } catch (err) {
-    const status = err.status || 500;
-    return res.status(status).json({ error: err.message || 'Failed to delete email lead' });
-  }
-}
-
-/**
- * DELETE /api/db/email-leads?category=... — deletes every saved email lead
- * in an exact category.
- */
-export async function deleteSavedEmailLeadsByCategory(req, res) {
-  try {
-    const category = String(req.query.category || '').trim();
-    if (!category) {
-      return res.status(400).json({ error: 'category query param is required' });
-    }
-    const result = await deleteEmailLeadsByCategory(category);
-    return res.json({
-      success: true,
-      ...result,
-      message: `Deleted ${result.deleted} email lead(s) in category "${category}".`,
-    });
-  } catch (err) {
-    const status = err.status || 500;
-    return res.status(status).json({ error: err.message || 'Failed to delete email leads' });
-  }
-}
-
-/**
  * GET /api/db/searches — list save batches from Firestore.
  */
 export async function getSavedSearches(_req, res) {
@@ -334,19 +214,15 @@ export async function getDbStats(_req, res) {
         leadCount: 0,
       });
     }
-    const [leadCount, websiteLeadCount, whatsappLeadCount, emailLeadCount] = await Promise.all([
+    const [leadCount, whatsappLeadCount] = await Promise.all([
       getFirebaseLeadCount(),
-      getWebsiteLeadCount(),
       getWhatsAppLeadCount(),
-      getEmailLeadCount(),
     ]);
     return res.json({
       provider: 'firebase',
       configured: true,
       leadCount,
-      websiteLeadCount,
       whatsappLeadCount,
-      emailLeadCount,
     });
   } catch (err) {
     const status = err.status || 500;
@@ -367,24 +243,19 @@ export async function clearDatabase(req, res) {
       });
     }
     invalidateOverview();
-    const [result, websiteLeadsResult, whatsappLeadsResult, emailLeadsResult] = await Promise.all([
+    const [result, whatsappLeadsResult] = await Promise.all([
       clearAllData(),
-      clearAllWebsiteLeads(),
       clearAllWhatsAppLeads(),
-      clearAllEmailLeads(),
     ]);
     return res.json({
       success: true,
       ...result,
       deleted: {
         ...result.deleted,
-        websiteLeads: websiteLeadsResult.deleted,
         whatsappLeads: whatsappLeadsResult.deleted,
-        emailLeads: emailLeadsResult.deleted,
       },
       message:
-        `${result.message} Also cleared ${websiteLeadsResult.deleted} website lead(s),` +
-        ` ${whatsappLeadsResult.deleted} WhatsApp lead(s) and ${emailLeadsResult.deleted} email lead(s).`,
+        `${result.message} Also cleared ${whatsappLeadsResult.deleted} WhatsApp lead(s).`,
     });
   } catch (err) {
     const status = err.status || 500;

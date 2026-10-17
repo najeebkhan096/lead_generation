@@ -1,5 +1,5 @@
 /**
- * People who answered an outreach email by messaging the WhatsApp number.
+ * People who messaged the WhatsApp number.
  *
  * Their first message opens WhatsApp's 24-hour window, after which the chat
  * page can send free text with no template (and so no error 63049, which
@@ -11,7 +11,7 @@
  * app. Leads that replied are flagged `repliedViaLink` for `list`.
  */
 import { getFirestore } from '../../firebase/admin.js';
-import { businessFromPrefill, whatsappDigits } from '../outreach/whatsappCta.js';
+import { businessFromPrefill, whatsappDigits } from '../../lib/whatsappCta.js';
 import { ensureLead, ingestInbound } from '../twilio-chat/messageService.js';
 import { listTwilioMedia, listTwilioMessages, twilioConfig } from '../twilio-chat/twilioClient.js';
 import { HttpError, isValidE164, normalizePhone } from '../twilio-chat/validation.js';

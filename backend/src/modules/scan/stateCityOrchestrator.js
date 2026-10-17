@@ -207,9 +207,6 @@ function newStateRecord(state, cities) {
     leadsCollected: 0,
     businessesProcessed: 0,
     firebaseLeadsSaved: 0,
-    // Kept (always 0) so the status payload keeps its shape: no-website
-    // businesses are no longer scanned for.
-    websiteLeadsFound: 0,
     // Businesses in this state whose reviews could not be proven fully read,
     // and listings that could not be opened at all (see scrapeOneCity).
     incompleteBusinesses: 0,
@@ -817,7 +814,7 @@ export async function resumeStateCityScan({ archiveId, concurrency, scrapeLocati
 
 /**
  * Re-runs a finished scan from scratch — same category and settings, every
- * state — and deletes the old archive (and its no-website companion) only
+ * state — and deletes the old archive only
  * once the new one has completed. Meant for scans old enough that their
  * reviews are stale.
  */
@@ -825,7 +822,7 @@ export async function rescanStateCityArchive({ archiveId, concurrency, scrapeLoc
   const archive = archiveId ? await getExcelArchive(archiveId) : null;
   const fail = (status, message) => Object.assign(new Error(message), { status });
   if (!archive) throw fail(404, 'Archive not found');
-  if (archive.kind === 'no_website') throw fail(400, 'Re-scan the review archive; it also refreshes its no-website file.');
+  if (archive.kind && archive.kind !== 'review') throw fail(400, 'Only a review scan can be re-scanned.');
   if (!archive.category) throw fail(400, 'This archive has no category recorded — cannot re-scan.');
   if (archive.status !== 'complete') throw fail(400, 'Only a finished scan can be re-scanned. Resume it instead.');
 
@@ -856,7 +853,6 @@ export function getStateCityJobSnapshot() {
     const leadsCollected = states.reduce((sum, s) => sum + s.leadsCollected, 0);
     const businessesProcessed = states.reduce((sum, s) => sum + s.businessesProcessed, 0);
     const firebaseLeadsSaved = states.reduce((sum, s) => sum + (s.firebaseLeadsSaved || 0), 0);
-    const websiteLeadsFound = states.reduce((sum, s) => sum + (s.websiteLeadsFound || 0), 0);
     const incompleteBusinesses = states.reduce((sum, s) => sum + (s.incompleteBusinesses || 0), 0);
     const skippedListings = states.reduce((sum, s) => sum + (s.skippedListings || 0), 0);
 
@@ -872,9 +868,6 @@ export function getStateCityJobSnapshot() {
       // Always 0 now: scans no longer write per-lead Firestore documents.
       // Kept so the status payload shape does not change.
       firebaseLeadsSaved,
-      // Separate lead type entirely (no website found) — never counted
-      // in `leadsCollected`/`firebaseLeadsSaved`, which are review leads.
-      websiteLeadsFound,
       // Businesses whose reviews could not be proven fully read, and listings
       // that could not be opened: the scan's own account of what it may have missed.
       incompleteBusinesses,
@@ -893,7 +886,6 @@ export function getStateCityJobSnapshot() {
         leadsCollected: s.leadsCollected,
         businessesProcessed: s.businessesProcessed,
         firebaseLeadsSaved: s.firebaseLeadsSaved || 0,
-        websiteLeadsFound: s.websiteLeadsFound || 0,
         incompleteBusinesses: s.incompleteBusinesses || 0,
         skippedListings: s.skippedListings || 0,
         duplicatesSkipped: s.duplicatesSkipped || 0,
@@ -909,7 +901,6 @@ export function getStateCityJobSnapshot() {
     concurrency: job.concurrency,
     currentCategory: job.currentCategory,
     firebaseLeadsSaved: job.firebaseLeadsSaved || 0,
-    websiteLeadsFound: categories.reduce((sum, c) => sum + (c.websiteLeadsFound || 0), 0),
     startedAt: job.startedAt,
     finishedAt: job.finishedAt,
     paused: job.paused,

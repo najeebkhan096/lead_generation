@@ -1,15 +1,13 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lead_generation_app/domain/entities/excel_archive.dart';
 
-ExcelArchive _archive({DateTime? scannedAt, DateTime? createdAt, String kind = 'review', String status = 'complete'}) =>
-    ExcelArchive(
+ExcelArchive _archive({DateTime? scannedAt, DateTime? createdAt, String status = 'complete'}) => ExcelArchive(
       id: 'a',
       fileName: 'a.xlsx',
       downloadUrl: '',
       categories: const ['cafe'],
       scannedAt: scannedAt,
       createdAt: createdAt,
-      kind: kind,
       status: status,
     );
 
@@ -29,16 +27,13 @@ void main() {
     expect(_archive().isStale, isFalse);
   });
 
-  test('only a finished review scan can be re-scanned', () {
+  test('only a finished scan can be re-scanned', () {
     expect(_archive().rescannable, isTrue);
     expect(_archive(status: 'partial').rescannable, isFalse);
-    expect(_archive(kind: 'no_website').rescannable, isFalse);
   });
 
-  test('fromJson reads scannedAt and kind, defaulting older archives to review', () {
-    final a = ExcelArchive.fromJson({'id': 'x', 'scannedAt': '2026-09-01T00:00:00.000Z', 'kind': 'no_website'});
+  test('fromJson reads scannedAt', () {
+    final a = ExcelArchive.fromJson({'id': 'x', 'scannedAt': '2026-09-01T00:00:00.000Z'});
     expect(a.scannedAt, DateTime.utc(2026, 9, 1));
-    expect(a.isNoWebsite, isTrue);
-    expect(ExcelArchive.fromJson({'id': 'y'}).kind, 'review');
   });
 }

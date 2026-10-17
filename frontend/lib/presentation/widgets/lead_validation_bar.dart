@@ -5,32 +5,22 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/theme/app_theme.dart';
-import '../../domain/entities/email_validation_snapshot.dart';
 import '../../domain/entities/lead.dart';
 import '../../domain/entities/validation_start.dart';
 import '../../domain/entities/whatsapp_web_status.dart';
 import '../../domain/repositories/lead_repository.dart';
-import 'email_outcome_summary.dart';
 
 const _pollInterval = Duration(seconds: 2);
 
 /// A run is capped by the backend; longer lists are validated in chunks.
 const leadValidationBatch = 500;
 
-enum _Kind { whatsapp, email }
-
-/// The two ways a lead is validated, as one control shared by every lead
-/// list — review leads (`leads`) and no-website leads (`websiteLeads`):
-///
-///  * **WhatsApp** — checks each phone number against the linked WhatsApp
-///    Web session. Verified numbers land in the WhatsApp leads collection.
-///  * **Email** — finds and verifies a contact email (crawls the lead's
-///    site if it has one, otherwise looks the business up on the web).
-///    Verified addresses land in the Email leads collection.
+/// Checks each lead's phone number against the linked WhatsApp Web session.
+/// Verified numbers land in the WhatsApp leads collection.
 ///
 /// Works on [leads], the list as the page currently filters it, and skips
-/// leads that were already validated that way. [onFinished] fires when a
-/// run ends so the page can reload and show the results.
+/// numbers that were already checked. [onFinished] fires when a run ends so
+/// the page can reload and show the results.
 class LeadValidationBar extends StatefulWidget {
   const LeadValidationBar({
     super.key,
@@ -40,12 +30,12 @@ class LeadValidationBar extends StatefulWidget {
     this.filters = const [],
   });
 
-  /// `leads` or `websiteLeads` — which backend collection [leads] came from.
+  /// The backend collection [leads] came from (`leads`).
   final String collection;
   final List<Lead> leads;
   final VoidCallback onFinished;
 
-  /// Page-specific filter chips shown beside the actions.
+  /// Page-specific filter chips shown beside the action.
   final List<Widget> filters;
 
   @override
@@ -54,14 +44,11 @@ class LeadValidationBar extends StatefulWidget {
 
 class _LeadValidationBarState extends State<LeadValidationBar> {
   Timer? _timer;
-  _Kind? _running;
-  WhatsAppValidationSnapshot? _waSnapshot;
-  EmailValidationSnapshot? _emailSnapshot;
+  bool _running = false;
+  WhatsAppValidationSnapshot? _snapshot;
 
   // Last finished run, kept until the next one starts.
-  _Kind? _lastKind;
-  WhatsAppValidationSnapshot? _lastWa;
-  EmailValidationSnapshot? _lastEmail;
+  WhatsAppValidationSnapshot? _last;
 
   LeadRepository get _repo => context.read<LeadRepository>();
 
@@ -81,17 +68,6 @@ class _LeadValidationBarState extends State<LeadValidationBar> {
   /// Numbers that already have a definite answer (on WhatsApp or not).
   List<Lead> get _waChecked =>
       widget.leads.where((l) => l.dbId != null && _hasText(l.phone) && l.whatsAppCheckedAt != null).toList();
-
-  /// Leads with no email that haven't been tried recently — what an email
-  /// run will actually work on.
-  List<Lead> get _emailPending =>
-      widget.leads.where((l) => l.dbId != null && !_hasText(l.email) && !l.emailCheckedRecently).toList();
-
-  /// Leads with no email that *were* tried recently and came up empty. A run
-  /// skips them (retrying the same dead ends first is what used to make a
-  /// second run no faster than the first) unless the user chooses to re-check.
-  List<Lead> get _emailRecheckable =>
-      widget.leads.where((l) => l.dbId != null && !_hasText(l.email) && l.emailCheckedRecently).toList();
 
   void _toast(String message) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
@@ -242,60 +218,14 @@ class _LeadValidationBarState extends State<LeadValidationBar> {
       if (mounted) _toast(e.toString().replaceFirst('Exception: ', ''));
       return;
     }
-    _begin(_Kind.whatsapp);
+    _begin();
   }
 
-  Future<void> _startEmail() async {
-    final pending = _emailPending;
-    final recheckable = _emailRecheckable;
-    if (pending.isEmpty && recheckable.isEmpty) {
-      _toast('Every lead here already has an email.');
-      return;
-    }
-    final batch = pending.take(leadValidationBatch).toList();
-    final withSite = batch.where((l) => _hasText(l.website)).length;
-    final decision = await _confirmRun(
-      title: 'Validate emails?',
-      message: pending.isEmpty
-          ? 'Every lead without an email was already tried recently and nothing usable was found.'
-          : 'Looks for a contact email for ${batch.length} business${batch.length == 1 ? '' : 'es'}: '
-              '$withSite by reading their website, ${batch.length - withSite} by searching the web for '
-              'their name and phone (roughly ${(batch.length * 2.5 / 60).ceil()}-${(batch.length * 5 / 60).ceil()} min). '
-              'Only addresses that pass a deliverability check are kept — expect some to come back '
-              'empty. Leads tried recently with nothing found are skipped. Nothing is sent to anyone.'
-              '${pending.length > batch.length ? '\n\nThis run covers the first ${batch.length} of ${pending.length}; run it again for the rest.' : ''}',
-      recheckCount: recheckable.length,
-      recheckLabel:
-          'Also re-check ${recheckable.length} lead${recheckable.length == 1 ? '' : 's'} where no email was found earlier',
-      recheckByDefault: pending.isEmpty,
-    );
-    if (decision == null || !mounted) return;
-    final pool = decision ? [...pending, ...recheckable] : pending;
-    await _runEmail([for (final l in pool.take(leadValidationBatch)) l.dbId!], recheck: decision);
-  }
-
-  Future<void> _runEmail(List<String> ids, {required bool recheck}) async {
-    try {
-      final start = await _repo.validateSavedLeadEmails(widget.collection, ids, recheck: recheck);
-      _noteStart(start);
-    } on AlreadyCheckedException catch (e) {
-      if (mounted && await _offerRecheck(e.message)) await _runEmail(ids, recheck: true);
-      return;
-    } catch (e) {
-      if (mounted) _toast(e.toString().replaceFirst('Exception: ', ''));
-      return;
-    }
-    _begin(_Kind.email);
-  }
-
-  void _begin(_Kind kind) {
+  void _begin() {
     setState(() {
-      _running = kind;
-      _waSnapshot = null;
-      _emailSnapshot = null;
-      _lastKind = null;
-      _lastWa = null;
-      _lastEmail = null;
+      _running = true;
+      _snapshot = null;
+      _last = null;
     });
     _poll();
     _timer?.cancel();
@@ -303,46 +233,30 @@ class _LeadValidationBarState extends State<LeadValidationBar> {
   }
 
   Future<void> _poll() async {
-    final kind = _running;
-    if (kind == null) return;
+    if (!_running) return;
     try {
-      final bool running;
-      if (kind == _Kind.whatsapp) {
-        final snap = await _repo.getWhatsAppValidationStatus();
-        if (!mounted) return;
-        setState(() => _waSnapshot = snap);
-        running = snap.status == 'running';
-      } else {
-        final snap = await _repo.getEmailValidationStatus();
-        if (!mounted) return;
-        setState(() => _emailSnapshot = snap);
-        running = snap.status == 'running';
-      }
-      if (running) return;
+      final snap = await _repo.getWhatsAppValidationStatus();
+      if (!mounted) return;
+      setState(() => _snapshot = snap);
+      if (snap.status == 'running') return;
 
       _timer?.cancel();
       setState(() {
-        _lastKind = kind;
-        _lastWa = _waSnapshot;
-        _lastEmail = _emailSnapshot;
-        _running = null;
+        _last = _snapshot;
+        _running = false;
       });
       widget.onFinished();
     } catch (e) {
       _timer?.cancel();
       if (!mounted) return;
-      setState(() => _running = null);
+      setState(() => _running = false);
       _toast(e.toString().replaceFirst('Exception: ', ''));
     }
   }
 
   Future<void> _cancel() async {
     try {
-      if (_running == _Kind.whatsapp) {
-        await _repo.cancelWhatsAppValidation();
-      } else {
-        await _repo.cancelEmailValidation();
-      }
+      await _repo.cancelWhatsAppValidation();
     } catch (_) {
       // best-effort
     }
@@ -350,11 +264,9 @@ class _LeadValidationBarState extends State<LeadValidationBar> {
 
   @override
   Widget build(BuildContext context) {
-    if (_running != null) return _progress();
+    if (_running) return _progress();
 
     final waPending = _waPending.length;
-    final emailPending = _emailPending.length;
-    final emailRecheckable = _emailRecheckable.length;
     final total = widget.leads.length;
 
     return Column(
@@ -392,10 +304,7 @@ class _LeadValidationBarState extends State<LeadValidationBar> {
                         Text(
                           total == 0
                               ? 'Nothing to validate in this list.'
-                              : 'WhatsApp: $waPending to check · '
-                                  'Email: $emailPending to check'
-                                  '${emailRecheckable > 0 ? ' ($emailRecheckable tried before, nothing found)' : ''}'
-                                  ' · of $total loaded',
+                              : 'WhatsApp: $waPending to check · of $total loaded',
                           style: const TextStyle(fontSize: 11.5, color: AppTheme.faint),
                         ),
                       ],
@@ -412,49 +321,25 @@ class _LeadValidationBarState extends State<LeadValidationBar> {
                 runSpacing: 8,
                 children: [
                   ...widget.filters,
-                  OutlinedButton.icon(
+                  FilledButton.icon(
                     onPressed: waPending == 0 && _waChecked.isEmpty ? null : _startWhatsApp,
                     icon: const Icon(AppIcons.chat, size: 16),
                     label: const Text('WhatsApp'),
-                  ),
-                  FilledButton.icon(
-                    onPressed: emailPending == 0 && emailRecheckable == 0 ? null : _startEmail,
-                    icon: const Icon(AppIcons.mail, size: 16),
-                    label: const Text('Email'),
                   ),
                 ],
               ),
             ],
           ),
         ),
-        if (_lastKind != null) ...[
+        if (_last != null) ...[
           const SizedBox(height: 10),
-          _summary(),
+          _summary(_last!),
         ],
       ],
     );
   }
 
-  Widget _summary() {
-    if (_lastKind == _Kind.email && _lastEmail != null) {
-      final snap = _lastEmail!;
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          EmailOutcomeSummary(snapshot: snap),
-          if (snap.stoppedReason != null && snap.stoppedReason!.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Text(
-              snap.stoppedReason!,
-              style: const TextStyle(fontSize: 12.5, color: AppTheme.accent700, fontWeight: FontWeight.w600),
-            ),
-          ],
-        ],
-      );
-    }
-    final snap = _lastWa;
-    if (snap == null) return const SizedBox.shrink();
-
+  Widget _summary(WhatsAppValidationSnapshot snap) {
     Widget chip(String label, int count, Color bg, Color fg) => Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(AppTheme.radiusPill)),
@@ -487,12 +372,11 @@ class _LeadValidationBarState extends State<LeadValidationBar> {
   }
 
   Widget _progress() {
-    final isWa = _running == _Kind.whatsapp;
-    final int total = isWa ? (_waSnapshot?.total ?? 0) : (_emailSnapshot?.total ?? 0);
-    final int checked = isWa ? (_waSnapshot?.checked ?? 0) : (_emailSnapshot?.checked ?? 0);
-    final int found = isWa ? (_waSnapshot?.validCount ?? 0) : (_emailSnapshot?.validCount ?? 0);
-    final started = isWa ? _waSnapshot != null : _emailSnapshot != null;
-    final current = isWa ? _waSnapshot?.currentLeadBusiness : _emailSnapshot?.currentLeadBusiness;
+    final total = _snapshot?.total ?? 0;
+    final checked = _snapshot?.checked ?? 0;
+    final found = _snapshot?.validCount ?? 0;
+    final started = _snapshot != null;
+    final current = _snapshot?.currentLeadBusiness;
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -507,9 +391,8 @@ class _LeadValidationBarState extends State<LeadValidationBar> {
               Expanded(
                 child: Text(
                   !started
-                      ? (isWa ? 'Starting WhatsApp validation…' : 'Starting email validation…')
-                      : '${isWa ? 'WhatsApp' : 'Email'} — $checked/$total checked · '
-                          '$found ${isWa ? 'on WhatsApp' : 'verified'}',
+                      ? 'Starting WhatsApp validation…'
+                      : 'WhatsApp — $checked/$total checked · $found on WhatsApp',
                   style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: AppTheme.subtle),
                 ),
               ),

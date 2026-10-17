@@ -6,7 +6,6 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/theme/app_theme.dart';
 import '../../domain/entities/excel_archive.dart';
 import '../../domain/repositories/lead_repository.dart';
-import 'email_validator_page.dart';
 import 'excel_archive_leads_page.dart';
 
 const _months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -67,11 +66,7 @@ class _ExcelArchivePageState extends State<ExcelArchivePage> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Delete this scan?'),
-        content: Text(
-          archive.isNoWebsite
-              ? 'The no-website file for this scan will be deleted.'
-              : 'The workbook and its no-website file will be deleted. Verified leads already saved are not affected.',
-        ),
+        content: const Text('The workbook will be deleted. Verified leads already saved are not affected.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
           TextButton(
@@ -289,20 +284,6 @@ class _ArchiveCard extends StatelessWidget {
                               overflow: TextOverflow.ellipsis,
                             ),
                           ),
-                          if (archive.isNoWebsite) ...[
-                            const SizedBox(width: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                              decoration: BoxDecoration(
-                                color: AppTheme.neutral100,
-                                borderRadius: BorderRadius.circular(AppTheme.radiusPill),
-                              ),
-                              child: const Text(
-                                'No website',
-                                style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: AppTheme.neutral600),
-                              ),
-                            ),
-                          ],
                           if (archive.status == 'partial') ...[
                             const SizedBox(width: 8),
                             Container(
@@ -392,16 +373,6 @@ class _ArchiveCard extends StatelessWidget {
                     onPressed: () => Navigator.of(context).push(
                       MaterialPageRoute(
                         builder: (_) => ExcelArchiveLeadsPage(archive: archive, autoValidate: true),
-                      ),
-                    ),
-                  ),
-                if (archive.totalLeads > 0)
-                  IconButton(
-                    tooltip: 'Validate emails',
-                    icon: const Icon(AppIcons.mail, size: 18, color: AppTheme.sage700),
-                    onPressed: () => Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => ExcelArchiveEmailValidatorPage(archive: archive, autoValidate: true),
                       ),
                     ),
                   ),

@@ -71,7 +71,7 @@ function enrichLeadContacts(leads, country = 'US') {
 /**
  * Same phone normalization as `enrichLeadContacts`, minus the WhatsApp
  * fields — website leads are a completely different signal ("no website")
- * from review leads ("bad recent review"), and WhatsApp outreach/validation
+ * from review leads ("bad recent review"), and WhatsApp validation
  * isn't part of that flow at all, so they never get a `waLink` or
  * `hasWhatsApp` in the first place instead of carrying always-unchecked
  * WhatsApp fields that look like they belong to the review-lead pipeline.
@@ -110,8 +110,7 @@ export function summarizeReviewAccess(businesses) {
 async function persistReadyLeads(leads, { shouldStop, onLeadReady } = {}) {
   for (const lead of leads) {
     if (shouldStop?.()) break;
-    // Callers are responsible for catching their own errors (as
-    // `captureWebsiteLeads` does for the website-lead path) so a
+    // Callers are responsible for catching their own errors so a
     // persistence failure for one lead never stops the rest of the batch.
     await onLeadReady?.(lead);
   }
@@ -513,8 +512,7 @@ let _citySeq = 0;
  * says how many businesses' reviews could NOT be proven fully read (and how
  * many of those were blocked by Google's sign-in prompt), and
  * `skippedListings` how many listings could not be opened at all, so the
- * caller never presents a partly-read city as fully covered. Businesses with
- * no website are no longer scanned for; `websiteLeads` stays empty.
+ * caller never presents a partly-read city as fully covered.
  */
 export async function scrapeOneCity(category, { city, state, center }, {
   dateRange = '30',
@@ -532,8 +530,6 @@ export async function scrapeOneCity(category, { city, state, center }, {
   // to save each lead to Firestore immediately instead of waiting for the
   // whole city (or category) to finish. WhatsApp is not checked here.
   onLeadReady,
-  // Accepted for older callers; no-website leads are no longer scanned for.
-  persistWebsiteLeads = true, // eslint-disable-line no-unused-vars
 } = {}) {
   // A grid point of a large city is searched around its coordinates; the name is only a label.
   const location = locationQuery({ city: center?.within || city, state });
@@ -577,8 +573,6 @@ export async function scrapeOneCity(category, { city, state, center }, {
     duplicatesSkipped: businesses.duplicatesSkipped || 0,
     prefiltered: businesses.prefiltered || 0,
     listingsFound: businesses.listingsFound || 0,
-    websiteLeadsFound: 0,
-    websiteLeads: [],
   };
 }
 

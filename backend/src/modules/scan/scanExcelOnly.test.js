@@ -15,11 +15,10 @@ const noSite = {
   source: 'google_maps',
 };
 
-test('businesses with no website are no longer scanned for or returned', async () => {
+test('a business with no website and no 1-star review is not a lead', async () => {
   const result = await scrapeOneCity('cafe', { city: 'Austin', state: 'TX' }, { dateRange: '28', scrapeLocationFn: async () => [noSite] });
-  assert.equal(result.websiteLeadsFound, 0);
-  assert.deepEqual(result.websiteLeads, []);
-  assert.equal(result.leads.length, 0, 'a business without a 1-star review is not a lead');
+  assert.equal(result.leads.length, 0);
+  assert.equal(result.websiteLeads, undefined, 'no-website results are not part of a scan any more');
   assert.equal(result.businessesScraped, 1);
 });
 

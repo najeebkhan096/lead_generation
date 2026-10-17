@@ -55,7 +55,7 @@ export async function startValidation(req, res) {
 /**
  * POST /api/whatsapp-web/validate-saved
  *
- * Body: `{ collection: 'leads' | 'websiteLeads', ids: string[], recheck?:
+ * Body: `{ collection: 'leads', ids: string[], recheck?:
  * boolean }` — saved leads of either signal, by Firestore id. Leads with no
  * phone number are skipped, and so are leads already checked (a definite
  * answer — on WhatsApp or not — is stored on the lead); `recheck: true`

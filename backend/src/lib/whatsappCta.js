@@ -1,5 +1,5 @@
 /**
- * The "message us on WhatsApp" link added to outreach emails.
+ * The "message us on WhatsApp" link for a business's WhatsApp chat.
  *
  * WhatsApp does not allow business-initiated marketing templates to US
  * numbers (Twilio error 63049), but once a person messages the business

@@ -272,9 +272,6 @@ class _ExcelArchiveLeadsPageState extends State<ExcelArchiveLeadsPage> with Lazy
           'mapsUrl': l.mapsUrl,
           'rating': l.rating,
           'totalReviews': l.totalReviews,
-          // From the archive's type, not the review text: a 1-star review
-          // with no text is still a 1-star lead.
-          'sourceType': widget.archive.isNoWebsite ? 'website' : 'review',
           'badReview': {'text': l.badReview.text, 'date': l.badReview.date},
         },
     ];

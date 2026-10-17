@@ -13,17 +13,13 @@ import whatsappWebRoutes from './modules/validation/whatsapp/whatsappWebRoutes.j
 import watchlistRoutes from './modules/watchlist/watchlistRoutes.js';
 import excelArchiveRoutes from './modules/archive/excelArchiveRoutes.js';
 import whatsappValidatedRoutes from './modules/validation/whatsapp/whatsappValidatedRoutes.js';
-import emailValidationRoutes from './modules/validation/email/emailValidationRoutes.js';
-import emailValidatedRoutes from './modules/validation/email/emailValidatedRoutes.js';
 import userRoutes from './modules/users/userRoutes.js';
 import saleRoutes from './modules/sales/saleRoutes.js';
 import clientRoutes from './modules/clients/clientRoutes.js';
 import stateCityScanRoutes from './modules/scan/stateCityScanRoutes.js';
 import mapsSessionRoutes from './modules/scan/mapsSessionRoutes.js';
-import outreachRoutes from './modules/outreach/outreachRoutes.js';
 import twilioTestRoutes from './modules/twilio-test/testLeadRoutes.js';
 import { initFirebase, getFirebaseStatus } from './firebase/admin.js';
-import { startQueueWorker } from './modules/outreach/outreachOrchestrator.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -72,14 +68,11 @@ app.use('/api/whatsapp-web', whatsappWebRoutes);
 app.use('/api/watchlist', watchlistRoutes);
 app.use('/api/excel-scans', excelArchiveRoutes);
 app.use('/api/whatsapp-validated-scans', whatsappValidatedRoutes);
-app.use('/api/email-validation', emailValidationRoutes);
-app.use('/api/email-validated-scans', emailValidatedRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/sales', saleRoutes);
 app.use('/api/clients', clientRoutes);
 app.use('/api/state-scan', stateCityScanRoutes);
 app.use('/api/maps-session', mapsSessionRoutes);
-app.use('/api/outreach', outreachRoutes);
 app.use('/api/twilio-test', twilioTestRoutes);
 
 if (fs.existsSync(path.join(webRoot, 'index.html'))) {
@@ -105,10 +98,5 @@ app.listen(PORT, '0.0.0.0', () => {
   );
   if (fs.existsSync(path.join(webRoot, 'index.html'))) {
     console.log(`Serving Flutter web from ${webRoot}`);
-  }
-  try {
-    if (getFirebaseStatus().configured) startQueueWorker();
-  } catch (err) {
-    console.warn('Outreach queue worker not started:', err.message || err);
   }
 });

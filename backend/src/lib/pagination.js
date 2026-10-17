@@ -1,8 +1,8 @@
 /**
  * Cursor pagination for the lead collections.
  *
- * `leads`, `websiteLeads`, `whatsappLeads` and `emailLeads` are all listed
- * newest-first, and one of them (`websiteLeads`) holds tens of thousands of
+ * `leads` and `whatsappLeads` are both listed
+ * newest-first. `leads` holds tens of thousands of
  * documents — nothing here ever loads a whole collection into a response.
  *
  * Request:  `limit` (default 50, max 200), `cursor` (opaque, from the

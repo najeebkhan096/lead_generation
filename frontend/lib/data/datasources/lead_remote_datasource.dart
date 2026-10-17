@@ -5,7 +5,6 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../../core/constants/api_constants.dart';
-import '../../domain/entities/email_validation_snapshot.dart';
 import '../../domain/entities/lead.dart';
 import '../../domain/entities/lead_page.dart';
 import '../../domain/entities/validation_start.dart';
@@ -20,7 +19,6 @@ import '../../domain/entities/sales_user.dart';
 import '../../domain/entities/watchlist_entry.dart';
 import '../../domain/entities/whatsapp_check_result.dart';
 import '../../domain/entities/whatsapp_web_status.dart';
-import '../../domain/entities/outreach.dart';
 import '../../domain/entities/twilio_test_lead.dart';
 import '../../domain/entities/twilio_test_message.dart';
 
@@ -54,68 +52,13 @@ class LeadRemoteDataSource {
     return response.bodyBytes;
   }
 
-  /// Deletes a single saved website lead from Firestore. [leadId] must be
-  /// the lead's Firestore [Lead.dbId].
-  Future<void> deleteWebsiteLead(String leadId) async {
-    final response = await _client.delete(
-      _uri(ApiConstants.websiteLeadDelete(leadId)),
-    );
-    if (response.statusCode >= 400) {
-      final body = _tryDecode(response.body);
-      throw Exception(body['error'] ?? 'Failed to delete website lead');
-    }
-  }
-
-  /// Deletes every saved website lead in an exact category. Returns the
-  /// number of leads deleted.
-  Future<int> deleteWebsiteLeadsByCategory(String category) async {
-    final response = await _client.delete(
-      _uri(
-        ApiConstants.websiteLeads,
-      ).replace(queryParameters: {'category': category}),
-    );
-    final body = _tryDecode(response.body);
-    if (response.statusCode >= 400) {
-      throw Exception(body['error'] ?? 'Failed to delete website leads');
-    }
-    return (body['deleted'] as num?)?.toInt() ?? 0;
-  }
-
-  /// Deletes a single saved email lead from Firestore. [leadId] must be
-  /// the lead's Firestore [Lead.dbId].
-  Future<void> deleteEmailLead(String leadId) async {
-    final response = await _client.delete(
-      _uri(ApiConstants.emailLeadDelete(leadId)),
-    );
-    if (response.statusCode >= 400) {
-      final body = _tryDecode(response.body);
-      throw Exception(body['error'] ?? 'Failed to delete email lead');
-    }
-  }
-
-  /// Deletes every saved email lead in an exact category. Returns the
-  /// number of leads deleted.
-  Future<int> deleteEmailLeadsByCategory(String category) async {
-    final response = await _client.delete(
-      _uri(
-        ApiConstants.emailLeads,
-      ).replace(queryParameters: {'category': category}),
-    );
-    final body = _tryDecode(response.body);
-    if (response.statusCode >= 400) {
-      throw Exception(body['error'] ?? 'Failed to delete email leads');
-    }
-    return (body['deleted'] as num?)?.toInt() ?? 0;
-  }
-
   /// One page of a lead collection, newest first.
   ///
   /// [cursor] is the previous page's `nextCursor`. [category] is an exact
   /// category; [query] a text search (the backend scans for it, so it can
   /// take several round trips on a big collection — a page may come back
-  /// with few results and still have a `nextCursor`). [verifiedOnly] (review
-  /// leads), [emailOnly] (website leads) and [sourceType] (WhatsApp leads)
-  /// are collection-specific narrowing filters.
+  /// with few results and still have a `nextCursor`). [verifiedOnly] narrows
+  /// review leads to the WhatsApp-verified ones.
   Future<LeadPage> getLeadsPage(
     LeadCollection collection, {
     String? cursor,
@@ -123,8 +66,6 @@ class LeadRemoteDataSource {
     String? query,
     int limit = 50,
     bool verifiedOnly = false,
-    bool emailOnly = false,
-    String? sourceType,
   }) async {
     final params = <String, String>{
       'limit': '$limit',
@@ -132,8 +73,6 @@ class LeadRemoteDataSource {
       'category': ?category,
       if (query != null && query.trim().isNotEmpty) 'q': query.trim(),
       if (verifiedOnly) 'verified': '1',
-      if (emailOnly) 'hasEmail': '1',
-      'sourceType': ?sourceType,
     };
     final response = await _client.get(_uri(collection.path).replace(queryParameters: params));
     if (response.statusCode >= 400) {
@@ -508,7 +447,7 @@ class LeadRemoteDataSource {
       );
 
   /// Starts the WhatsApp validator over saved leads by Firestore id.
-  /// [collection] is `leads` or `websiteLeads`; verified numbers are copied
+  /// [collection] is `leads`; verified numbers are copied
   /// into the WhatsApp leads collection. Already-checked numbers are skipped
   /// unless [recheck].
   Future<ValidationStart> validateSavedLeadWhatsApp(
@@ -1066,37 +1005,6 @@ class LeadRemoteDataSource {
     }
   }
 
-  /// Starts the email validator over an explicit list of businesses (e.g.
-  /// extracted from an Excel archive). Each map needs `id` and `website`; the
-  /// rest is stored on the `emailLeads` document it creates. Businesses
-  /// already verified are reused and ones checked before are skipped unless
-  /// [recheck].
-  Future<ValidationStart> validateEmailLeads(
-    List<Map<String, dynamic>> leads, {
-    bool recheck = false,
-  }) =>
-      _startValidation(
-        ApiConstants.emailValidateList,
-        {'leads': leads, if (recheck) 'recheck': true},
-        'Failed to start email validation',
-      );
-
-  /// Starts the email validator over saved leads by Firestore id.
-  /// [collection] is `leads` (review leads) or `websiteLeads`. The backend
-  /// crawls a lead's site when it has one, otherwise looks the business up
-  /// on the web. Leads that already have an email — or were checked recently
-  /// with nothing found — are skipped unless [recheck].
-  Future<ValidationStart> validateSavedLeadEmails(
-    String collection,
-    List<String> ids, {
-    bool recheck = false,
-  }) =>
-      _startValidation(
-        ApiConstants.emailValidateSaved,
-        {'collection': collection, 'ids': ids, if (recheck) 'recheck': true},
-        'Failed to start email validation',
-      );
-
   /// POSTs a validation request and reads back what the backend decided to
   /// run. An "everything was already checked" refusal becomes an
   /// [AlreadyCheckedException] so the UI can offer to re-check.
@@ -1115,78 +1023,6 @@ class LeadRemoteDataSource {
       throw Exception(message);
     }
     return ValidationStart.fromJson(decoded);
-  }
-
-  Future<EmailValidationSnapshot> getEmailValidationStatus() async {
-    final response = await _client.get(_uri(ApiConstants.emailValidateStatus));
-    if (response.statusCode >= 400) {
-      throw Exception('Failed to load email validation status');
-    }
-    return EmailValidationSnapshot.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
-  }
-
-  Future<void> cancelEmailValidation() async {
-    final response = await _client.post(_uri(ApiConstants.emailValidateCancel));
-    if (response.statusCode >= 400) {
-      final body = _tryDecode(response.body);
-      throw Exception(body['error'] ?? 'Failed to cancel email validation');
-    }
-  }
-
-  /// Uploads the email-verified businesses (one sheet per category) as an
-  /// archive of their own — the email counterpart to
-  /// [uploadValidatedArchive].
-  Future<ExcelArchive> uploadEmailVerifiedArchive({
-    required List<Map<String, dynamic>> sheets,
-    String? sourceArchiveId,
-    String? sourceFileName,
-    List<String>? countries,
-  }) async {
-    final response = await _client.post(
-      _uri(ApiConstants.emailValidatedScans),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({
-        'sheets': sheets,
-        'sourceArchiveId': ?sourceArchiveId,
-        'sourceFileName': ?sourceFileName,
-        'countries': ?countries,
-      }),
-    );
-    final body = _tryDecode(response.body);
-    if (response.statusCode >= 400) {
-      throw Exception(body['error'] ?? 'Failed to upload email-verified businesses');
-    }
-    return ExcelArchive.fromJson(body['archive'] as Map<String, dynamic>);
-  }
-
-  Future<List<ExcelArchive>> listEmailVerifiedArchives() async {
-    final response = await _client.get(_uri(ApiConstants.emailValidatedScans));
-    if (response.statusCode >= 400) {
-      final body = _tryDecode(response.body);
-      throw Exception(body['error'] ?? 'Failed to load email-verified archives');
-    }
-    final body = jsonDecode(response.body) as Map<String, dynamic>;
-    final archivesJson = (body['archives'] as List<dynamic>? ?? []);
-    return archivesJson.map((e) => ExcelArchive.fromJson(e as Map<String, dynamic>)).toList();
-  }
-
-  Future<List<Lead>> getEmailVerifiedArchiveLeads(String id) async {
-    final response = await _client.get(_uri(ApiConstants.emailValidatedLeads(id)));
-    if (response.statusCode >= 400) {
-      final body = _tryDecode(response.body);
-      throw Exception(body['error'] ?? 'Failed to extract leads from archive');
-    }
-    final body = jsonDecode(response.body) as Map<String, dynamic>;
-    final leadsJson = (body['leads'] as List<dynamic>? ?? []);
-    return leadsJson.map((e) => Lead.fromJson(e as Map<String, dynamic>)).toList();
-  }
-
-  Future<void> deleteEmailVerifiedArchive(String id) async {
-    final response = await _client.delete(_uri(ApiConstants.emailValidatedDelete(id)));
-    if (response.statusCode >= 400) {
-      final body = _tryDecode(response.body);
-      throw Exception(body['error'] ?? 'Failed to delete archive');
-    }
   }
 
   Future<void> deleteExcelArchive(String id) async {
@@ -1218,8 +1054,8 @@ class LeadRemoteDataSource {
     return (body['engine'] as String?) ?? 'state-city';
   }
 
-  /// Starts the same scan over, from scratch. The backend deletes [id] (and
-  /// its no-website file) only once the new scan completes.
+  /// Starts the same scan over, from scratch. The backend deletes [id] only
+  /// once the new scan completes.
   Future<void> rescanExcelArchive(String id, {int concurrency = 10}) async {
     final response = await _client.post(
       _uri(ApiConstants.excelArchiveRescan(id)),
@@ -1368,252 +1204,6 @@ class LeadRemoteDataSource {
     }
     final resultsJson = (body['results'] as List<dynamic>? ?? []);
     return resultsJson.map((e) => SaleReviewScanResult.fromJson(e as Map<String, dynamic>)).toList();
-  }
-
-  Future<OutreachDashboard> getOutreachDashboard() async {
-    final response = await _client.get(_uri(ApiConstants.outreachDashboard));
-    final body = _tryDecode(response.body);
-    if (response.statusCode >= 400) {
-      throw Exception(body['error'] ?? 'Failed to load outreach dashboard');
-    }
-    return OutreachDashboard.fromJson(body);
-  }
-
-  Future<OutreachAnalytics> getOutreachAnalytics() async {
-    final response = await _client.get(_uri(ApiConstants.outreachAnalytics));
-    final body = _tryDecode(response.body);
-    if (response.statusCode >= 400) {
-      throw Exception(body['error'] ?? 'Failed to load outreach analytics');
-    }
-    return OutreachAnalytics.fromJson(body);
-  }
-
-  Future<OutreachSettings> getOutreachSettings() async {
-    final response = await _client.get(_uri(ApiConstants.outreachSettings));
-    final body = _tryDecode(response.body);
-    if (response.statusCode >= 400) {
-      throw Exception(body['error'] ?? 'Failed to load outreach settings');
-    }
-    return OutreachSettings.fromJson(body['settings'] as Map<String, dynamic>?);
-  }
-
-  Future<OutreachSettings> updateOutreachSettings(Map<String, dynamic> payload) async {
-    final response = await _client.patch(
-      _uri(ApiConstants.outreachSettings),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode(payload),
-    );
-    final body = _tryDecode(response.body);
-    if (response.statusCode >= 400) {
-      throw Exception(body['error'] ?? 'Failed to save outreach settings');
-    }
-    return OutreachSettings.fromJson(body['settings'] as Map<String, dynamic>?);
-  }
-
-  Future<List<OutreachRecord>> listOutreachRecords({
-    bool readyForReview = false,
-    String? campaignId,
-    String? outreachStatus,
-    String? sourceCollection,
-  }) async {
-    final params = <String, String>{
-      if (readyForReview) 'readyForReview': 'true',
-      'campaignId': ?campaignId,
-      'outreachStatus': ?outreachStatus,
-      'sourceCollection': ?sourceCollection,
-      'limit': '200',
-    };
-    final response = await _client.get(_uri(ApiConstants.outreachRecords).replace(queryParameters: params));
-    final body = _tryDecode(response.body);
-    if (response.statusCode >= 400) {
-      throw Exception(body['error'] ?? 'Failed to load outreach records');
-    }
-    return (body['records'] as List<dynamic>? ?? [])
-        .whereType<Map>()
-        .map((e) => OutreachRecord.fromJson(Map<String, dynamic>.from(e)))
-        .toList();
-  }
-
-  Future<OutreachRecord> ensureOutreachRecord({
-    required String sourceCollection,
-    required String sourceLeadId,
-    String? campaignId,
-  }) async {
-    final response = await _client.post(
-      _uri(ApiConstants.outreachRecords),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({
-        'sourceCollection': sourceCollection,
-        'sourceLeadId': sourceLeadId,
-        'campaignId': ?campaignId,
-      }),
-    );
-    final body = _tryDecode(response.body);
-    if (response.statusCode >= 400) {
-      throw Exception(body['error'] ?? 'Failed to open outreach record');
-    }
-    return OutreachRecord.fromJson(body['record'] as Map<String, dynamic>);
-  }
-
-  Future<(OutreachRecord, List<OutreachEvent>)> getOutreachRecord(String id) async {
-    final response = await _client.get(_uri(ApiConstants.outreachRecord(id)));
-    final body = _tryDecode(response.body);
-    if (response.statusCode >= 400) {
-      throw Exception(body['error'] ?? 'Failed to load outreach record');
-    }
-    final record = OutreachRecord.fromJson(body['record'] as Map<String, dynamic>);
-    final events = (body['events'] as List<dynamic>? ?? [])
-        .whereType<Map>()
-        .map((e) => OutreachEvent.fromJson(Map<String, dynamic>.from(e)))
-        .toList();
-    return (record, events);
-  }
-
-  Future<OutreachRecord> _postRecord(String path, {Map<String, dynamic>? payload}) async {
-    final response = await _client
-        .post(
-          _uri(path),
-          headers: {'Content-Type': 'application/json'},
-          body: jsonEncode(payload ?? const {}),
-        )
-        .timeout(const Duration(minutes: 2));
-    final body = _tryDecode(response.body);
-    if (response.statusCode >= 400) {
-      throw Exception(body['error'] ?? 'Outreach request failed');
-    }
-    final recordJson = body['record'] as Map<String, dynamic>? ?? body;
-    return OutreachRecord.fromJson(recordJson);
-  }
-
-  Future<OutreachRecord> updateOutreachRecord(String id, Map<String, dynamic> payload) async {
-    final response = await _client.patch(
-      _uri(ApiConstants.outreachRecord(id)),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode(payload),
-    );
-    final body = _tryDecode(response.body);
-    if (response.statusCode >= 400) {
-      throw Exception(body['error'] ?? 'Failed to update outreach record');
-    }
-    return OutreachRecord.fromJson(body['record'] as Map<String, dynamic>);
-  }
-
-  Future<OutreachRecord> outreachDiscoverEmail(String id, {bool force = false}) =>
-      _postRecord(ApiConstants.outreachRecordDiscover(id), payload: {'force': force});
-
-  Future<OutreachRecord> outreachVerifyEmail(String id, {bool force = false}) =>
-      _postRecord(ApiConstants.outreachRecordVerify(id), payload: {'force': force});
-
-  Future<OutreachRecord> outreachAnalyzeWebsite(String id, {bool force = false}) =>
-      _postRecord(ApiConstants.outreachRecordAnalyze(id), payload: {'force': force});
-
-  Future<OutreachRecord> outreachGenerateEmail(String id, {bool force = false}) =>
-      _postRecord(ApiConstants.outreachRecordGenerate(id), payload: {'force': force});
-
-  Future<OutreachRecord> outreachProcessLead(String id, {bool force = false, bool autoSend = false}) =>
-      _postRecord(ApiConstants.outreachRecordProcess(id), payload: {'force': force, 'autoSend': autoSend});
-
-  Future<OutreachRecord> outreachApprove(String id, {String? subject, String? body}) =>
-      _postRecord(ApiConstants.outreachRecordApprove(id), payload: {
-        'subject': ?subject,
-        'body': ?body,
-      });
-
-  Future<OutreachRecord> outreachReject(String id) =>
-      _postRecord(ApiConstants.outreachRecordReject(id));
-
-  Future<OutreachRecord> outreachSetStatus(String id, String status) =>
-      _postRecord(ApiConstants.outreachRecordStatus(id), payload: {'outreachStatus': status});
-
-  Future<List<OutreachCampaign>> listOutreachCampaigns() async {
-    final response = await _client.get(_uri(ApiConstants.outreachCampaigns));
-    final body = _tryDecode(response.body);
-    if (response.statusCode >= 400) {
-      throw Exception(body['error'] ?? 'Failed to load campaigns');
-    }
-    return (body['campaigns'] as List<dynamic>? ?? [])
-        .whereType<Map>()
-        .map((e) => OutreachCampaign.fromJson(Map<String, dynamic>.from(e)))
-        .toList();
-  }
-
-  Future<OutreachCampaign> createOutreachCampaign(Map<String, dynamic> payload) async {
-    final response = await _client.post(
-      _uri(ApiConstants.outreachCampaigns),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode(payload),
-    );
-    final body = _tryDecode(response.body);
-    if (response.statusCode >= 400) {
-      throw Exception(body['error'] ?? 'Failed to create campaign');
-    }
-    return OutreachCampaign.fromJson(body['campaign'] as Map<String, dynamic>);
-  }
-
-  Future<OutreachCampaign> updateOutreachCampaign(String id, Map<String, dynamic> payload) async {
-    final response = await _client.patch(
-      _uri(ApiConstants.outreachCampaign(id)),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode(payload),
-    );
-    final body = _tryDecode(response.body);
-    if (response.statusCode >= 400) {
-      throw Exception(body['error'] ?? 'Failed to update campaign');
-    }
-    return OutreachCampaign.fromJson(body['campaign'] as Map<String, dynamic>);
-  }
-
-  Future<void> startOutreachCampaign(String id) async {
-    final response = await _client.post(
-      _uri(ApiConstants.outreachCampaignStart(id)),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({}),
-    );
-    final body = _tryDecode(response.body);
-    if (response.statusCode >= 400) {
-      throw Exception(body['error'] ?? 'Failed to start campaign');
-    }
-  }
-
-  Future<OutreachJob> startOutreachRun({
-    required String kind,
-    required int from,
-    required int to,
-    String sourceCollection = 'websiteLeads',
-  }) async {
-    final response = await _client.post(
-      _uri(ApiConstants.outreachRun),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({
-        'kind': kind,
-        'from': from,
-        'to': to,
-        'sourceCollection': sourceCollection,
-      }),
-    );
-    final body = _tryDecode(response.body);
-    if (response.statusCode >= 400) {
-      throw Exception(body['error'] ?? 'Failed to start outreach');
-    }
-    return OutreachJob.fromJson(body['job'] as Map<String, dynamic>?);
-  }
-
-  Future<OutreachJob> getOutreachJob() async {
-    final response = await _client.get(_uri(ApiConstants.outreachJob));
-    final body = _tryDecode(response.body);
-    if (response.statusCode >= 400) {
-      throw Exception(body['error'] ?? 'Failed to load outreach job');
-    }
-    return OutreachJob.fromJson(body['job'] as Map<String, dynamic>?);
-  }
-
-  Future<OutreachJob> cancelOutreachJob() async {
-    final response = await _client.post(_uri(ApiConstants.outreachJobCancel));
-    final body = _tryDecode(response.body);
-    if (response.statusCode >= 400) {
-      throw Exception(body['error'] ?? 'Failed to cancel outreach job');
-    }
-    return OutreachJob.fromJson(body['job'] as Map<String, dynamic>?);
   }
 
   Map<String, dynamic> _tryDecode(String body) {

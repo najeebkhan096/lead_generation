@@ -1,6 +1,5 @@
 import 'dart:typed_data';
 
-import '../entities/email_validation_snapshot.dart';
 import '../entities/lead.dart';
 import '../entities/lead_page.dart';
 import '../entities/validation_start.dart';
@@ -15,7 +14,6 @@ import '../entities/sales_user.dart';
 import '../entities/watchlist_entry.dart';
 import '../entities/whatsapp_check_result.dart';
 import '../entities/whatsapp_web_status.dart';
-import '../entities/outreach.dart';
 import '../entities/twilio_test_lead.dart';
 import '../entities/twilio_test_message.dart';
 
@@ -33,8 +31,6 @@ abstract class LeadRepository {
     String? query,
     int limit,
     bool verifiedOnly,
-    bool emailOnly,
-    String? sourceType,
   });
 
   /// Distinct categories of a collection with their counts.
@@ -50,59 +46,12 @@ abstract class LeadRepository {
   /// Returns how many were deleted.
   Future<int> deleteLeadsInCategory(LeadCollection collection, String category);
 
-  /// Deletes a single saved website lead from Firestore. Irreversible.
-  /// `leadId` must be [Lead.dbId].
-  Future<void> deleteWebsiteLead(String leadId);
-
-  /// Deletes every saved website lead in an exact category. Irreversible.
-  /// Returns how many were deleted.
-  Future<int> deleteWebsiteLeadsByCategory(String category);
-
-  /// Deletes a single saved email lead from Firestore. Irreversible.
-  /// `leadId` must be [Lead.dbId].
-  Future<void> deleteEmailLead(String leadId);
-
-  /// Deletes every saved email lead in an exact category. Irreversible.
-  /// Returns how many were deleted.
-  Future<int> deleteEmailLeadsByCategory(String category);
-
-  /// Starts the email validator over an explicit list of businesses (each
-  /// map needs `id` and `website`). Poll [getEmailValidationStatus] for
-  /// progress; verified businesses are also saved to the Email Leads list.
-  Future<ValidationStart> validateEmailLeads(List<Map<String, dynamic>> leads, {bool recheck});
-
-  /// Starts the email validator over saved leads, by Firestore id
-  /// ([Lead.dbId]). [collection] is `leads` or `websiteLeads`. A lead with a
-  /// website has it crawled, one without is looked up on the web; leads that
-  /// already have an email are skipped.
-  Future<ValidationStart> validateSavedLeadEmails(String collection, List<String> ids, {bool recheck});
-
   /// Starts the WhatsApp validator over saved leads, by Firestore id.
-  /// [collection] is `leads` or `websiteLeads`. Verified numbers are copied
+  /// [collection] is `leads`. Verified numbers are copied
   /// into the WhatsApp leads collection.
   Future<ValidationStart> validateSavedLeadWhatsApp(String collection, List<String> ids, {bool recheck});
 
   Future<void> deleteWhatsAppLead(String leadId);
-
-  Future<EmailValidationSnapshot> getEmailValidationStatus();
-
-  Future<void> cancelEmailValidation();
-
-  /// Uploads email-verified businesses (grouped by category, one sheet
-  /// each) as an archive of their own, separate from the source scan.
-  Future<ExcelArchive> uploadEmailVerifiedArchive({
-    required List<Map<String, dynamic>> sheets,
-    String? sourceArchiveId,
-    String? sourceFileName,
-    List<String>? countries,
-  });
-
-  Future<List<ExcelArchive>> listEmailVerifiedArchives();
-
-  /// Businesses in an email-verified archive, with `email`/`emails` set.
-  Future<List<Lead>> getEmailVerifiedArchiveLeads(String id);
-
-  Future<void> deleteEmailVerifiedArchive(String id);
 
   /// Records a manually-checked WhatsApp result for one lead — for
   /// checking by hand (e.g. on a phone) instead of the automated
@@ -393,63 +342,4 @@ abstract class LeadRepository {
   /// Pulls delivery receipts and replies from Twilio; returns new replies stored.
   Future<int> syncTwilioTestChat(String leadId);
 
-  Future<OutreachDashboard> getOutreachDashboard();
-  Future<OutreachAnalytics> getOutreachAnalytics();
-  Future<OutreachSettings> getOutreachSettings();
-  Future<OutreachSettings> updateOutreachSettings({
-    bool? testMode,
-    String? testEmail,
-    String? senderName,
-    String? senderEmail,
-    int? defaultDailyLimit,
-    bool? whatsappLinkEnabled,
-  });
-  Future<List<OutreachRecord>> listOutreachRecords({
-    bool readyForReview = false,
-    String? campaignId,
-    String? outreachStatus,
-    String? sourceCollection,
-  });
-  Future<OutreachRecord> ensureOutreachRecord({
-    required String sourceCollection,
-    required String sourceLeadId,
-    String? campaignId,
-  });
-  Future<(OutreachRecord, List<OutreachEvent>)> getOutreachRecord(String id);
-  Future<OutreachRecord> updateOutreachRecord(
-    String id, {
-    String? generatedSubject,
-    String? generatedBody,
-    String? email,
-    String? website,
-  });
-  Future<OutreachRecord> outreachDiscoverEmail(String id, {bool force = false});
-  Future<OutreachRecord> outreachVerifyEmail(String id, {bool force = false});
-  Future<OutreachRecord> outreachAnalyzeWebsite(String id, {bool force = false});
-  Future<OutreachRecord> outreachGenerateEmail(String id, {bool force = false});
-  Future<OutreachRecord> outreachProcessLead(String id, {bool force = false, bool autoSend = false});
-  Future<OutreachRecord> outreachApprove(String id, {String? subject, String? body});
-  Future<OutreachRecord> outreachReject(String id);
-  Future<OutreachRecord> outreachSetStatus(String id, OutreachStatus status);
-  Future<OutreachJob> startOutreachRun({
-    required String kind,
-    required int from,
-    required int to,
-    String sourceCollection = 'websiteLeads',
-  });
-  Future<OutreachJob> getOutreachJob();
-  Future<OutreachJob> cancelOutreachJob();
-  Future<List<OutreachCampaign>> listOutreachCampaigns();
-  Future<OutreachCampaign> createOutreachCampaign({
-    required String name,
-    String? description,
-    String sourceCollection = 'websiteLeads',
-    int dailyLimit = 30,
-    bool followUpEnabled = true,
-    int followUp1DelayDays = 3,
-    int followUp2DelayDays = 4,
-    Map<String, dynamic>? filters,
-  });
-  Future<OutreachCampaign> updateOutreachCampaign(String id, {String? status, int? dailyLimit, bool? testMode});
-  Future<void> startOutreachCampaign(String id);
 }

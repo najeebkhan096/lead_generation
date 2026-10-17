@@ -35,8 +35,6 @@ class LeadListConfig {
     this.noun = 'business',
     this.validationCollection,
     this.verifiedFilter = false,
-    this.emailFilter = false,
-    this.sourceFilter = false,
     this.headerActions,
     this.cardExtent = 248,
   });
@@ -58,20 +56,14 @@ class LeadListConfig {
   /// Tapping a card. Return `true` if the lead changed (reload the list).
   final Future<bool?> Function(BuildContext context, Lead lead) onOpen;
 
-  /// `leads` / `websiteLeads` — shows the WhatsApp + Email validation bar
-  /// for the loaded leads. `null` hides it.
+  /// `leads` — shows the WhatsApp validation bar for the loaded leads.
+  /// `null` hides it.
   final String? validationCollection;
 
   /// "WhatsApp verified only" (review leads).
   final bool verifiedFilter;
 
-  /// "Has email" (no-website leads).
-  final bool emailFilter;
-
-  /// 1-star / no-website switch (WhatsApp leads).
-  final bool sourceFilter;
-
-  /// Extra actions in the header row, e.g. "Copy emails".
+  /// Extra actions in the header row.
   final List<Widget> Function(BuildContext context, PagedLeadsState state)? headerActions;
   final double cardExtent;
 }
@@ -87,8 +79,7 @@ String _thousands(int n) {
 }
 
 /// One lead list, paged and lazily rendered. See [LeadListConfig] for what
-/// varies; the same page backs Review leads, No-website leads, WhatsApp
-/// leads and Email leads.
+/// varies; the same page backs Review leads and WhatsApp leads.
 class LeadListPage extends StatelessWidget {
   const LeadListPage({super.key, required this.config});
 
@@ -293,26 +284,6 @@ class _LeadListViewState extends State<_LeadListView> {
                 label: const Text('WhatsApp verified only'),
                 selected: s.verifiedOnly,
                 onSelected: (v) => _bloc.add(PagedLeadsFilterChanged(verifiedOnly: v)),
-              ),
-            if (_c.emailFilter)
-              FilterChip(
-                avatar: const Icon(AppIcons.mail, size: 16),
-                label: const Text('Has email'),
-                selected: s.emailOnly,
-                onSelected: (v) => _bloc.add(PagedLeadsFilterChanged(emailOnly: v)),
-              ),
-            if (_c.sourceFilter)
-              SegmentedButton<String?>(
-                showSelectedIcon: false,
-                segments: const [
-                  ButtonSegment(value: null, label: Text('All')),
-                  ButtonSegment(value: 'review', label: Text('1-star')),
-                  ButtonSegment(value: 'website', label: Text('No website')),
-                ],
-                selected: {s.sourceType},
-                onSelectionChanged: (v) => _bloc.add(
-                  PagedLeadsFilterChanged(sourceType: v.first, clearSourceType: v.first == null),
-                ),
               ),
           ],
         ),

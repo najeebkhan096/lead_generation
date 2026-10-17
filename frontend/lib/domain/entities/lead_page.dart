@@ -7,14 +7,8 @@ enum LeadCollection {
   /// 1-star review leads (`leads`).
   reviewLeads('leads', '/api/db/leads'),
 
-  /// Businesses with no website (`websiteLeads`).
-  websiteLeads('websiteLeads', '/api/db/website-leads'),
-
   /// Numbers confirmed on WhatsApp (`whatsappLeads`).
-  whatsappLeads('whatsappLeads', '/api/db/whatsapp-leads'),
-
-  /// Verified contact emails (`emailLeads`).
-  emailLeads('emailLeads', '/api/db/email-leads');
+  whatsappLeads('whatsappLeads', '/api/db/whatsapp-leads');
 
   const LeadCollection(this.firestoreName, this.path);
 
@@ -86,9 +80,7 @@ class DashboardOverview extends Equatable {
     required this.topCategories,
     required this.recent,
     required this.reviewLeads,
-    required this.websiteLeads,
     required this.whatsappLeads,
-    required this.emailLeads,
   });
 
   final int total;
@@ -102,11 +94,9 @@ class DashboardOverview extends Equatable {
 
   /// Collection sizes.
   final int reviewLeads;
-  final int websiteLeads;
   final int whatsappLeads;
-  final int emailLeads;
 
-  bool get isEmpty => reviewLeads == 0 && websiteLeads == 0;
+  bool get isEmpty => reviewLeads == 0;
 
   factory DashboardOverview.fromJson(Map<String, dynamic> json) {
     final review = (json['review'] as Map<String, dynamic>?) ?? const {};
@@ -126,12 +116,10 @@ class DashboardOverview extends Equatable {
           .map((e) => Lead.fromJson(e as Map<String, dynamic>))
           .toList(),
       reviewLeads: n(counts, 'reviewLeads'),
-      websiteLeads: n(counts, 'websiteLeads'),
       whatsappLeads: n(counts, 'whatsappLeads'),
-      emailLeads: n(counts, 'emailLeads'),
     );
   }
 
   @override
-  List<Object?> get props => [total, reviewLeads, websiteLeads, whatsappLeads, emailLeads, recent];
+  List<Object?> get props => [total, reviewLeads, whatsappLeads, recent];
 }

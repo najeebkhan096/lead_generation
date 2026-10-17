@@ -30,6 +30,8 @@ function docToRecord(doc) {
     // Which places the scan covers (standard | extended | maximum) and which
     // cities it has finished, so a Resume skips them.
     coverage: data.coverage ?? null,
+    // Workbooks written by the retired no-website scan (kind 'no_website').
+    legacyNoWebsite: data.kind === 'no_website',
     completedCities: data.completedCities ?? null,
     completedCountries: data.completedCountries ?? null,
     dateRange: data.dateRange ?? null,
@@ -37,11 +39,6 @@ function docToRecord(doc) {
     targetLeadCount: data.targetLeadCount ?? null,
     analyze: data.analyze ?? null,
     concurrency: data.concurrency ?? null,
-    // 'review' — the 1-star-review workbook (one sheet per state).
-    // 'no_website' — its companion: businesses with no website at all,
-    // same sheets, kept in a separate file so each stays simple to read.
-    kind: data.kind || 'review',
-    pairedArchiveId: data.pairedArchiveId ?? null,
     // When the scan actually ran. Set once and never overwritten, so a
     // resumed scan keeps its original date; the Archive list uses it to
     // flag scans old enough to delete and re-scan.
@@ -57,16 +54,6 @@ function slugify(text) {
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 60);
-}
-
-/** Companion file / doc id for an archive's no-website leads. Derived, so
- * a resume or delete can find it without storing a second pointer. */
-export function noWebsiteArchiveId(id) {
-  return `${id}-nowebsite`;
-}
-
-export function noWebsiteFileName(fileName) {
-  return String(fileName).replace(/\.xlsx$/i, '') + '-no-website.xlsx';
 }
 
 export function buildArchiveFileName({ categories, countries }) {
@@ -99,8 +86,6 @@ export async function uploadExcelArchive({
   targetLeadCount,
   analyze,
   concurrency,
-  kind = 'review',
-  pairedArchiveId,
   scannedAt,
   coverage,
   completedCities,
@@ -139,10 +124,8 @@ export async function uploadExcelArchive({
       targetLeadCount: targetLeadCount ?? null,
       analyze: analyze ?? null,
       concurrency: concurrency ?? null,
-      kind,
       coverage: coverage ?? null,
       completedCities: completedCities ?? null,
-      pairedArchiveId: pairedArchiveId ?? null,
       // Written once: a checkpoint or resume must not move the scan date.
       scannedAt: existing.exists && existing.data().scannedAt
         ? existing.data().scannedAt
@@ -177,7 +160,8 @@ export async function downloadExcelArchiveBuffer(id) {
   return { record, buffer };
 }
 
-async function deleteOneArchive(id) {
+/** Deletes an archive's workbook and its record. */
+export async function deleteExcelArchive(id) {
   const db = getFirestore();
   const ref = db.collection(COLLECTION).doc(id);
   const doc = await ref.get();
@@ -193,9 +177,3 @@ async function deleteOneArchive(id) {
   return true;
 }
 
-/** Deletes an archive and, for a review workbook, its no-website companion. */
-export async function deleteExcelArchive(id) {
-  const ok = await deleteOneArchive(id);
-  if (ok) await deleteOneArchive(noWebsiteArchiveId(id)).catch(() => {});
-  return ok;
-}

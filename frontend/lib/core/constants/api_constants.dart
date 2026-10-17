@@ -31,12 +31,8 @@ class ApiConstants {
   static const String dbOverview = '/api/db/overview';
   static String leadWhatsAppStatus(String leadId) => '/api/db/leads/$leadId/whatsapp';
   static String leadDelete(String leadId) => '/api/db/leads/$leadId';
-  static const String websiteLeads = '/api/db/website-leads';
-  static String websiteLeadDelete(String leadId) => '/api/db/website-leads/$leadId';
   static const String whatsappLeads = '/api/db/whatsapp-leads';
   static String whatsappLeadDelete(String leadId) => '/api/db/whatsapp-leads/$leadId';
-  static const String emailLeads = '/api/db/email-leads';
-  static String emailLeadDelete(String leadId) => '/api/db/email-leads/$leadId';
   static const String clearDb = '/api/db/clear';
   static const String checkWhatsApp = '/api/whatsapp/check';
 
@@ -71,14 +67,7 @@ class ApiConstants {
   static String whatsappValidatedLeads(String id) => '/api/whatsapp-validated-scans/$id/leads';
   static String whatsappValidatedDelete(String id) => '/api/whatsapp-validated-scans/$id';
 
-  static const String emailValidateList = '/api/email-validation/validate-list';
-  static const String emailValidateSaved = '/api/email-validation/validate-saved';
-  static const String emailValidateStatus = '/api/email-validation/status';
-  static const String emailValidateCancel = '/api/email-validation/cancel';
 
-  static const String emailValidatedScans = '/api/email-validated-scans';
-  static String emailValidatedLeads(String id) => '/api/email-validated-scans/$id/leads';
-  static String emailValidatedDelete(String id) => '/api/email-validated-scans/$id';
 
   static const String clients = '/api/clients';
   static String clientUpdate(String id) => '/api/clients/$id';
@@ -100,25 +89,4 @@ class ApiConstants {
   static String twilioTestRetry(String id, String messageId) =>
       '/api/twilio-test/leads/$id/messages/$messageId/retry';
 
-  static const String outreachDashboard = '/api/outreach/dashboard';
-  static const String outreachAnalytics = '/api/outreach/analytics';
-  static const String outreachSettings = '/api/outreach/settings';
-  static const String outreachRecords = '/api/outreach/records';
-  static const String outreachCampaigns = '/api/outreach/campaigns';
-  static const String outreachJob = '/api/outreach/job';
-  static const String outreachJobCancel = '/api/outreach/job/cancel';
-  static const String outreachRun = '/api/outreach/run';
-  static const String outreachQueueDrain = '/api/outreach/queue/drain';
-  static String outreachRecord(String id) => '/api/outreach/records/$id';
-  static String outreachRecordDiscover(String id) => '/api/outreach/records/$id/discover-email';
-  static String outreachRecordVerify(String id) => '/api/outreach/records/$id/verify-email';
-  static String outreachRecordAnalyze(String id) => '/api/outreach/records/$id/analyze-website';
-  static String outreachRecordGenerate(String id) => '/api/outreach/records/$id/generate-email';
-  static String outreachRecordProcess(String id) => '/api/outreach/records/$id/process';
-  static String outreachRecordApprove(String id) => '/api/outreach/records/$id/approve';
-  static String outreachRecordReject(String id) => '/api/outreach/records/$id/reject';
-  static String outreachRecordStatus(String id) => '/api/outreach/records/$id/status';
-  static String outreachCampaign(String id) => '/api/outreach/campaigns/$id';
-  static String outreachCampaignEnroll(String id) => '/api/outreach/campaigns/$id/enroll';
-  static String outreachCampaignStart(String id) => '/api/outreach/campaigns/$id/start';
 }

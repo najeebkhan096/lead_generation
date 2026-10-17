@@ -3,7 +3,7 @@
  * WhatsApp Web check confirmed is registered — to their own Firestore
  * collection, `whatsappLeads`.
  *
- * The WhatsApp counterpart to `emailLeads`: validating a lead (from a saved
+ * Verified WhatsApp leads: validating a lead (from a saved
  * review/website lead or from an Excel archive) *copies* it here, so the
  * verified list is a first-class collection that can be browsed, exported
  * and read by the mobile app without digging through scan workbooks. The
@@ -27,16 +27,6 @@ function waLinkFor(lead) {
   return waMeLink(e164);
 }
 
-/**
- * `sourceType` says which signal produced the lead, so the verified list
- * can be filtered the same way the source lists are: a lead that carries a
- * review is a review lead; one without is treated as a no-website lead.
- */
-function inferSourceType(lead) {
-  if (lead.sourceType) return lead.sourceType;
-  return lead.badReview?.text ? 'review' : 'website';
-}
-
 function toFirestoreWhatsAppLead(lead, { country } = {}) {
   const bad = lead.badReview || {};
   return {
@@ -44,7 +34,8 @@ function toFirestoreWhatsAppLead(lead, { country } = {}) {
     // Firestore id of the saved lead this was validated from, when there
     // is one (archive leads were never saved, so this is null for them).
     sourceId: lead.dbId || null,
-    sourceType: inferSourceType(lead),
+    // Every lead that reaches the validators is a 1-star review lead.
+    sourceType: 'review',
     business: lead.business || 'Unknown',
     category: normalizeCategory(lead.category, country),
     location: lead.location || null,

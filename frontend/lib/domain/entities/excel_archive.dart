@@ -12,7 +12,6 @@ class ExcelArchive extends Equatable {
     this.status = 'complete',
     this.createdAt,
     this.scannedAt,
-    this.kind = 'review',
   });
 
   final String id;
@@ -34,12 +33,6 @@ class ExcelArchive extends Equatable {
   /// re-saved or a scan is resumed.
   final DateTime? scannedAt;
 
-  /// 'review' — 1-star-review leads; 'no_website' — the companion file of
-  /// businesses with no website, written alongside it by the same scan.
-  final String kind;
-
-  bool get isNoWebsite => kind == 'no_website';
-
   /// Days since the scan ran, or null when the date is unknown.
   int? get ageDays {
     final when = scannedAt ?? createdAt;
@@ -51,7 +44,7 @@ class ExcelArchive extends Equatable {
   static const staleAfterDays = 30;
 
   /// A finished review scan can be re-run (same category and settings).
-  bool get rescannable => !isNoWebsite && status == 'complete' && categories.isNotEmpty;
+  bool get rescannable => status == 'complete' && categories.isNotEmpty;
 
   /// Whether `/api/excel-scans/:id/resume` can pick this archive back up —
   /// any interrupted ("partial") archive, regardless of which engine made
@@ -76,14 +69,13 @@ class ExcelArchive extends Equatable {
       scannedAt: json['scannedAt'] is String && (json['scannedAt'] as String).isNotEmpty
           ? DateTime.tryParse(json['scannedAt'] as String)
           : null,
-      kind: (json['kind'] as String?) ?? 'review',
     );
   }
 
   @override
   List<Object?> get props => [
         id, fileName, downloadUrl, categories, countries, totalLeads, totalBusinessesProcessed, status,
-        createdAt, scannedAt, kind,
+        createdAt, scannedAt,
       ];
 }
 

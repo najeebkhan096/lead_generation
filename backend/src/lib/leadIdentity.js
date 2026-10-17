@@ -1,7 +1,7 @@
 /**
  * How a business is identified across the lead collections.
  *
- * `leads`, `websiteLeads`, `whatsappLeads` and `emailLeads` all derive a
+ * `leads` and `whatsappLeads` both derive a
  * document id from the same signals, so one business scanned twice — or
  * validated from two different archives — is one document, and the same
  * business has the same id in every collection.

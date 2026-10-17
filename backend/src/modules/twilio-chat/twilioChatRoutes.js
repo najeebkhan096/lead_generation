@@ -5,7 +5,7 @@ import {
   postText, webhookIncoming, webhookStatus,
 } from './twilioChatController.js';
 
-/** Authenticated API for the mobile app: mounted at /api/outreach (before the email-outreach router). */
+/** Authenticated API for the mobile app: served by the Cloud Functions project. */
 export const chatApiRouter = Router();
 chatApiRouter.use(['/messages', '/leads'], requireApprovedUser);
 chatApiRouter.post('/messages/text', postText);

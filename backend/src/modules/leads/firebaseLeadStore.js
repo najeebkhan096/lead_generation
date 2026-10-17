@@ -198,11 +198,6 @@ function docToLead(doc) {
     searchId: d.searchId,
     savedAt: d.updatedAt?.toDate?.()?.toISOString?.() || null,
     whatsAppCheckedAt: d.whatsAppCheckedAt?.toDate?.()?.toISOString?.() || null,
-    email: d.email || null,
-    emailSource: d.emailSource || null,
-    emailFoundOn: d.emailFoundOn || null,
-    emailOutreachStatus: d.emailOutreachStatus || null,
-    emailSentAt: d.emailSentAt?.toDate?.()?.toISOString?.() || null,
   };
 }
 
@@ -214,25 +209,6 @@ export async function getSavedLeadsByIds(ids) {
   const db = getFirestore();
   const snaps = await db.getAll(...unique.map((id) => db.collection('leads').doc(id)));
   return snaps.filter((s) => s.exists).map(docToLead);
-}
-
-/**
- * Records a verified email on the saved lead itself. Never touches
- * `emailOutreachStatus` — outreach progress is its own pipeline.
- */
-export async function setLeadEmail(leadId, { email, emails, emailSource, emailFoundOn }) {
-  const db = getFirestore();
-  await db.collection('leads').doc(leadId).set(
-    {
-      email,
-      emails: emails || [],
-      emailSource: emailSource || null,
-      emailFoundOn: emailFoundOn || null,
-      emailVerified: true,
-      emailCheckedAt: FieldValue.serverTimestamp(),
-    },
-    { merge: true }
-  );
 }
 
 /**

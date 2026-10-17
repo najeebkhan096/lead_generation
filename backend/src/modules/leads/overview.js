@@ -10,9 +10,7 @@
 import { FieldPath } from 'firebase-admin/firestore';
 import { getFirestore } from '../../firebase/admin.js';
 import { listFirebaseLeads, getFirebaseLeadCount } from './firebaseLeadStore.js';
-import { getWebsiteLeadCount } from './websiteLeadStore.js';
 import { getWhatsAppLeadCount } from '../validation/whatsapp/whatsappLeadStore.js';
-import { getEmailLeadCount } from '../validation/email/emailLeadStore.js';
 
 const TTL_MS = 60_000;
 const CHUNK = 2000;
@@ -74,13 +72,11 @@ export async function getOverview({ force = false } = {}) {
   if (!force && cache && Date.now() - cache.at < TTL_MS) return cache.value;
 
   const db = getFirestore();
-  const [review, recent, reviewCount, websiteCount, whatsappCount, emailCount] = await Promise.all([
+  const [review, recent, reviewCount, whatsappCount] = await Promise.all([
     scanReviewLeads(db),
     listFirebaseLeads({ limit: 5 }),
     getFirebaseLeadCount(),
-    getWebsiteLeadCount(),
     getWhatsAppLeadCount(),
-    getEmailLeadCount(),
   ]);
 
   const value = {
@@ -88,9 +84,7 @@ export async function getOverview({ force = false } = {}) {
     recent: recent.leads,
     counts: {
       reviewLeads: reviewCount,
-      websiteLeads: websiteCount,
       whatsappLeads: whatsappCount,
-      emailLeads: emailCount,
     },
   };
   cache = { at: Date.now(), value };

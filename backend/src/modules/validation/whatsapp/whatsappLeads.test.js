@@ -77,10 +77,10 @@ test('withCountrySuffix tags once and leaves untagged data alone', () => {
   assert.equal(withCountrySuffix('  ', 'USA'), null);
 });
 
-test('lead sources map both signals and reject unknown collections', () => {
-  assert.deepEqual(Object.keys(LEAD_SOURCES).sort(), ['leads', 'websiteLeads']);
+test('the only lead source is 1-star review leads; anything else is rejected', () => {
+  assert.deepEqual(Object.keys(LEAD_SOURCES), ['leads']);
   assert.equal(leadSource('leads').sourceType, 'review');
-  assert.equal(leadSource('websiteLeads').sourceType, 'website');
+  assert.throws(() => leadSource('websiteLeads'), (e) => e.status === 400);
   assert.throws(() => leadSource('users'), (e) => e.status === 400);
 });
 

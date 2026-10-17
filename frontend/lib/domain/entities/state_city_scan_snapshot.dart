@@ -38,7 +38,6 @@ class StateCityProgress extends Equatable {
     this.businessesProcessed = 0,
     this.waValidated = 0,
     this.waChecked = 0,
-    this.websiteLeadsFound = 0,
     this.incompleteBusinesses = 0,
     this.skippedListings = 0,
     this.startedAt,
@@ -65,10 +64,6 @@ class StateCityProgress extends Equatable {
   /// (registered or not). Zero means the session wasn't connected.
   final int waChecked;
 
-  /// A completely separate lead type ("no website found") — never counted
-  /// in `leadsCollected`/`waValidated`, which are review leads.
-  final int websiteLeadsFound;
-
   /// Businesses whose reviews could not be proven fully read, and listings
   /// that could not be opened: what the scan may have missed in this state.
   final int incompleteBusinesses;
@@ -94,7 +89,6 @@ class StateCityProgress extends Equatable {
       businessesProcessed: (json['businessesProcessed'] as num?)?.toInt() ?? 0,
       waValidated: (json['waValidated'] as num?)?.toInt() ?? 0,
       waChecked: (json['waChecked'] as num?)?.toInt() ?? 0,
-      websiteLeadsFound: (json['websiteLeadsFound'] as num?)?.toInt() ?? 0,
       incompleteBusinesses: (json['incompleteBusinesses'] as num?)?.toInt() ?? 0,
       skippedListings: (json['skippedListings'] as num?)?.toInt() ?? 0,
       startedAt: ms(json['startedAt']),
@@ -164,7 +158,6 @@ class CategoryStateProgress extends Equatable {
     required this.archive,
     this.waValidated = 0,
     this.waChecked = 0,
-    this.websiteLeadsFound = 0,
     this.incompleteBusinesses = 0,
     this.skippedListings = 0,
     this.duplicatesSkipped = 0,
@@ -189,9 +182,6 @@ class CategoryStateProgress extends Equatable {
   /// How many of those leads were looked up on WhatsApp Web.
   final int waChecked;
 
-  /// Separate lead type ("no website found") found while scanning.
-  final int websiteLeadsFound;
-
   /// What the scan may have missed in this category (see [StateCityProgress]).
   final int incompleteBusinesses;
   final int skippedListings;
@@ -215,7 +205,6 @@ class CategoryStateProgress extends Equatable {
       businessesProcessed: (json['businessesProcessed'] as num?)?.toInt() ?? 0,
       waValidated: (json['waValidated'] as num?)?.toInt() ?? 0,
       waChecked: (json['waChecked'] as num?)?.toInt() ?? 0,
-      websiteLeadsFound: (json['websiteLeadsFound'] as num?)?.toInt() ?? 0,
       incompleteBusinesses: (json['incompleteBusinesses'] as num?)?.toInt() ?? 0,
       skippedListings: (json['skippedListings'] as num?)?.toInt() ?? 0,
       duplicatesSkipped: (json['duplicatesSkipped'] as num?)?.toInt() ?? 0,
@@ -262,7 +251,6 @@ class StateCityScanSnapshot extends Equatable {
     this.finishedAt,
     this.waValidated = 0,
     this.waChecked = 0,
-    this.websiteLeadsFound = 0,
     this.stoppedReason,
     this.blocked,
     this.coverage,
@@ -288,10 +276,6 @@ class StateCityScanSnapshot extends Equatable {
 
   /// Job-wide count of leads actually looked up on WhatsApp Web.
   final int waChecked;
-
-  /// Job-wide count of website leads ("no website found") across every
-  /// category — a separate lead type entirely, not part of review leads.
-  final int websiteLeadsFound;
 
   /// Why the scan stopped by itself, e.g. `google_session_expired`.
   final String? stoppedReason;
@@ -327,7 +311,6 @@ class StateCityScanSnapshot extends Equatable {
       finishedAt: ms(json['finishedAt']),
       waValidated: (json['waValidated'] as num?)?.toInt() ?? 0,
       waChecked: (json['waChecked'] as num?)?.toInt() ?? 0,
-      websiteLeadsFound: (json['websiteLeadsFound'] as num?)?.toInt() ?? 0,
       stoppedReason: json['stoppedReason'] as String?,
       blocked: json['blocked'] is Map<String, dynamic> ? ScanBlockInfo.fromJson(json['blocked'] as Map<String, dynamic>) : null,
       coverage: json['coverage'] as String?,

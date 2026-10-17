@@ -1,7 +1,5 @@
 import 'package:equatable/equatable.dart';
 
-import 'outreach.dart';
-
 class BadReview extends Equatable {
   const BadReview({
     required this.stars,
@@ -31,6 +29,8 @@ class BadReview extends Equatable {
   List<Object?> get props => [stars, text, date, reviewer, link];
 }
 
+/// A business with a recent 1-star review (see the scan), optionally verified
+/// on WhatsApp.
 class Lead extends Equatable {
   const Lead({
     required this.id,
@@ -47,17 +47,8 @@ class Lead extends Equatable {
     this.hasWhatsApp = false,
     this.waLink,
     required this.badReview,
-    this.email,
-    this.emails = const [],
-    this.emailSource,
-    this.emailFoundOn,
-    this.sourceType,
-    this.emailCheckStatus,
-    this.emailRetryAfter,
     this.savedAt,
     this.whatsAppCheckedAt,
-    this.emailOutreachStatus,
-    this.emailSentAt,
   });
 
   final String id;
@@ -82,43 +73,11 @@ class Lead extends Equatable {
   final bool hasWhatsApp;
   final String? waLink;
   final BadReview badReview;
-  final String? email;
-
-  /// Every distinct address found on the business's site, best first.
-  /// Only populated for email leads ([email] is the first entry); empty
-  /// for review and website leads.
-  final List<String> emails;
-
-  /// Where [email] was found: `website`, `contact_page`, `about_page`,
-  /// `mailto`, … — see the backend's outreach `EMAIL_SOURCES`.
-  final String? emailSource;
-
-  /// The page [email] was read from, when it came from a web search — so
-  /// the address's origin can be eyeballed.
-  final String? emailFoundOn;
-
-  /// Which signal produced a verified lead: `review` (1-star) or
-  /// `website` (no website). Only set on WhatsApp/email lead documents.
-  final String? sourceType;
-
-  /// Outcome of an earlier email attempt that found nothing usable:
-  /// `none` (site has no email), `invalid` (found but undeliverable) or
-  /// `unreachable`. `null` = never checked, or it has an email.
-  final String? emailCheckStatus;
-
-  /// When that outcome stops being trusted and the lead is worth another
-  /// look. Until then a validation run skips it.
-  final DateTime? emailRetryAfter;
   final DateTime? savedAt;
 
   /// When [hasWhatsApp] was last determined by an actual check. `null`
   /// means it's never been checked (unverified, not "not on WhatsApp").
   final DateTime? whatsAppCheckedAt;
-
-  /// Email outreach send status mirrored from `outreachRecords`.
-  /// `null` means this lead has never been through outreach — treat as not sent.
-  final OutreachStatus? emailOutreachStatus;
-  final DateTime? emailSentAt;
 
   factory Lead.fromJson(Map<String, dynamic> json) {
     return Lead(
@@ -138,33 +97,14 @@ class Lead extends Equatable {
       badReview: BadReview.fromJson(
         (json['badReview'] as Map<String, dynamic>?) ?? const {},
       ),
-      email: json['email'] as String?,
-      emails: (json['emails'] as List<dynamic>? ?? const [])
-          .whereType<String>()
-          .toList(),
-      emailSource: json['emailSource'] as String?,
-      emailFoundOn: json['emailFoundOn'] as String?,
-      sourceType: json['sourceType'] as String?,
-      emailCheckStatus: (json['emailCheck'] as Map<String, dynamic>?)?['status'] as String?,
-      emailRetryAfter: DateTime.tryParse(
-        ((json['emailCheck'] as Map<String, dynamic>?)?['retryAfter'] as String?) ?? '',
-      ),
       savedAt: DateTime.tryParse((json['savedAt'] as String?) ?? ''),
       whatsAppCheckedAt: DateTime.tryParse((json['whatsAppCheckedAt'] as String?) ?? ''),
-      emailOutreachStatus: json['emailOutreachStatus'] is String
-          ? OutreachStatus.fromJson(json['emailOutreachStatus'] as String)
-          : null,
-      emailSentAt: DateTime.tryParse((json['emailSentAt'] as String?) ?? ''),
     );
   }
 
   Lead copyWith({
     bool? hasWhatsApp,
     DateTime? whatsAppCheckedAt,
-    String? email,
-    List<String>? emails,
-    String? emailSource,
-    String? emailFoundOn,
   }) {
     return Lead(
       id: id,
@@ -181,26 +121,10 @@ class Lead extends Equatable {
       hasWhatsApp: hasWhatsApp ?? this.hasWhatsApp,
       waLink: waLink,
       badReview: badReview,
-      email: email ?? this.email,
-      emails: emails ?? this.emails,
-      emailSource: emailSource ?? this.emailSource,
-      emailFoundOn: emailFoundOn ?? this.emailFoundOn,
-      sourceType: sourceType,
-      emailCheckStatus: emailCheckStatus,
-      emailRetryAfter: emailRetryAfter,
       savedAt: savedAt,
       whatsAppCheckedAt: whatsAppCheckedAt ?? this.whatsAppCheckedAt,
-      emailOutreachStatus: emailOutreachStatus,
-      emailSentAt: emailSentAt,
     );
   }
-
-  /// An earlier email attempt found nothing and is still recent enough that
-  /// a validation run will skip this lead.
-  bool get emailCheckedRecently =>
-      emailCheckStatus != null &&
-      emailRetryAfter != null &&
-      emailRetryAfter!.isAfter(DateTime.now());
 
   String get copyDetails {
     final buffer = StringBuffer()
@@ -224,6 +148,5 @@ class Lead extends Equatable {
   }
 
   @override
-  List<Object?> get props =>
-      [id, business, category, location, hasWhatsApp, waLink, badReview, emailOutreachStatus];
+  List<Object?> get props => [id, business, category, location, hasWhatsApp, waLink, badReview];
 }

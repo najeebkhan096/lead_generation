@@ -13,7 +13,8 @@ const US_STATE_NAMES = new Set(US_STATE_CITIES.map((s) => s.state));
 
 export async function listArchives(_req, res) {
   try {
-    const archives = await listExcelArchives();
+    // Workbooks from the retired no-website scan stay in storage, but are not listed.
+    const archives = (await listExcelArchives()).filter((a) => !a.legacyNoWebsite);
     return res.json({ archives });
   } catch (err) {
     return res.status(err.status || 500).json({ error: err.message || 'Failed to load Excel archives' });
