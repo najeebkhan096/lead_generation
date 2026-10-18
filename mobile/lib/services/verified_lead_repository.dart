@@ -1,8 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
-/// Marks verified leads (`whatsappLeads` / `emailLeads`) contacted, or moves
-/// them back to New. Writes only `status`, `contactedAt` and `contactedBy` —
+/// Marks verified leads (`whatsappLeads`) contacted, or moves them back to
+/// New. Writes only `status`, `contactedAt` and `contactedBy` —
 /// the whole of what Firestore rules let a phone change on these documents —
 /// and never `updatedAt`, which the lists are ordered by.
 class VerifiedLeadRepository {

@@ -6,10 +6,9 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_core_platform_interface/test.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:lead_mobile/pages/signal_screen.dart';
+import 'package:lead_mobile/pages/verified_leads_screen.dart';
 import 'package:lead_mobile/services/verified_lead_repository.dart';
 import 'package:lead_mobile/theme/app_theme.dart';
-import 'package:lead_mobile/utils/outreach_email.dart';
 import 'package:lead_mobile/widgets/verified_lead_card.dart';
 
 /// An in-memory Firestore: collections of maps, queried the way the pages do
@@ -179,16 +178,14 @@ void main() {
   final today = DateTime.now();
   DateTime at(int daysAgo, [int hour = 10]) => DateTime(today.year, today.month, today.day - daysAgo, hour);
 
-  Future<void> pumpScreen(WidgetTester tester, {LeadSignal signal = LeadSignal.review}) async {
+  Future<void> pumpScreen(WidgetTester tester) async {
     tester.view.physicalSize = const Size(900, 2000);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
     await tester.pumpWidget(MaterialApp(
       theme: AppTheme.light(),
       home: Scaffold(
-        body: SignalScreen(
-          key: ValueKey(signal), // a different signal is a different screen
-          signal: signal,
+        body: VerifiedLeadsScreen(
           repository: repo,
           collectionQuery: (c) => _Query(store, c),
           actions: LeadActions(
@@ -200,10 +197,6 @@ void main() {
               opened.add('call $n');
               return true;
             },
-            email: (address, {String? subject, String? body}) async {
-              opened.add('email $address | $subject');
-              return true;
-            },
           ),
         ),
       ),
@@ -211,10 +204,9 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  /// A channel tab (WhatsApp / Email) or the New / Contacted switch.
+  /// The New / Contacted switch.
   Future<void> openTab(WidgetTester tester, String label) async {
-    final isSwitch = label == 'New' || label == 'Contacted';
-    await tester.tap(find.widgetWithText(isSwitch ? ChoiceChip : Tab, label).hitTestable().first);
+    await tester.tap(find.widgetWithText(ChoiceChip, label).hitTestable().first);
     await tester.pumpAndSettle();
   }
 
@@ -470,69 +462,11 @@ void main() {
     });
   });
 
-  group('two sections, each with WhatsApp and Email', () {
-    Map<String, dynamic> emailLead(String business, DateTime at, String signal, String email) => {
-          ..._verified(business, at, sourceType: signal),
-          'email': email,
-          'emailSource': 'contact_page',
-          'emailCheckedAt': Timestamp.fromDate(at),
-        };
+  testWidgets('a no-website lead validated on WhatsApp stays out of the list', (tester) async {
+    store.col('whatsappLeads')['w1'] = _verified('Whiskey Web', at(0, 7), phone: '+15125559001', sourceType: 'website');
+    await pumpScreen(tester);
 
-    setUp(() {
-      store.col('whatsappLeads')['w1'] = _verified('Whiskey Web', at(0, 7), phone: '+15125559001', sourceType: 'website');
-      store.col('emailLeads')
-        ..['x'] = emailLead('Xray Review', at(0, 6), 'review', 'hi@xray.example')
-        ..['y'] = emailLead('Yankee Web', at(0, 5), 'website', 'hi@yankee.example');
-    });
-
-    testWidgets('the 1-star section shows only 1-star leads, the no-website section only the others', (tester) async {
-      await pumpScreen(tester);
-      expect(find.text('Alpha Cafe'), findsOneWidget);
-      expect(find.text('Whiskey Web'), findsNothing);
-      expect(find.text('WhatsApp · 1-star reviews'), findsOneWidget);
-
-      await pumpScreen(tester, signal: LeadSignal.noWebsite);
-      expect(find.text('Whiskey Web'), findsOneWidget);
-      expect(find.text('Alpha Cafe'), findsNothing);
-      expect(find.text('WhatsApp · No website'), findsOneWidget);
-    });
-
-    testWidgets('the Email tab of a section lists that section’s email leads', (tester) async {
-      await pumpScreen(tester);
-      await openTab(tester, 'Email');
-
-      expect(find.text('Email · 1-star reviews'), findsOneWidget);
-      expect(find.text('Xray Review'), findsOneWidget);
-      expect(find.text('Yankee Web'), findsNothing);
-
-      await pumpScreen(tester, signal: LeadSignal.noWebsite);
-      await openTab(tester, 'Email');
-      expect(find.text('Yankee Web'), findsOneWidget);
-      expect(find.text('Xray Review'), findsNothing);
-    });
-
-    testWidgets('emailing a no-website lead sends the website pitch and marks it contacted in emailLeads', (tester) async {
-      await pumpScreen(tester, signal: LeadSignal.noWebsite);
-      await openTab(tester, 'Email');
-
-      await tester.tap(find.widgetWithText(FilledButton, 'Email').first);
-      await tester.pumpAndSettle();
-
-      expect(opened.single, 'email hi@yankee.example | A professional website for Yankee Web');
-      expect(store.writes, ['emailLeads/y contacted=true']);
-      expect(find.text('Yankee Web'), findsNothing); // moved to Contacted
-
-      await openTab(tester, 'Contacted');
-      expect(find.text('Yankee Web'), findsOneWidget);
-    });
-
-    testWidgets('a lead contacted in one channel does not move the same business in the other', (tester) async {
-      await pumpScreen(tester);
-      await tester.tap(find.widgetWithText(FilledButton, 'WhatsApp').first);
-      await tester.pumpAndSettle();
-
-      expect(store.writes, ['whatsappLeads/a contacted=true']);
-      expect(store.col('emailLeads')['x']!['status'], isNull);
-    });
+    expect(find.text('Alpha Cafe'), findsOneWidget);
+    expect(find.text('Whiskey Web'), findsNothing);
   });
 }

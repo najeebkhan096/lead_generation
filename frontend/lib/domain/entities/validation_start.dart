@@ -10,7 +10,6 @@ class ValidationStart extends Equatable {
     this.total = 0,
     this.reused = 0,
     this.alreadyChecked = 0,
-    this.alreadyHadEmail = 0,
   });
 
   /// Businesses the run will actually check.
@@ -20,14 +19,10 @@ class ValidationStart extends Equatable {
   /// checked again.
   final int reused;
 
-  /// Checked recently with nothing found (email) or not on WhatsApp —
-  /// skipped. "Re-check" overrides this.
+  /// Checked recently and not on WhatsApp — skipped. "Re-check" overrides this.
   final int alreadyChecked;
 
-  /// Saved leads that already carry an email (email runs only).
-  final int alreadyHadEmail;
-
-  bool get skippedAnything => reused > 0 || alreadyChecked > 0 || alreadyHadEmail > 0;
+  bool get skippedAnything => reused > 0 || alreadyChecked > 0;
 
   factory ValidationStart.fromJson(Map<String, dynamic> json) {
     int n(String k) => (json[k] as num?)?.toInt() ?? 0;
@@ -35,7 +30,6 @@ class ValidationStart extends Equatable {
       total: n('total'),
       reused: n('reused'),
       alreadyChecked: n('alreadyChecked'),
-      alreadyHadEmail: n('alreadyHadEmail'),
     );
   }
 
@@ -44,13 +38,12 @@ class ValidationStart extends Equatable {
     final parts = <String>[
       if (reused > 0) '$reused already verified (included)',
       if (alreadyChecked > 0) '$alreadyChecked checked before (skipped)',
-      if (alreadyHadEmail > 0) '$alreadyHadEmail already have an email',
     ];
     return parts.isEmpty ? null : parts.join(' · ');
   }
 
   @override
-  List<Object?> get props => [total, reused, alreadyChecked, alreadyHadEmail];
+  List<Object?> get props => [total, reused, alreadyChecked];
 }
 
 /// Everything selected was already checked and nothing new was found, so

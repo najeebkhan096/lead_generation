@@ -59,7 +59,6 @@ class Lead extends Equatable {
     this.hasWhatsApp = false,
     this.waLink,
     required this.badReview,
-    this.email,
     this.createdAt,
     this.updatedAt,
     this.searchId,
@@ -82,7 +81,6 @@ class Lead extends Equatable {
   final bool hasWhatsApp;
   final String? waLink;
   final BadReview badReview;
-  final String? email;
   final DateTime? createdAt;
   final DateTime? updatedAt;
   final String? searchId;
@@ -109,7 +107,6 @@ class Lead extends Equatable {
       badReview: BadReview.fromMap(
         d['badReview'] as Map<String, dynamic>?,
       ),
-      email: d['email'] as String?,
       createdAt: (d['createdAt'] as Timestamp?)?.toDate(),
       updatedAt: (d['updatedAt'] as Timestamp?)?.toDate(),
       searchId: d['searchId'] as String?,

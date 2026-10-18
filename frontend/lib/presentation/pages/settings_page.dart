@@ -42,24 +42,12 @@ class SettingsPage extends StatelessWidget {
                       subtitle: 'Workbooks uploaded after validating an Excel Archive',
                       onTap: () => context.push('/whatsapp-verified'),
                     ),
-                    _SettingsItem(
-                      icon: AppIcons.mail,
-                      title: 'Email Verified archives',
-                      subtitle: 'Workbooks uploaded after validating emails from an Excel Archive',
-                      onTap: () => context.push('/email-verified'),
-                    ),
                   ],
                 ),
                 const SizedBox(height: 20),
                 _SettingsSection(
                   title: 'Business tools',
                   items: [
-                    _SettingsItem(
-                      icon: AppIcons.mail,
-                      title: 'Email outreach',
-                      subtitle: 'Campaigns, drafts and sending to verified emails',
-                      onTap: () => context.go('/outreach'),
-                    ),
                     _SettingsItem(
                       icon: AppIcons.chat,
                       title: 'Twilio test leads',

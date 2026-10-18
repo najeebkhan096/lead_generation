@@ -8,7 +8,7 @@ import 'business_details_page.dart' show LeadDetailsArgs;
 import 'lead_list_page.dart';
 
 /// Review leads — businesses with a recent 1-star review. A paged list: see
-/// [LeadListPage]. The WhatsApp / Email validation bar validates the leads
+/// [LeadListPage]. The WhatsApp validation bar validates the leads
 /// that are loaded; the category filter and search narrow them on the
 /// server.
 class SavedBusinessesPage extends StatelessWidget {

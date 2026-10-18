@@ -25,13 +25,12 @@ const _searchReadCap = 1500;
 /// documents; the cap stops a huge collection from being read whole.
 const _categoryReadCap = 1500;
 
-/// One list filter value (e.g. "1-star" / "No website"); `value == null` is
+/// One list filter value (e.g. "New" / "Contacted"); `value == null` is
 /// "all".
 typedef LeadFilter = ({String label, String? value});
 
 /// A paged, lazily-loaded list of leads — the one list screen behind every
-/// Firestore-backed lead list in the app (Discover, No-website, WhatsApp,
-/// Email).
+/// Firestore-backed lead list in the app (Discover, WhatsApp).
 ///
 /// It reads a page at a time through a [PagedQueryController], asks for the
 /// next page when the scroll position nears the end, and applies the

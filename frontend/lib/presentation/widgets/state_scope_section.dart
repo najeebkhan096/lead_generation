@@ -26,7 +26,7 @@ List<({String name, int count})> statesIn(List<Lead> leads) {
 }
 
 /// "All states / Selected states" scope picker used by the Excel Archive
-/// validators (WhatsApp and email) to limit a run to chosen states.
+/// validators to limit a run to chosen states.
 class StateScopeSection extends StatelessWidget {
   const StateScopeSection({
     super.key,

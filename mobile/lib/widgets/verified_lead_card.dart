@@ -6,42 +6,23 @@ import '../services/open_links.dart';
 import '../theme/app_theme.dart';
 import '../utils/date_format.dart';
 import '../utils/lead_labels.dart';
-import '../utils/outreach_email.dart';
 
-/// Which validator a verified lead came from.
-enum VerifiedChannel { whatsapp, email }
-
-/// A verified lead plus the validation facts that live on the verified
+/// A verified lead plus the validation fact that lives on the verified
 /// document itself (not on the source [Lead]).
 class VerifiedLead {
   const VerifiedLead({
     required this.lead,
-    required this.channel,
-    this.sourceType,
     this.verifiedAt,
     this.contactedAt,
-    this.emailSource,
-    this.emailFoundOn,
-    this.extraEmails = 0,
   });
 
   final Lead lead;
-  final VerifiedChannel channel;
 
-  /// `review` (1-star) or `website` (no website) — which signal the lead
-  /// was found by. Absent on documents written before the field existed.
-  final String? sourceType;
-
-  /// When the validator confirmed it (`whatsAppCheckedAt` / `emailCheckedAt`).
+  /// When the WhatsApp check confirmed it.
   final DateTime? verifiedAt;
 
   /// When a salesperson marked it contacted (null while it is a New lead).
   final DateTime? contactedAt;
-  final String? emailSource;
-  final String? emailFoundOn;
-
-  /// Other addresses found for this business besides [Lead.email].
-  final int extraEmails;
 
   /// The verified date to show: when it was confirmed, else the last write.
   DateTime? get shownDate => verifiedAt ?? lead.updatedAt ?? lead.createdAt;
@@ -49,20 +30,14 @@ class VerifiedLead {
   /// Anything past New (contacted, and the later deal stages) is "contacted".
   bool get isContacted => lead.status != LeadStatus.lead;
 
-  /// Reads the validator's own fields off a `whatsappLeads` / `emailLeads`
-  /// document ([data]); the shared lead fields come from [lead].
-  factory VerifiedLead.fromData(Lead lead, Map<String, dynamic> data, VerifiedChannel channel) {
-    final checked = data[channel == VerifiedChannel.whatsapp ? 'whatsAppCheckedAt' : 'emailCheckedAt'];
-    final emails = data['emails'];
+  /// Reads the WhatsApp check off a `whatsappLeads` document ([data]); the
+  /// shared lead fields come from [lead].
+  factory VerifiedLead.fromData(Lead lead, Map<String, dynamic> data) {
+    final checked = data['whatsAppCheckedAt'];
     return VerifiedLead(
       lead: lead,
-      channel: channel,
-      sourceType: data['sourceType'] as String?,
       verifiedAt: checked is Timestamp ? checked.toDate() : null,
       contactedAt: data['contactedAt'] is Timestamp ? (data['contactedAt'] as Timestamp).toDate() : null,
-      emailSource: data['emailSource'] as String?,
-      emailFoundOn: data['emailFoundOn'] as String?,
-      extraEmails: emails is List && emails.length > 1 ? emails.length - 1 : 0,
     );
   }
 }
@@ -72,14 +47,12 @@ class VerifiedLead {
 class LeadActions {
   const LeadActions({
     this.whatsapp = openWhatsApp,
-    this.email = openEmail,
     this.phone = openPhone,
     this.maps = openGoogleMaps,
     this.website = openWebsite,
   });
 
   final Future<bool> Function(String? url) whatsapp;
-  final Future<bool> Function(String? address, {String? subject, String? body}) email;
   final Future<bool> Function(String? number) phone;
   final Future<bool> Function(String? url) maps;
   final Future<bool> Function(String? url) website;
@@ -107,19 +80,12 @@ class VerifiedLeadCard extends StatelessWidget {
   final VerifiedLead item;
   final LeadActions actions;
 
-  /// Called once a contact action (WhatsApp / Email / Call) has opened, for a
-  /// lead that is still New — the owner moves it to Contacted.
+  /// Called once a contact action (WhatsApp / Call) has opened, for a lead
+  /// that is still New — the owner moves it to Contacted.
   final Future<void> Function()? onContacted;
 
   /// Moves a contacted lead back to New (button shown only when set).
   final Future<void> Function()? onMoveToNew;
-
-  bool get _isWhatsApp => item.channel == VerifiedChannel.whatsapp;
-
-  String? get _waUrl => item.lead.whatsAppUrl;
-
-  /// Which pitch this lead gets (see outreach_email.dart).
-  LeadSignal get _signal => signalFor(sourceType: item.sourceType, reviewText: item.lead.badReview.text);
 
   Future<void> _act(BuildContext context, Future<bool> Function() action, String failure) async {
     final ok = await action();
@@ -144,14 +110,14 @@ class VerifiedLeadCard extends StatelessWidget {
     final t = context.tokens;
     final text = Theme.of(context).textTheme;
     final l = item.lead;
-    final contact = _isWhatsApp ? l.phone : l.email;
+    final contact = l.phone;
     final verified = formatDateTime(item.shownDate);
     final category = cleanCategory(l.category);
     final where = [category, if (l.location.trim().isNotEmpty) l.location.trim()].join(' · ');
     final site = hostOf(l.website);
     final rating = ratingLabel(l.rating, l.totalReviews);
     final review = l.badReview;
-    final showReview = item.sourceType == 'review' && (review.text.trim().isNotEmpty || review.date != 'Unknown');
+    final showReview = review.text.trim().isNotEmpty || review.date != 'Unknown';
     final initial = l.business.trim().isEmpty ? '?' : String.fromCharCode(l.business.trim().runes.first).toUpperCase();
 
     Widget detail(IconData icon, String value, {int lines = 1}) => Padding(
@@ -232,7 +198,7 @@ class VerifiedLeadCard extends StatelessWidget {
                 if (verified != null)
                   chip(
                     AppIcons.circleCheck,
-                    '${_isWhatsApp ? 'On WhatsApp' : 'Email verified'} · $verified',
+                    'On WhatsApp · $verified',
                     background: t.sageTint,
                     foreground: t.sageText,
                   ),
@@ -263,47 +229,22 @@ class VerifiedLeadCard extends StatelessWidget {
                 children: [
                   Row(
                     children: [
-                      Icon(_isWhatsApp ? AppIcons.chat : AppIcons.mail, size: 17, color: t.accentText),
+                      Icon(AppIcons.chat, size: 17, color: t.accentText),
                       const SizedBox(width: 10),
                       Expanded(
-                        child: Text.rich(
-                          TextSpan(
-                            text: contact,
-                            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: t.ink),
-                            children: [
-                              if (!_isWhatsApp && item.extraEmails > 0)
-                                TextSpan(
-                                  text: '  +${item.extraEmails} more',
-                                  style: text.bodySmall?.copyWith(fontWeight: FontWeight.w600),
-                                ),
-                            ],
-                          ),
+                        child: Text(
+                          contact,
+                          style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: t.ink),
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
                     ],
                   ),
-                  if (!_isWhatsApp) ...[
-                    const SizedBox(height: 4),
-                    Padding(
-                      padding: const EdgeInsets.only(left: 27),
-                      child: Text(
-                        [
-                          'Found on ${emailSourceLabel(item.emailSource).toLowerCase()}',
-                          if (hostOf(item.emailFoundOn) != null) hostOf(item.emailFoundOn)!,
-                        ].join(' · '),
-                        style: text.bodySmall,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
                 ],
               ),
             ),
           ],
-          if (!_isWhatsApp && l.phone != null && l.phone!.isNotEmpty) detail(AppIcons.phone, l.phone!),
           if (l.address != null && l.address!.isNotEmpty) detail(AppIcons.mapPin, l.address!, lines: 2),
           if (site != null) detail(AppIcons.globe, site),
           if (rating != null) detail(AppIcons.star, rating),
@@ -340,23 +281,11 @@ class VerifiedLeadCard extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: _isWhatsApp
-                    ? FilledButton.icon(
-                        onPressed: () => _contact(context, () {
-                          final message = whatsAppMessageFor(_signal, business: l.business);
-                          return actions.whatsapp(whatsAppUrlWithText(_waUrl, message));
-                        }, 'Could not open WhatsApp'),
-                        icon: const Icon(AppIcons.chat, size: 17),
-                        label: const Text('WhatsApp'),
-                      )
-                    : FilledButton.icon(
-                        onPressed: () => _contact(context, () {
-                          final mail = outreachEmailFor(_signal, business: l.business);
-                          return actions.email(l.email, subject: mail.subject, body: mail.body);
-                        }, 'Could not open your email app'),
-                        icon: const Icon(AppIcons.mail, size: 17),
-                        label: const Text('Email'),
-                      ),
+                child: FilledButton.icon(
+                  onPressed: () => _contact(context, () => actions.whatsapp(l.whatsAppUrl), 'Could not open WhatsApp'),
+                  icon: const Icon(AppIcons.chat, size: 17),
+                  label: const Text('WhatsApp'),
+                ),
               ),
               if (l.phone != null && l.phone!.isNotEmpty) ...[
                 const SizedBox(width: 8),

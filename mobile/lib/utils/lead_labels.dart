@@ -8,29 +8,6 @@ String cleanCategory(String? category) {
   return c.replaceFirst(RegExp(r'\s+USA$', caseSensitive: false), '');
 }
 
-/// Where on the business's site an email address was found
-/// (`emailSource` written by the email validator).
-String emailSourceLabel(String? source) {
-  switch (source) {
-    case 'contact_page':
-      return 'Contact page';
-    case 'about_page':
-      return 'About page';
-    case 'mailto':
-      return 'Mailto link';
-    case 'maps_listing':
-      return 'Maps listing';
-    case 'web_search':
-      return 'Web search';
-    case 'manual':
-      return 'Added manually';
-    case 'website':
-      return 'Homepage';
-    default:
-      return 'Website';
-  }
-}
-
 /// "www.example.com" from a full URL, for compact display. Null when [url] is
 /// empty or not a usable address.
 String? hostOf(String? url) {

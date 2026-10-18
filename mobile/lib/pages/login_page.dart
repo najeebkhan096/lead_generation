@@ -73,7 +73,7 @@ class _LoginPageState extends State<LoginPage> {
                   Text('Verified leads,\nready to contact.', style: text.displaySmall),
                   const SizedBox(height: 12),
                   Text(
-                    'Sign in to see the businesses confirmed on WhatsApp and email, and track who you have reached.',
+                    'Sign in to see the businesses confirmed on WhatsApp, and track who you have reached.',
                     style: text.bodyLarge,
                   ),
                   const SizedBox(height: 28),
@@ -90,13 +90,6 @@ class _LoginPageState extends State<LoginPage> {
                           tint: t.sageTint,
                           iconColor: t.sageText,
                           label: 'Numbers confirmed on WhatsApp',
-                        ),
-                        Divider(color: t.border, height: 1),
-                        _FeatureRow(
-                          icon: AppIcons.mail,
-                          tint: t.accentTint,
-                          iconColor: t.accentText,
-                          label: 'Verified business emails',
                         ),
                         Divider(color: t.border, height: 1),
                         _FeatureRow(

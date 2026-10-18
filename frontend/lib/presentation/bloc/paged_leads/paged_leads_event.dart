@@ -46,18 +46,14 @@ class PagedLeadsCategoryChanged extends PagedLeadsEvent {
   List<Object?> get props => [category];
 }
 
-/// Collection-specific narrowing: review leads' WhatsApp-verified toggle,
-/// website leads' has-email toggle, WhatsApp leads' source signal.
+
 class PagedLeadsFilterChanged extends PagedLeadsEvent {
-  const PagedLeadsFilterChanged({this.verifiedOnly, this.emailOnly, this.sourceType, this.clearSourceType = false});
+  const PagedLeadsFilterChanged({this.verifiedOnly});
 
   final bool? verifiedOnly;
-  final bool? emailOnly;
-  final String? sourceType;
-  final bool clearSourceType;
 
   @override
-  List<Object?> get props => [verifiedOnly, emailOnly, sourceType, clearSourceType];
+  List<Object?> get props => [verifiedOnly];
 }
 
 /// Deletes one lead by [Lead.dbId] and removes it from the list.

@@ -277,8 +277,8 @@ class _TwilioTestLeadsPageState extends State<TwilioTestLeadsPage> {
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 12),
             child: Text(
-              'Nobody has messaged your WhatsApp number yet. Emails from Email outreach carry a WhatsApp '
-              'chat link; when a lead taps it and sends a message, they appear here and you can chat '
+              'Nobody has messaged your WhatsApp number yet. A business that taps a WhatsApp chat link and '
+              'sends a message appears here, and you can chat '
               'freely for 24 hours.',
               style: TextStyle(color: AppTheme.faint, fontSize: 12.5),
             ),

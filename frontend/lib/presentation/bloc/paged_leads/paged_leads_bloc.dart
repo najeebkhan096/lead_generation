@@ -8,7 +8,7 @@ import 'paged_leads_event.dart';
 import 'paged_leads_state.dart';
 
 /// Pages through one lead collection — the single list engine behind
-/// Review leads, No-website leads, WhatsApp leads and Email leads.
+/// Review leads and WhatsApp leads.
 ///
 /// Nothing here ever holds a whole collection: it loads [pageSize] leads at
 /// a time (the next page when the list is scrolled near its end), and the
@@ -58,8 +58,6 @@ class PagedLeadsBloc extends Bloc<PagedLeadsEvent, PagedLeadsState> {
       query: state.query,
       limit: pageSize,
       verifiedOnly: state.verifiedOnly,
-      emailOnly: state.emailOnly,
-      sourceType: state.sourceType,
     );
   }
 
@@ -182,9 +180,6 @@ class PagedLeadsBloc extends Bloc<PagedLeadsEvent, PagedLeadsState> {
       clearList: true,
       seed: state.copyWith(
         verifiedOnly: event.verifiedOnly,
-        emailOnly: event.emailOnly,
-        sourceType: event.sourceType,
-        clearSourceType: event.clearSourceType,
       ),
     );
   }

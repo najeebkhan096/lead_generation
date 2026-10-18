@@ -13,12 +13,12 @@ typedef _Destination = ({IconData icon, String label, String hint});
 ///
 ///   Scan → Archive → Leads → Verified
 ///
-/// — plus Dashboard (overview) first and More (connections, outreach,
+/// — plus Dashboard (overview) first and More (connections,
 /// sales, watchlist, users) last. Everything beyond the core flow lives
 /// behind More instead of competing for a slot here.
 ///
 /// [navigationShell] comes from `app_router.dart`'s `StatefulShellRoute`;
-/// branches past [moreIndex] (Sales, Outreach, WhatsApp tool) are opened
+/// branches past [moreIndex] (Sales, WhatsApp tool) are opened
 /// from More and light up More while they're open.
 class AdminShell extends StatelessWidget {
   const AdminShell({super.key, required this.navigationShell});
@@ -29,8 +29,8 @@ class AdminShell extends StatelessWidget {
     (icon: AppIcons.dashboard, label: 'Dashboard', hint: 'Overview'),
     (icon: AppIcons.search, label: 'Scan', hint: 'Find leads'),
     (icon: AppIcons.inbox, label: 'Archive', hint: 'Finished scans'),
-    (icon: AppIcons.leads, label: 'Leads', hint: '1-star & no-website'),
-    (icon: AppIcons.shieldCheck, label: 'Verified', hint: 'WhatsApp & email'),
+    (icon: AppIcons.leads, label: 'Leads', hint: '1-star reviews'),
+    (icon: AppIcons.shieldCheck, label: 'Verified', hint: 'WhatsApp'),
     (icon: AppIcons.settings, label: 'More', hint: 'Tools & access'),
   ];
 
