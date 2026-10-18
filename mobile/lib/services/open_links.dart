@@ -53,10 +53,3 @@ Future<bool> openEmail(String? email, {String? subject, String? body}) async {
   if (trimmed.isEmpty) return false;
   return openExternalUrl(mailtoUrl(trimmed, subject: subject, body: body));
 }
-
-Future<bool> openWebsite(String? website) async {
-  final trimmed = (website ?? '').trim();
-  if (trimmed.isEmpty) return false;
-  final hasScheme = trimmed.startsWith('http://') || trimmed.startsWith('https://');
-  return openExternalUrl(hasScheme ? trimmed : 'https://$trimmed');
-}

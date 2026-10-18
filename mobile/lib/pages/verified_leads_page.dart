@@ -13,13 +13,15 @@ import '../widgets/verified_lead_card.dart';
 /// The WhatsApp-validated 1-star review leads (`whatsappLeads` documents with
 /// `sourceType == 'review'`) — the only leads the phone shows.
 ///
-/// Two lists behind a small switch, **New** (not yet contacted) and
-/// **Contacted**. Both are live listeners (see [PagedQueryController]): a lead
-/// validated in the web console, or marked contacted here or on another
-/// phone, appears in the right list on its own.
+/// Two lists behind a small switch. **New** holds the leads nobody has
+/// contacted yet. **Contacted** holds only the leads *this* salesman
+/// contacted — a lead another salesman contacted is in neither list. Both are
+/// live listeners (see [PagedQueryController]): a lead validated in the web
+/// console, or marked contacted by you here or on another of your phones,
+/// appears in the right list on its own.
 ///
-/// Contacting a New lead (WhatsApp / Call) marks it Contacted; "Move to New"
-/// puts it back.
+/// Opening WhatsApp on a New lead marks it Contacted; "Move to New" puts it
+/// back.
 class VerifiedLeadsPage extends StatefulWidget {
   const VerifiedLeadsPage({
     super.key,
@@ -34,7 +36,7 @@ class VerifiedLeadsPage extends StatefulWidget {
   /// For tests: the query for a collection (default: Firestore's).
   final Query<Map<String, dynamic>> Function(String collection)? collectionQuery;
 
-  /// For tests: how WhatsApp / the dialer / the browser are opened.
+  /// For tests: how WhatsApp / Maps are opened.
   final LeadActions actions;
 
   @override
@@ -96,27 +98,33 @@ class _VerifiedLeadsPageState extends State<VerifiedLeadsPage> {
           return q;
         }
 
-        // Contacted: ordering by `contactedAt` also leaves out every lead that
-        // has none, so this is exactly the contacted ones.
-        Query<Map<String, dynamic>> contactedQuery(String? category) =>
+        // Ordering by `contactedAt` also leaves out every lead that has none,
+        // so this is exactly the contacted ones — by anyone.
+        Query<Map<String, dynamic>> contactedByAnyone(String? category) =>
             base(category).orderBy('contactedAt', descending: true);
+
+        // This salesman's contacted leads only. A lead written while signed
+        // out has no `contactedBy`, so the empty fallback matches none.
+        final owner = _repo.currentUid ?? '';
+        Query<Map<String, dynamic>> myContacted(String? category) =>
+            base(category).where('contactedBy', isEqualTo: owner).orderBy('contactedAt', descending: true);
 
         Future<int> countOf(Query<Map<String, dynamic>> q) async => (await q.count().get()).count ?? 0;
 
         return PagedQueryController<VerifiedLead>(
           // The list's true size, so the header says "125 businesses" and not
           // "58+" while only the first pages have loaded. New is everything
-          // minus the contacted (`status` can be unset, which Firestore
-          // cannot filter for).
+          // minus the leads anyone has contacted (`status` can be unset, which
+          // Firestore cannot filter for).
           counter: (category) async {
-            final contacted = await countOf(contactedQuery(category));
-            if (contactedList) return contacted;
+            if (contactedList) return countOf(myContacted(category));
             final all = await countOf(base(category));
+            final contacted = await countOf(contactedByAnyone(category));
             return all > contacted ? all - contacted : 0;
           },
           segments: [
             // New: by verified date, with contacted leads dropped.
-            (category) => contactedList ? contactedQuery(category) : base(category).orderBy('updatedAt', descending: true),
+            (category) => contactedList ? myContacted(category) : base(category).orderBy('updatedAt', descending: true),
           ],
           map: (doc) => VerifiedLead.fromData(Lead.fromDoc(doc), doc.data()),
           include: contactedList ? null : (row) => !row.isContacted,

@@ -47,15 +47,11 @@ class VerifiedLead {
 class LeadActions {
   const LeadActions({
     this.whatsapp = openWhatsApp,
-    this.phone = openPhone,
     this.maps = openGoogleMaps,
-    this.website = openWebsite,
   });
 
   final Future<bool> Function(String? url) whatsapp;
-  final Future<bool> Function(String? number) phone;
   final Future<bool> Function(String? url) maps;
-  final Future<bool> Function(String? url) website;
 }
 
 /// One verified lead, as a flat bordered card:
@@ -65,9 +61,9 @@ class LeadActions {
 ///   ✓ On WhatsApp · Oct 12, 2026 · 3:45 PM      (verified / contacted chip)
 ///   ┌ +1 385 789 5802 ───────────────────┐
 ///   └ the contact, big ──────────────────┘
-///   address · website · rating
+///   address · rating
 ///   │ the 1-star review that made it a lead
-///   [ WhatsApp ]  (call) (site) (map)
+///   [ WhatsApp ]  (map)
 class VerifiedLeadCard extends StatelessWidget {
   const VerifiedLeadCard({
     super.key,
@@ -80,7 +76,7 @@ class VerifiedLeadCard extends StatelessWidget {
   final VerifiedLead item;
   final LeadActions actions;
 
-  /// Called once a contact action (WhatsApp / Call) has opened, for a lead
+  /// Called once the WhatsApp action has opened, for a lead
   /// that is still New — the owner moves it to Contacted.
   final Future<void> Function()? onContacted;
 
@@ -114,7 +110,6 @@ class VerifiedLeadCard extends StatelessWidget {
     final verified = formatDateTime(item.shownDate);
     final category = cleanCategory(l.category);
     final where = [category, if (l.location.trim().isNotEmpty) l.location.trim()].join(' · ');
-    final site = hostOf(l.website);
     final rating = ratingLabel(l.rating, l.totalReviews);
     final review = l.badReview;
     final showReview = review.text.trim().isNotEmpty || review.date != 'Unknown';
@@ -246,7 +241,6 @@ class VerifiedLeadCard extends StatelessWidget {
             ),
           ],
           if (l.address != null && l.address!.isNotEmpty) detail(AppIcons.mapPin, l.address!, lines: 2),
-          if (site != null) detail(AppIcons.globe, site),
           if (rating != null) detail(AppIcons.star, rating),
           if (showReview) ...[
             const SizedBox(height: 12),
@@ -287,28 +281,15 @@ class VerifiedLeadCard extends StatelessWidget {
                   label: const Text('WhatsApp'),
                 ),
               ),
-              if (l.phone != null && l.phone!.isNotEmpty) ...[
-                const SizedBox(width: 8),
-                IconButton.outlined(
-                  tooltip: 'Call',
-                  onPressed: () => _contact(context, () => actions.phone(l.phone), 'Could not open the dialer'),
-                  icon: const Icon(AppIcons.phone, size: 18),
-                ),
-              ],
-              if (l.website != null && l.website!.isNotEmpty) ...[
-                const SizedBox(width: 8),
-                IconButton.outlined(
-                  tooltip: 'Website',
-                  onPressed: () => _act(context, () => actions.website(l.website), 'Could not open the website'),
-                  icon: const Icon(AppIcons.globe, size: 18),
-                ),
-              ],
               if (l.mapsUrl != null && l.mapsUrl!.isNotEmpty) ...[
                 const SizedBox(width: 8),
-                IconButton.outlined(
-                  tooltip: 'Maps',
-                  onPressed: () => _act(context, () => actions.maps(l.mapsUrl), 'Could not open Maps'),
-                  icon: const Icon(AppIcons.mapPin, size: 18),
+                Expanded(
+                  child: FilledButton.icon(
+                    style: FilledButton.styleFrom(backgroundColor: t.sage, foregroundColor: t.onFill),
+                    onPressed: () => _act(context, () => actions.maps(l.mapsUrl), 'Could not open Maps'),
+                    icon: const Icon(AppIcons.mapPin, size: 17),
+                    label: const Text('Map'),
+                  ),
                 ),
               ],
             ],

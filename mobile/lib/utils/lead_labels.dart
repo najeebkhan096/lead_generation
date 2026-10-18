@@ -8,16 +8,6 @@ String cleanCategory(String? category) {
   return c.replaceFirst(RegExp(r'\s+USA$', caseSensitive: false), '');
 }
 
-/// "www.example.com" from a full URL, for compact display. Null when [url] is
-/// empty or not a usable address.
-String? hostOf(String? url) {
-  final raw = (url ?? '').trim();
-  if (raw.isEmpty) return null;
-  final uri = Uri.tryParse(raw.contains('://') ? raw : 'https://$raw');
-  final host = uri?.host ?? '';
-  return host.isEmpty ? null : host.replaceFirst(RegExp(r'^www\.'), '');
-}
-
 /// "4.2 · 118 reviews", "4.2", or null when there is no rating.
 String? ratingLabel(double? rating, int? reviews) {
   if (rating == null || rating <= 0) return null;

@@ -15,6 +15,9 @@ class VerifiedLeadRepository {
 
   FirebaseFirestore get _db => _firestore ?? FirebaseFirestore.instance;
 
+  /// The signed-in salesman — the owner of the leads they contacted.
+  String? get currentUid => _currentUid();
+
   Future<void> setContacted(String collection, String leadId, {required bool contacted}) {
     final uid = _currentUid();
     final updates = contacted

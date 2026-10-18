@@ -11,7 +11,6 @@ Lead _lead({
   String category = 'Car Dealer USA',
   String location = 'Utah',
   String? phone = '+13857895802',
-  String? website,
   double? rating,
   int? reviews,
   BadReview? review,
@@ -23,7 +22,6 @@ Lead _lead({
       location: location,
       address: '3678 W 2150 S #1, West Valley City, UT 84120',
       phone: phone,
-      website: website,
       mapsUrl: 'https://maps.example/x',
       rating: rating,
       totalReviews: reviews,
@@ -56,10 +54,7 @@ void main() {
       expect(cleanCategory(''), 'Other');
     });
 
-    test('hostOf and ratingLabel', () {
-      expect(hostOf('http://www.kaylorpainting.com/about'), 'kaylorpainting.com');
-      expect(hostOf('joes.example'), 'joes.example');
-      expect(hostOf(''), isNull);
+    test('ratingLabel', () {
       expect(ratingLabel(4.2, 118), '4.2 · 118 reviews');
       expect(ratingLabel(4.0, 1), '4.0 · 1 review');
       expect(ratingLabel(null, 5), isNull);
@@ -73,7 +68,6 @@ void main() {
         lead: _lead(
           rating: 3.1,
           reviews: 40,
-          website: 'https://www.thony.example/',
           review: const BadReview(
             stars: 1,
             text: 'Never showed up',
@@ -90,14 +84,14 @@ void main() {
       expect(find.text('+13857895802'), findsOneWidget);
       expect(find.text('1-star'), findsNothing); // the 1-star review is the section, not a badge
       expect(find.textContaining('3678 W 2150 S'), findsOneWidget);
-      expect(find.text('thony.example'), findsOneWidget);
       expect(find.text('3.1 · 40 reviews'), findsOneWidget);
       expect(find.text('1-star review · 2 weeks ago · by Sam'), findsOneWidget);
       expect(find.text('“Never showed up”'), findsOneWidget);
       expect(find.widgetWithText(FilledButton, 'WhatsApp'), findsOneWidget);
-      expect(find.byTooltip('Call'), findsOneWidget);
-      expect(find.byTooltip('Website'), findsOneWidget);
-      expect(find.byTooltip('Maps'), findsOneWidget);
+      expect(find.widgetWithText(FilledButton, 'Map'), findsOneWidget);
+      expect(find.byTooltip('Call'), findsNothing);
+      expect(find.byTooltip('Website'), findsNothing);
+      expect(find.byIcon(AppIcons.globe), findsNothing);
     });
 
     testWidgets('missing details are simply left out, not shown as blanks', (tester) async {
@@ -108,8 +102,7 @@ void main() {
       expect(find.text('Car Dealer'), findsOneWidget);
       expect(find.textContaining('On WhatsApp'), findsNothing);
       expect(find.byIcon(AppIcons.star), findsNothing);
-      expect(find.byIcon(AppIcons.globe), findsNothing);
-      expect(find.byTooltip('Call'), findsNothing);
+      expect(find.widgetWithText(FilledButton, 'Map'), findsNothing); // no map link on this lead
     });
 
     testWidgets('WhatsApp opens a plain chat with the lead’s number', (tester) async {
@@ -126,6 +119,22 @@ void main() {
       await tester.pump();
 
       expect(opened, 'https://wa.me/13857895802');
+    });
+
+    testWidgets('Map opens the lead’s map link', (tester) async {
+      String? opened;
+      await tester.pumpWidget(_wrap(
+        VerifiedLead(lead: _lead()),
+        actions: LeadActions(maps: (url) async {
+          opened = url;
+          return true;
+        }),
+      ));
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Map'));
+      await tester.pump();
+
+      expect(opened, 'https://maps.example/x');
     });
 
     test('shownDate prefers the verified time, then updatedAt, then createdAt', () {

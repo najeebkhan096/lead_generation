@@ -131,6 +131,12 @@ class _FakeRepo extends VerifiedLeadRepository {
   final _Store store;
   bool failNext = false;
 
+  /// The salesman this phone is signed in as.
+  static const me = 'me';
+
+  @override
+  String? get currentUid => me;
+
   @override
   Future<void> setContacted(String collection, String leadId, {required bool contacted}) async {
     if (failNext) {
@@ -142,16 +148,18 @@ class _FakeRepo extends VerifiedLeadRepository {
     if (contacted) {
       doc['status'] = 'contacted';
       doc['contactedAt'] = Timestamp.now();
+      doc['contactedBy'] = me;
     } else {
       doc['status'] = 'lead';
       doc.remove('contactedAt');
+      doc.remove('contactedBy');
     }
     store.changed();
   }
 }
 
 Map<String, dynamic> _verified(String business, DateTime verified,
-        {String phone = '+15125550001', DateTime? contacted, String sourceType = 'review'}) =>
+        {String phone = '+15125550001', DateTime? contacted, String? contactedBy, String sourceType = 'review'}) =>
     {
       'business': business,
       'category': 'Cafe USA',
@@ -162,6 +170,7 @@ Map<String, dynamic> _verified(String business, DateTime verified,
       'createdAt': Timestamp.fromDate(verified),
       'whatsAppCheckedAt': Timestamp.fromDate(verified),
       if (contacted != null) ...{'status': 'contacted', 'contactedAt': Timestamp.fromDate(contacted)},
+      if (contactedBy != null) 'contactedBy': contactedBy,
     };
 
 void main() {
@@ -193,10 +202,6 @@ void main() {
               opened.add('whatsapp $url');
               return !(url ?? '').contains('fail');
             },
-            phone: (n) async {
-              opened.add('call $n');
-              return true;
-            },
           ),
         ),
       ),
@@ -217,8 +222,9 @@ void main() {
     store.col('whatsappLeads')
       ..['a'] = _verified('Alpha Cafe', at(0, 9))
       ..['b'] = _verified('Bravo Cafe', at(1), phone: '+15125550002')
-      ..['c'] = _verified('Charlie Cafe', at(2), phone: '+15125550003', contacted: at(0, 8))
-      ..['d'] = _verified('Delta Cafe', at(3), phone: '+15125550004', contacted: at(0, 11));
+      ..['c'] = _verified('Charlie Cafe', at(2), phone: '+15125550003', contacted: at(0, 8), contactedBy: _FakeRepo.me)
+      ..['d'] = _verified('Delta Cafe', at(3), phone: '+15125550004', contacted: at(0, 11), contactedBy: _FakeRepo.me)
+      ..['g'] = _verified('Golf Cafe', at(4), phone: '+15125550007', contacted: at(0, 10), contactedBy: 'other');
   });
 
   testWidgets('New and Contacted each show only their own, most recently contacted first', (tester) async {
@@ -238,6 +244,19 @@ void main() {
     expect(find.textContaining('Contacted ·'), findsWidgets);
   });
 
+  testWidgets('Contacted lists only the leads I contacted, not those another salesman contacted', (tester) async {
+    await pumpScreen(tester);
+    await openTab(tester, 'Contacted');
+
+    expect(find.text('Charlie Cafe'), findsOneWidget);
+    expect(find.text('Delta Cafe'), findsOneWidget);
+    expect(find.text('Golf Cafe'), findsNothing); // contacted by 'other'
+
+    // And New leaves it out too: another salesman already has it.
+    await openTab(tester, 'New');
+    expect(find.text('Golf Cafe'), findsNothing);
+  });
+
   testWidgets('contacting a new lead moves it to Contacted and offers Undo', (tester) async {
     await pumpScreen(tester);
 
@@ -254,17 +273,6 @@ void main() {
 
     await openTab(tester, 'Contacted');
     expect(find.text('Alpha Cafe'), findsOneWidget);
-  });
-
-  testWidgets('a call also counts as contacting', (tester) async {
-    await pumpScreen(tester);
-
-    await tester.tap(find.byTooltip('Call').first);
-    await tester.pumpAndSettle();
-
-    expect(opened.single, startsWith('call '));
-    expect(store.writes, hasLength(1));
-    expect(find.text('Alpha Cafe'), findsNothing);
   });
 
   testWidgets('nothing changes when the WhatsApp app could not be opened', (tester) async {
@@ -412,10 +420,11 @@ void main() {
       await pumpScreen(tester);
       expect(find.text('Bravo Cafe'), findsOneWidget);
 
-      // Another salesman marks it contacted: a write elsewhere, no action here.
+      // Marked contacted on another of this salesman's phones: a write elsewhere.
       store.col('whatsappLeads')['b']!
         ..['status'] = 'contacted'
-        ..['contactedAt'] = Timestamp.now();
+        ..['contactedAt'] = Timestamp.now()
+        ..['contactedBy'] = _FakeRepo.me;
       store.changed();
       await tester.pumpAndSettle();
 
