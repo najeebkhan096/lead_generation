@@ -68,7 +68,7 @@ class VerifiedLeadCard extends StatelessWidget {
   const VerifiedLeadCard({
     super.key,
     required this.item,
-    this.onContacted,
+    this.onWhatsApp,
     this.onMoveToNew,
     this.actions = const LeadActions(),
   });
@@ -76,9 +76,10 @@ class VerifiedLeadCard extends StatelessWidget {
   final VerifiedLead item;
   final LeadActions actions;
 
-  /// Called once the WhatsApp action has opened, for a lead
-  /// that is still New — the owner moves it to Contacted.
-  final Future<void> Function()? onContacted;
+  /// Opens WhatsApp for the lead. The owner decides how: a New lead is marked
+  /// Contacted first, and a refusal there keeps WhatsApp closed. Without it,
+  /// the card opens WhatsApp itself.
+  final Future<void> Function()? onWhatsApp;
 
   /// Moves a contacted lead back to New (button shown only when set).
   final Future<void> Function()? onMoveToNew;
@@ -90,15 +91,10 @@ class VerifiedLeadCard extends StatelessWidget {
     }
   }
 
-  /// A way of contacting the lead: on success, a New lead becomes Contacted.
-  Future<void> _contact(BuildContext context, Future<bool> Function() action, String failure) async {
-    final ok = await action();
-    if (!context.mounted) return;
-    if (!ok) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(failure)));
-    } else if (!item.isContacted) {
-      await onContacted?.call();
-    }
+  Future<void> _whatsApp(BuildContext context) async {
+    final owner = onWhatsApp;
+    if (owner != null) return owner();
+    await _act(context, () => actions.whatsapp(item.lead.whatsAppUrl), 'Could not open WhatsApp');
   }
 
   @override
@@ -276,7 +272,7 @@ class VerifiedLeadCard extends StatelessWidget {
             children: [
               Expanded(
                 child: FilledButton.icon(
-                  onPressed: () => _contact(context, () => actions.whatsapp(l.whatsAppUrl), 'Could not open WhatsApp'),
+                  onPressed: () => _whatsApp(context),
                   icon: const Icon(AppIcons.chat, size: 17),
                   label: const Text('WhatsApp'),
                 ),

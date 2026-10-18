@@ -22,6 +22,15 @@ class AdminSalesmanDetailPage extends StatefulWidget {
   State<AdminSalesmanDetailPage> createState() => _AdminSalesmanDetailPageState();
 }
 
+/// What the daily-limit dialog returned: the typed [value], or [isDefault] to
+/// put the salesman back on the default.
+class _LimitEdit {
+  const _LimitEdit({this.isDefault = false, this.value});
+
+  final bool isDefault;
+  final int? value;
+}
+
 class _AdminSalesmanDetailPageState extends State<AdminSalesmanDetailPage> {
   bool _busy = false;
 
@@ -49,6 +58,47 @@ class _AdminSalesmanDetailPageState extends State<AdminSalesmanDetailPage> {
     await _run(
       () => data.markPayoutsPaid(payable),
       success: '${formatPkr(total)} marked as paid to ${user.name}',
+    );
+  }
+
+  /// Asks for how many new leads this salesman may contact a day: a whole
+  /// number from 0 to 1000, or the default.
+  Future<void> _editDailyLimit(AdminData data, SalesUser user) async {
+    final controller = TextEditingController(text: '${user.dailyLeadLimit}');
+    final edit = await showDialog<_LimitEdit>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Daily limit for ${user.name}'),
+        content: TextField(
+          controller: controller,
+          keyboardType: TextInputType.number,
+          autofocus: true,
+          decoration: const InputDecoration(labelText: 'New leads per day', helperText: 'Whole number, 0 to 1000'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, const _LimitEdit(isDefault: true)),
+            child: Text('Default (${SalesUser.defaultDailyLeadLimit})'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, _LimitEdit(value: int.tryParse(controller.text.trim()))),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (edit == null || !mounted) return;
+
+    final limit = edit.isDefault ? null : edit.value;
+    if (!edit.isDefault && (limit == null || limit < 0 || limit > 1000)) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Enter a whole number from 0 to 1000.')));
+      return;
+    }
+    await _run(
+      () => data.setDailyLeadLimit(user, limit),
+      success: '${user.name} can contact ${limit ?? SalesUser.defaultDailyLeadLimit} new leads a day',
     );
   }
 
@@ -153,6 +203,15 @@ class _AdminSalesmanDetailPageState extends State<AdminSalesmanDetailPage> {
                 children: [
                   DetailRow(label: 'Joined', value: formatDate(DateTime.tryParse(user.createdAt ?? '')) ?? '—'),
                   DetailRow(label: 'Last sign-in', value: formatDate(DateTime.tryParse(user.lastLoginAt ?? '')) ?? '—'),
+                  DetailRow(label: 'New leads per day', value: '${user.dailyLeadLimit}'),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton(
+                      onPressed: _busy ? null : () => _editDailyLimit(data, user),
+                      child: const Text('Change daily limit'),
+                    ),
+                  ),
                   const SizedBox(height: 8),
                   Row(
                     children: [

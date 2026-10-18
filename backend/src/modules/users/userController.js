@@ -1,4 +1,4 @@
-import { listUsers, setUserApproved, setUserRole } from './userStore.js';
+import { listUsers, setUserApproved, setUserDailyLeadLimit, setUserRole } from './userStore.js';
 
 export async function getUsers(req, res) {
   try {
@@ -12,13 +12,16 @@ export async function getUsers(req, res) {
 
 export async function editUser(req, res) {
   try {
-    const { approved, role } = req.body || {};
+    const { approved, role, dailyLeadLimit } = req.body || {};
     let user;
     if (approved !== undefined) {
       user = await setUserApproved(req.params.id, approved);
     }
     if (role !== undefined) {
       user = await setUserRole(req.params.id, role);
+    }
+    if (dailyLeadLimit !== undefined) {
+      user = await setUserDailyLeadLimit(req.params.id, dailyLeadLimit);
     }
     if (!user) {
       const existing = await listUsers();

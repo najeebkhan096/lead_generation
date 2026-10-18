@@ -7,7 +7,7 @@
     "node": "22"
   },
   "scripts": {
-    "test": "node --test src/twilioChat/twilioChat.test.js",
+    "test": "node --test src/twilioChat/twilioChat.test.js src/leadContact.test.js",
     "test:emulator": "cd .. && firebase emulators:exec --only firestore,storage --project demo-chat \"node --test functions/src/twilioChat/integration.emulator.mjs\"",
     "deploy": "firebase deploy --only functions,firestore:rules,storage"
   },

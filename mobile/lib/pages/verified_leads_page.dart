@@ -1,6 +1,5 @@
-import 'dart:async';
-
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
 
 import '../models/lead.dart';
@@ -20,8 +19,8 @@ import '../widgets/verified_lead_card.dart';
 /// console, or marked contacted by you here or on another of your phones,
 /// appears in the right list on its own.
 ///
-/// Opening WhatsApp on a New lead marks it Contacted; "Move to New" puts it
-/// back.
+/// Opening WhatsApp on a New lead marks it Contacted, within the salesman's
+/// daily limit; "Move to New" puts it back.
 class VerifiedLeadsPage extends StatefulWidget {
   const VerifiedLeadsPage({
     super.key,
@@ -50,27 +49,55 @@ class _VerifiedLeadsPageState extends State<VerifiedLeadsPage> {
   static const _sourceType = 'review';
   static const _contacted = 'contacted';
 
-  /// Writes the status; the lists follow through their listeners. The
-  /// snackbar shows at once — the local write already moved the lead, and a
-  /// rejected write moves it back and says why.
-  Future<void> _setContacted(VerifiedLead item, {required bool contacted, bool fromUndo = false}) async {
-    final messenger = ScaffoldMessenger.of(context);
-    unawaited(_repo.setContacted(_collection, item.lead.id, contacted: contacted).catchError((Object _) {
-      messenger
-        ..hideCurrentSnackBar()
-        ..showSnackBar(const SnackBar(content: Text('Could not update the lead. Check your connection.')));
-    }));
-    messenger
+  void _say(String text, {SnackBarAction? action}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(
-        content: Text(contacted ? 'Moved to Contacted' : 'Moved back to New'),
-        action: fromUndo
-            ? null
-            : SnackBarAction(
-                label: 'Undo',
-                onPressed: () => _setContacted(item, contacted: !contacted, fromUndo: true),
-              ),
-      ));
+      ..showSnackBar(SnackBar(content: Text(text), action: action));
+  }
+
+  /// Saves the status through the server, which enforces the daily limit.
+  /// Returns false, and says why, when it was refused. The lists follow
+  /// through their listeners.
+  Future<bool> _save(VerifiedLead item, {required bool contacted}) async {
+    try {
+      await _repo.setContacted(item.lead.id, contacted: contacted);
+      return true;
+    } on FirebaseFunctionsException catch (e) {
+      const refused = {'resource-exhausted', 'failed-precondition', 'permission-denied'};
+      _say(refused.contains(e.code) && e.message != null ? e.message! : 'Could not update the lead. Check your connection.');
+    } catch (_) {
+      _say('Could not update the lead. Check your connection.');
+    }
+    return false;
+  }
+
+  /// Moves a lead to Contacted or back to New, offering Undo after a move to
+  /// Contacted.
+  Future<void> _moveTo(VerifiedLead item, {required bool contacted, bool offerUndo = true}) async {
+    if (!await _save(item, contacted: contacted)) return;
+    _say(
+      contacted ? 'Moved to Contacted' : 'Moved back to New',
+      action: offerUndo ? SnackBarAction(label: 'Undo', onPressed: () => _moveTo(item, contacted: !contacted, offerUndo: false)) : null,
+    );
+  }
+
+  /// Opens WhatsApp for a lead. A New lead is marked Contacted first, and if
+  /// the daily limit refuses that, WhatsApp stays closed.
+  Future<void> _openWhatsApp(VerifiedLead item) async {
+    final isNew = !item.isContacted;
+    if (isNew && !await _save(item, contacted: true)) return;
+    final opened = await widget.actions.whatsapp(item.lead.whatsAppUrl);
+    if (!isNew) return;
+    if (!opened) {
+      await _save(item, contacted: false);
+      _say('Could not open WhatsApp');
+      return;
+    }
+    _say(
+      'Moved to Contacted',
+      action: SnackBarAction(label: 'Undo', onPressed: () => _moveTo(item, contacted: false, offerUndo: false)),
+    );
   }
 
   @override
@@ -139,8 +166,8 @@ class _VerifiedLeadsPageState extends State<VerifiedLeadsPage> {
         key: ValueKey(row.lead.id),
         item: row,
         actions: widget.actions,
-        onContacted: row.isContacted ? null : () => _setContacted(row, contacted: true),
-        onMoveToNew: row.isContacted ? () => _setContacted(row, contacted: false) : null,
+        onWhatsApp: () => _openWhatsApp(row),
+        onMoveToNew: row.isContacted ? () => _moveTo(row, contacted: false) : null,
       ),
     );
   }

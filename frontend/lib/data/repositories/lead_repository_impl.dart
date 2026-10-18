@@ -244,6 +244,10 @@ class LeadRepositoryImpl implements LeadRepository {
       _remote.setUserApproved(id, approved: approved);
 
   @override
+  Future<SalesUser> setUserDailyLeadLimit(String id, {required int? limit}) =>
+      _remote.setUserDailyLeadLimit(id, limit: limit);
+
+  @override
   Future<SalesUser> setUserRole(String id, {required String role}) =>
       _remote.setUserRole(id, role: role);
 

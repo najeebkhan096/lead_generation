@@ -132,6 +132,12 @@ class AdminData extends ChangeNotifier {
     _replaceUser(updated);
   }
 
+  /// `null` puts the salesman back on the default limit.
+  Future<void> setDailyLeadLimit(SalesUser user, int? limit) async {
+    final updated = await _repo.setUserDailyLeadLimit(user.id, limit);
+    _replaceUser(updated);
+  }
+
   Future<void> setRole(SalesUser user, String role) async {
     final updated = await _repo.setUserRole(user.id, role);
     _replaceUser(updated);

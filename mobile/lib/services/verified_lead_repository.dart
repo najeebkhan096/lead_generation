@@ -1,36 +1,27 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
-/// Marks verified leads (`whatsappLeads`) contacted, or moves them back to
-/// New. Writes only `status`, `contactedAt` and `contactedBy` —
-/// the whole of what Firestore rules let a phone change on these documents —
-/// and never `updatedAt`, which the lists are ordered by.
+/// Marks verified leads (`whatsappLeads`) contacted for the signed-in salesman,
+/// or moves them back to New.
+///
+/// The `setWhatsAppLeadContacted` function does the write, because it enforces
+/// the salesman's daily limit (set by an admin). Its refusals arrive as
+/// [FirebaseFunctionsException]: `resource-exhausted` when the limit is reached,
+/// `failed-precondition` when another salesman already contacted the lead.
 class VerifiedLeadRepository {
-  VerifiedLeadRepository({FirebaseFirestore? firestore, String? Function()? currentUid})
-      : _firestore = firestore,
+  VerifiedLeadRepository({FirebaseFunctions? functions, String? Function()? currentUid})
+      : _functions = functions,
         _currentUid = currentUid ?? (() => FirebaseAuth.instance.currentUser?.uid);
 
-  final FirebaseFirestore? _firestore;
+  final FirebaseFunctions? _functions;
   final String? Function() _currentUid;
-
-  FirebaseFirestore get _db => _firestore ?? FirebaseFirestore.instance;
 
   /// The signed-in salesman — the owner of the leads they contacted.
   String? get currentUid => _currentUid();
 
-  Future<void> setContacted(String collection, String leadId, {required bool contacted}) {
-    final uid = _currentUid();
-    final updates = contacted
-        ? <String, dynamic>{
-            'status': 'contacted',
-            'contactedAt': FieldValue.serverTimestamp(),
-            'contactedBy': ?uid,
-          }
-        : <String, dynamic>{
-            'status': 'lead',
-            'contactedAt': FieldValue.delete(),
-            'contactedBy': FieldValue.delete(),
-          };
-    return _db.collection(collection).doc(leadId).update(updates);
+  Future<void> setContacted(String leadId, {required bool contacted}) async {
+    final callable = (_functions ?? FirebaseFunctions.instanceFor(region: 'us-central1'))
+        .httpsCallable('setWhatsAppLeadContacted');
+    await callable.call<dynamic>({'leadId': leadId, 'contacted': contacted});
   }
 }

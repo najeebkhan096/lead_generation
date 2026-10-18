@@ -209,6 +209,9 @@ abstract class LeadRepository {
 
   Future<SalesUser> setUserApproved(String id, {required bool approved});
 
+  /// `limit` null puts the salesman back on the default.
+  Future<SalesUser> setUserDailyLeadLimit(String id, {required int? limit});
+
   Future<SalesUser> setUserRole(String id, {required String role});
 
   /// Re-scans every watchlisted business now and returns which ones picked

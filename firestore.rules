@@ -71,10 +71,11 @@ service cloud.firestore {
     // `contactedBy`, and nothing else, so a client can never alter the
     // verified contact details. `updatedAt` is deliberately not writable:
     // the lists are ordered by it.
+    // Contacting a lead goes through the setWhatsAppLeadContacted function,
+    // which enforces the salesman's daily limit. Clients cannot write here.
     match /whatsappLeads/{leadId} {
       allow read: if isApproved();
-      allow update: if isApproved() && isContactedUpdate();
-      allow create, delete: if false;
+      allow update, create, delete: if false;
     }
 
     match /emailLeads/{leadId} {
@@ -91,11 +92,13 @@ service cloud.firestore {
       allow read: if signedIn() && request.auth.uid == userId;
       allow create: if signedIn()
                     && request.auth.uid == userId
-                    && request.resource.data.approved == false;
-      // Own-profile refresh on sign-in — cannot flip `approved`.
+                    && request.resource.data.approved == false
+                    && !('dailyLeadLimit' in request.resource.data);
+      // Own-profile refresh on sign-in — cannot flip `approved` or its
+      // admin-set `dailyLeadLimit`.
       allow update: if signedIn()
                     && request.auth.uid == userId
-                    && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['approved']);
+                    && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['approved', 'dailyLeadLimit']);
       allow delete: if false;
     }
 

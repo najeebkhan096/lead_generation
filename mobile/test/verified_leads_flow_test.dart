@@ -3,6 +3,7 @@ import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_core_platform_interface/test.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -137,14 +138,22 @@ class _FakeRepo extends VerifiedLeadRepository {
   @override
   String? get currentUid => me;
 
+  /// When set, the next write is refused the way the server refuses it.
+  FirebaseFunctionsException? refusal;
+
   @override
-  Future<void> setContacted(String collection, String leadId, {required bool contacted}) async {
+  Future<void> setContacted(String leadId, {required bool contacted}) async {
     if (failNext) {
       failNext = false;
       throw FirebaseException(plugin: 'cloud_firestore', code: 'permission-denied');
     }
-    store.writes.add('$collection/$leadId contacted=$contacted');
-    final doc = store.col(collection)[leadId]!;
+    final refused = refusal;
+    if (refused != null) {
+      refusal = null;
+      throw refused;
+    }
+    store.writes.add('whatsappLeads/$leadId contacted=$contacted');
+    final doc = store.col('whatsappLeads')[leadId]!;
     if (contacted) {
       doc['status'] = 'contacted';
       doc['contactedAt'] = Timestamp.now();
@@ -170,7 +179,7 @@ Map<String, dynamic> _verified(String business, DateTime verified,
       'createdAt': Timestamp.fromDate(verified),
       'whatsAppCheckedAt': Timestamp.fromDate(verified),
       if (contacted != null) ...{'status': 'contacted', 'contactedAt': Timestamp.fromDate(contacted)},
-      if (contactedBy != null) 'contactedBy': contactedBy,
+      'contactedBy': ?contactedBy,
     };
 
 void main() {
@@ -283,9 +292,27 @@ void main() {
     await tester.tap(find.widgetWithText(FilledButton, 'WhatsApp').first);
     await tester.pumpAndSettle();
 
-    expect(store.writes, isEmpty);
+    // Marked first, then put back once WhatsApp refused to open.
+    expect(store.writes, ['whatsappLeads/a contacted=true', 'whatsappLeads/a contacted=false']);
+    expect(store.col('whatsappLeads')['a']!['status'], 'lead');
     expect(find.text('Alpha Cafe'), findsOneWidget);
     expect(find.text('Could not open WhatsApp'), findsOneWidget);
+  });
+
+  testWidgets('at the daily limit, WhatsApp does not open for a New lead and the salesman is told why', (tester) async {
+    repo.refusal = FirebaseFunctionsException(
+      code: 'resource-exhausted',
+      message: 'Daily limit reached: you have contacted 10 of 10 new leads today.',
+    );
+    await pumpScreen(tester);
+
+    await tester.tap(find.widgetWithText(FilledButton, 'WhatsApp').first);
+    await tester.pumpAndSettle();
+
+    expect(opened, isEmpty);
+    expect(store.writes, isEmpty);
+    expect(find.text('Alpha Cafe'), findsOneWidget);
+    expect(find.text('Daily limit reached: you have contacted 10 of 10 new leads today.'), findsOneWidget);
   });
 
   testWidgets('a rejected write leaves the lead in New and says so', (tester) async {

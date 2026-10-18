@@ -85,6 +85,58 @@ class _UsersPageState extends State<UsersPage> {
     }
   }
 
+  /// Asks how many new leads this salesman may contact a day: a whole number
+  /// from 0 to 1000, or the default.
+  Future<void> _editDailyLimit(SalesUser user) async {
+    final controller = TextEditingController(text: '${user.dailyLeadLimit}');
+    final edit = await showDialog<({bool isDefault, int? value})>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Daily limit for ${user.name}'),
+        content: TextField(
+          controller: controller,
+          keyboardType: TextInputType.number,
+          autofocus: true,
+          decoration: const InputDecoration(labelText: 'New leads per day', helperText: 'Whole number, 0 to 1000'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, (isDefault: true, value: null)),
+            child: Text('Default (${SalesUser.defaultDailyLeadLimit})'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, (isDefault: false, value: int.tryParse(controller.text.trim()))),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (edit == null || !mounted) return;
+
+    final limit = edit.isDefault ? null : edit.value;
+    if (!edit.isDefault && (limit == null || limit < 0 || limit > 1000)) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Enter a whole number from 0 to 1000.')));
+      return;
+    }
+    setState(() => _busyId = user.id);
+    try {
+      final updated = await _repo.setUserDailyLeadLimit(user.id, limit: limit);
+      if (!mounted) return;
+      setState(() {
+        _users = _users.map((u) => u.id == updated.id ? updated : u).toList();
+        _busyId = null;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _busyId = null);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final pending = _users.where((u) => !u.approved).length;
@@ -153,6 +205,7 @@ class _UsersPageState extends State<UsersPage> {
                                 onApprove: () => _setApproved(user, true),
                                 onRevoke: () => _setApproved(user, false),
                                 onRoleChanged: (role) => _setRole(user, role),
+                                onEditLimit: () => _editDailyLimit(user),
                               ),
                         ],
                       ),
@@ -170,6 +223,7 @@ class _UserCard extends StatelessWidget {
     required this.onApprove,
     required this.onRevoke,
     required this.onRoleChanged,
+    required this.onEditLimit,
   });
 
   final SalesUser user;
@@ -177,6 +231,7 @@ class _UserCard extends StatelessWidget {
   final VoidCallback onApprove;
   final VoidCallback onRevoke;
   final ValueChanged<String> onRoleChanged;
+  final VoidCallback onEditLimit;
 
   @override
   Widget build(BuildContext context) {
@@ -215,7 +270,7 @@ class _UserCard extends StatelessWidget {
                 Row(
                   children: [
                     Text(
-                      user.approved ? 'Approved · can see mobile data' : 'Not approved',
+                      '${user.approved ? 'Approved · can see mobile data' : 'Not approved'} · ${user.dailyLeadLimit} new leads a day',
                       style: TextStyle(
                         fontSize: 11.5,
                         fontWeight: FontWeight.w700,
@@ -249,10 +304,13 @@ class _UserCard extends StatelessWidget {
           const SizedBox(width: 12),
           if (busy)
             const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2))
-          else if (user.approved)
-            TextButton(onPressed: onRevoke, child: const Text('Revoke'))
-          else
-            FilledButton(onPressed: onApprove, child: const Text('Approve')),
+          else ...[
+            TextButton(onPressed: onEditLimit, child: const Text('Daily limit')),
+            if (user.approved)
+              TextButton(onPressed: onRevoke, child: const Text('Revoke'))
+            else
+              FilledButton(onPressed: onApprove, child: const Text('Approve')),
+          ],
         ],
       ),
     );

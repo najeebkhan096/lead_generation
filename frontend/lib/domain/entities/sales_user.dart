@@ -11,9 +11,14 @@ class SalesUser extends Equatable {
     this.photoURL,
     this.role = 'salesman',
     this.approved = false,
+    this.dailyLeadLimit = defaultDailyLeadLimit,
     this.createdAt,
     this.lastLoginAt,
   });
+
+  /// New WhatsApp leads a salesman may contact per day, unless an admin set
+  /// one. Matches DEFAULT_DAILY_LEAD_LIMIT on the server.
+  static const defaultDailyLeadLimit = 10;
 
   final String id;
   final String name;
@@ -21,6 +26,7 @@ class SalesUser extends Equatable {
   final String? photoURL;
   final String role;
   final bool approved;
+  final int dailyLeadLimit;
   final DateTime? createdAt;
   final DateTime? lastLoginAt;
 
@@ -32,6 +38,7 @@ class SalesUser extends Equatable {
       photoURL: json['photoURL'] as String?,
       role: (json['role'] as String?) ?? 'salesman',
       approved: json['approved'] == true,
+      dailyLeadLimit: (json['dailyLeadLimit'] as num?)?.toInt() ?? defaultDailyLeadLimit,
       createdAt: _parseDate(json['createdAt']),
       lastLoginAt: _parseDate(json['lastLoginAt']),
     );
@@ -43,5 +50,5 @@ class SalesUser extends Equatable {
   }
 
   @override
-  List<Object?> get props => [id, name, email, photoURL, role, approved, createdAt, lastLoginAt];
+  List<Object?> get props => [id, name, email, photoURL, role, approved, dailyLeadLimit, createdAt, lastLoginAt];
 }

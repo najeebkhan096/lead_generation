@@ -6,6 +6,12 @@ import { getFirestore } from '../../firebase/admin.js';
 // exists today, but the field is kept explicit rather than assumed.
 const COLLECTION = 'users';
 
+// New WhatsApp leads a salesman may contact per day when no admin has set a
+// limit. Must match DEFAULT_DAILY_LEAD_LIMIT in functions/src/leadContact.js,
+// which enforces it.
+export const DEFAULT_DAILY_LEAD_LIMIT = 10;
+const MAX_DAILY_LEAD_LIMIT = 1000;
+
 function docToUser(doc) {
   const data = doc.data();
   return {
@@ -15,6 +21,7 @@ function docToUser(doc) {
     photoURL: data.photoURL || null,
     role: data.role || 'salesman',
     approved: data.approved === true,
+    dailyLeadLimit: Number.isInteger(data.dailyLeadLimit) ? data.dailyLeadLimit : DEFAULT_DAILY_LEAD_LIMIT,
     createdAt: data.createdAt?.toDate?.()?.toISOString() || null,
     lastLoginAt: data.lastLoginAt?.toDate?.()?.toISOString() || null,
   };
@@ -49,6 +56,29 @@ export async function setUserApproved(id, approved) {
   }
   await ref.update({
     approved,
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+  return docToUser(await ref.get());
+}
+
+/** `limit` is a whole number of new leads per day, or null for the default. */
+export async function setUserDailyLeadLimit(id, limit) {
+  const reset = limit === null;
+  if (!reset && !(Number.isInteger(limit) && limit >= 0 && limit <= MAX_DAILY_LEAD_LIMIT)) {
+    const err = new Error(`dailyLeadLimit must be a whole number from 0 to ${MAX_DAILY_LEAD_LIMIT}, or null for the default`);
+    err.status = 400;
+    throw err;
+  }
+  const db = getFirestore();
+  const ref = db.collection(COLLECTION).doc(id);
+  const existing = await ref.get();
+  if (!existing.exists) {
+    const err = new Error('User not found');
+    err.status = 404;
+    throw err;
+  }
+  await ref.update({
+    dailyLeadLimit: reset ? FieldValue.delete() : limit,
     updatedAt: FieldValue.serverTimestamp(),
   });
   return docToUser(await ref.get());

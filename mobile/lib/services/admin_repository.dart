@@ -28,6 +28,12 @@ class AdminRepository {
     return SalesUser.fromJson(data['user'] as Map<String, dynamic>);
   }
 
+  /// `null` puts the salesman back on the default limit.
+  Future<SalesUser> setUserDailyLeadLimit(String userId, int? limit) async {
+    final data = await _send('PATCH', '/api/users/$userId', body: {'dailyLeadLimit': limit}, failure: 'Failed to update the daily limit');
+    return SalesUser.fromJson(data['user'] as Map<String, dynamic>);
+  }
+
   Future<SalesUser> setUserRole(String userId, String role) async {
     final data = await _send('PATCH', '/api/users/$userId', body: {'role': role}, failure: 'Failed to update role');
     return SalesUser.fromJson(data['user'] as Map<String, dynamic>);
