@@ -116,6 +116,7 @@ class _UsersPageState extends State<UsersPage> {
     if (edit == null || !mounted) return;
 
     final limit = edit.isDefault ? null : edit.value;
+    debugPrint('[DEBUG dailyLeadLimit] ${user.name} (${user.id}) chose isDefault=${edit.isDefault} limit=$limit');
     if (!edit.isDefault && (limit == null || limit < 0 || limit > 1000)) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Enter a whole number from 0 to 1000.')));
       return;

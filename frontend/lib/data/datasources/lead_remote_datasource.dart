@@ -847,16 +847,22 @@ class LeadRemoteDataSource {
 
   /// `limit` null puts the salesman back on the default.
   Future<SalesUser> setUserDailyLeadLimit(String id, {required int? limit}) async {
+    final uri = _uri(ApiConstants.userUpdate(id));
+    final payload = jsonEncode({'dailyLeadLimit': limit});
+    debugPrint('[DEBUG dailyLeadLimit] PATCH $uri body=$payload');
     final response = await _client.patch(
-      _uri(ApiConstants.userUpdate(id)),
+      uri,
       headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'dailyLeadLimit': limit}),
+      body: payload,
     );
+    debugPrint('[DEBUG dailyLeadLimit] status=${response.statusCode} response=${response.body}');
     final body = _tryDecode(response.body);
     if (response.statusCode >= 400) {
       throw Exception(body['error'] ?? 'Failed to update the daily limit');
     }
-    return SalesUser.fromJson(body['user'] as Map<String, dynamic>);
+    final user = SalesUser.fromJson(body['user'] as Map<String, dynamic>);
+    debugPrint('[DEBUG dailyLeadLimit] server returned dailyLeadLimit=${user.dailyLeadLimit}');
+    return user;
   }
 
   Future<SalesUser> setUserRole(String id, {required String role}) async {

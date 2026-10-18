@@ -13,6 +13,7 @@ export async function getUsers(req, res) {
 export async function editUser(req, res) {
   try {
     const { approved, role, dailyLeadLimit } = req.body || {};
+    console.log('[DEBUG dailyLeadLimit] PATCH /api/users/%s body=%j', req.params.id, req.body);
     let user;
     if (approved !== undefined) {
       user = await setUserApproved(req.params.id, approved);

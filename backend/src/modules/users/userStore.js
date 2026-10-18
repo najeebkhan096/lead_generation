@@ -77,11 +77,15 @@ export async function setUserDailyLeadLimit(id, limit) {
     err.status = 404;
     throw err;
   }
+  console.log('[DEBUG dailyLeadLimit] %s before=%j requested=%j', id, existing.data().dailyLeadLimit, limit);
   await ref.update({
     dailyLeadLimit: reset ? FieldValue.delete() : limit,
     updatedAt: FieldValue.serverTimestamp(),
   });
-  return docToUser(await ref.get());
+  const saved = await ref.get();
+  const returned = docToUser(saved);
+  console.log('[DEBUG dailyLeadLimit] %s after=%j returned=%j', id, saved.data().dailyLeadLimit, returned.dailyLeadLimit);
+  return returned;
 }
 
 export async function setUserRole(id, role) {
