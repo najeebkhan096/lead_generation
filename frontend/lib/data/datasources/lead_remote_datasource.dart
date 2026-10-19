@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import '../../core/constants/api_constants.dart';
 import '../../domain/entities/lead.dart';
 import '../../domain/entities/lead_page.dart';
+import '../../domain/entities/salesman_stats.dart';
 import '../../domain/entities/validation_start.dart';
 import '../../domain/entities/multi_search_snapshot.dart';
 import '../../domain/entities/coverage_option.dart';
@@ -830,6 +831,17 @@ class LeadRemoteDataSource {
     final body = jsonDecode(response.body) as Map<String, dynamic>;
     final usersJson = (body['users'] as List<dynamic>? ?? []);
     return usersJson.map((e) => SalesUser.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  /// Each salesman's contacts: today against the limit, totals, and a daily
+  /// chart over the last [days] days.
+  Future<SalesmanStats> getSalesmanStats({int days = 14}) async {
+    final response = await _client.get(_uri('${ApiConstants.users}/stats?days=$days'));
+    if (response.statusCode >= 400) {
+      final body = _tryDecode(response.body);
+      throw Exception(body['error'] ?? 'Failed to load salesman stats');
+    }
+    return SalesmanStats.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
   }
 
   Future<SalesUser> setUserApproved(String id, {required bool approved}) async {

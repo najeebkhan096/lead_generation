@@ -79,6 +79,12 @@ class SettingsPage extends StatelessWidget {
                       onTap: () => context.push('/users'),
                     ),
                     _SettingsItem(
+                      icon: AppIcons.barChart,
+                      title: 'Salesman stats',
+                      subtitle: 'Contacts per salesman, per day, against each daily limit',
+                      onTap: () => context.push('/salesman-stats'),
+                    ),
+                    _SettingsItem(
                       icon: AppIcons.store,
                       title: 'Clients',
                       subtitle: 'Business names and their Google Maps links',

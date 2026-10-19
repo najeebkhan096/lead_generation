@@ -11,6 +11,7 @@ import '../entities/excel_archive.dart';
 import '../entities/sale.dart';
 import '../entities/client_record.dart';
 import '../entities/sales_user.dart';
+import '../entities/salesman_stats.dart';
 import '../entities/watchlist_entry.dart';
 import '../entities/whatsapp_check_result.dart';
 import '../entities/whatsapp_web_status.dart';
@@ -206,6 +207,9 @@ abstract class LeadRepository {
 
   /// Every mobile account, including ones waiting on approval.
   Future<List<SalesUser>> listUsers();
+
+  /// Each salesman's contacts, per day over the last [days] days.
+  Future<SalesmanStats> getSalesmanStats({int days = 14});
 
   Future<SalesUser> setUserApproved(String id, {required bool approved});
 

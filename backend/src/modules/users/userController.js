@@ -1,4 +1,5 @@
 import { listUsers, setUserApproved, setUserDailyLeadLimit, setUserRole } from './userStore.js';
+import { clampDays, loadSalesmanStats } from './salesmanStats.js';
 
 export async function getUsers(req, res) {
   try {
@@ -7,6 +8,16 @@ export async function getUsers(req, res) {
     return res.json({ users });
   } catch (err) {
     return res.status(err.status || 500).json({ error: err.message || 'Failed to load users' });
+  }
+}
+
+/** GET /api/users/stats?days=14 — each salesman's contacts, per day and in total. */
+export async function getSalesmanStats(req, res) {
+  try {
+    const stats = await loadSalesmanStats({ days: clampDays(req.query?.days) });
+    return res.json(stats);
+  } catch (err) {
+    return res.status(err.status || 500).json({ error: err.message || 'Failed to load salesman stats' });
   }
 }
 

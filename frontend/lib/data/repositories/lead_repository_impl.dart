@@ -11,6 +11,7 @@ import '../../domain/entities/excel_archive.dart';
 import '../../domain/entities/sale.dart';
 import '../../domain/entities/client_record.dart';
 import '../../domain/entities/sales_user.dart';
+import '../../domain/entities/salesman_stats.dart';
 import '../../domain/entities/watchlist_entry.dart';
 import '../../domain/entities/whatsapp_check_result.dart';
 import '../../domain/entities/whatsapp_web_status.dart';
@@ -238,6 +239,9 @@ class LeadRepositoryImpl implements LeadRepository {
 
   @override
   Future<List<SalesUser>> listUsers() => _remote.listUsers();
+
+  @override
+  Future<SalesmanStats> getSalesmanStats({int days = 14}) => _remote.getSalesmanStats(days: days);
 
   @override
   Future<SalesUser> setUserApproved(String id, {required bool approved}) =>
