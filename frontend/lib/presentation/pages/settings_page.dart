@@ -85,6 +85,12 @@ class SettingsPage extends StatelessWidget {
                       onTap: () => context.push('/salesman-stats'),
                     ),
                     _SettingsItem(
+                      icon: AppIcons.download,
+                      title: 'App update',
+                      subtitle: 'Minimum build, latest APK and the update message for the phones',
+                      onTap: () => context.push('/app-update'),
+                    ),
+                    _SettingsItem(
                       icon: AppIcons.store,
                       title: 'Clients',
                       subtitle: 'Business names and their Google Maps links',

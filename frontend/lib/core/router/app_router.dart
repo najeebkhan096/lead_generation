@@ -12,6 +12,7 @@ import '../../presentation/pages/sales_page.dart';
 import '../../presentation/pages/lead_hubs.dart';
 import '../../presentation/pages/saved_businesses_page.dart';
 import '../../presentation/pages/settings_page.dart';
+import '../../presentation/pages/app_update_page.dart';
 import '../../presentation/pages/salesman_stats_page.dart';
 import '../../presentation/pages/users_page.dart';
 import '../../presentation/pages/state_scan_page.dart';
@@ -93,6 +94,7 @@ final GoRouter appRouter = GoRouter(
     GoRoute(path: '/watchlist', builder: (context, state) => const WatchlistPage()),
     GoRoute(path: '/users', builder: (context, state) => const UsersPage()),
     GoRoute(path: '/salesman-stats', builder: (context, state) => const SalesmanStatsPage()),
+    GoRoute(path: '/app-update', builder: (context, state) => const AppUpdatePage()),
     GoRoute(path: '/clients', builder: (context, state) => const ClientsPage()),
     GoRoute(path: '/twilio-test', builder: (context, state) => const TwilioTestLeadsPage()),
     // The lead comes via `extra`; a refreshed tab (no extra) goes back to the list.

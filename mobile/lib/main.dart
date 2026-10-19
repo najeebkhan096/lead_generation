@@ -14,6 +14,7 @@ import 'services/auth_service.dart';
 import 'services/theme_controller.dart';
 import 'theme/app_theme.dart';
 import 'widgets/brand_splash.dart';
+import 'widgets/update_gate.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -43,7 +44,9 @@ class _LeadMobileAppState extends State<LeadMobileApp> {
     // (More is one) would otherwise stay up over it, so the user would see
     // nothing happen. Close them all when the session ends.
     _authSub = FirebaseAuth.instance.authStateChanges().listen((user) {
-      if (user == null) _navigatorKey.currentState?.popUntil((route) => route.isFirst);
+      if (user == null) {
+        _navigatorKey.currentState?.popUntil((route) => route.isFirst);
+      }
     });
   }
 
@@ -65,21 +68,28 @@ class _LeadMobileAppState extends State<LeadMobileApp> {
           theme: AppTheme.light(),
           darkTheme: AppTheme.dark(),
           themeMode: mode,
-          home: StreamBuilder<User?>(
-            stream: FirebaseAuth.instance.authStateChanges(),
-            builder: (context, snapshot) {
-              final Widget page;
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                page = const BrandSplash(key: ValueKey('splash'));
-              } else if (snapshot.hasData) {
-                // Keyed by account, so switching users never reuses the
-                // previous user's access check.
-                page = _ApprovedGate(key: ValueKey('gate-${snapshot.data!.uid}'));
-              } else {
-                page = const LoginPage(key: ValueKey('login'));
-              }
-              return AnimatedSwitcher(duration: const Duration(milliseconds: 250), child: page);
-            },
+          home: UpdateGate(
+            child: StreamBuilder<User?>(
+              stream: FirebaseAuth.instance.authStateChanges(),
+              builder: (context, snapshot) {
+                final Widget page;
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  page = const BrandSplash(key: ValueKey('splash'));
+                } else if (snapshot.hasData) {
+                  // Keyed by account, so switching users never reuses the
+                  // previous user's access check.
+                  page = _ApprovedGate(
+                    key: ValueKey('gate-${snapshot.data!.uid}'),
+                  );
+                } else {
+                  page = const LoginPage(key: ValueKey('login'));
+                }
+                return AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 250),
+                  child: page,
+                );
+              },
+            ),
           ),
         );
       },
@@ -91,7 +101,10 @@ class _LeadMobileAppState extends State<LeadMobileApp> {
 /// it reads from the backend (API_BASE_URL), which the phone must be able to
 /// reach. Build with `--dart-define=ADMIN_CONSOLE=false` to send admins to the
 /// salesman screens instead.
-const bool kMobileAdminConsole = bool.fromEnvironment('ADMIN_CONSOLE', defaultValue: true);
+const bool kMobileAdminConsole = bool.fromEnvironment(
+  'ADMIN_CONSOLE',
+  defaultValue: true,
+);
 
 class _ApprovedGate extends StatefulWidget {
   const _ApprovedGate({super.key});
@@ -139,7 +152,10 @@ class _ApprovedGateState extends State<_ApprovedGate> {
         final Widget page;
         final data = snapshot.data;
         if (snapshot.connectionState == ConnectionState.waiting) {
-          page = const BrandSplash(key: ValueKey('checking'), message: 'Checking your account…');
+          page = const BrandSplash(
+            key: ValueKey('checking'),
+            message: 'Checking your account…',
+          );
         } else if (data?.approved == true) {
           page = data?.isAdmin == true
               ? const AdminNavigationPage(key: ValueKey('admin'))
@@ -149,9 +165,15 @@ class _ApprovedGateState extends State<_ApprovedGate> {
           // "not approved" is the normal first-sign-in state.
           page = AccessErrorPage(key: const ValueKey('error'), onRetry: _retry);
         } else {
-          page = PendingApprovalPage(key: const ValueKey('pending'), onCheckAgain: _recheck);
+          page = PendingApprovalPage(
+            key: const ValueKey('pending'),
+            onCheckAgain: _recheck,
+          );
         }
-        return AnimatedSwitcher(duration: const Duration(milliseconds: 250), child: page);
+        return AnimatedSwitcher(
+          duration: const Duration(milliseconds: 250),
+          child: page,
+        );
       },
     );
   }

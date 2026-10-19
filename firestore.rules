@@ -102,6 +102,13 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // App update rule (see mobile/lib/services/app_update.dart). Readable before
+    // sign-in so an old install is stopped at once; only the console writes it.
+    match /appConfig/{doc} {
+      allow read: if true;
+      allow write: if false;
+    }
+
     // Excel-scan and WhatsApp-verified archive metadata (the actual .xlsx
     // lives in Storage, referenced by `downloadUrl` — a pre-signed URL,
     // fetchable without any Storage rule). Mobile reads these directly so

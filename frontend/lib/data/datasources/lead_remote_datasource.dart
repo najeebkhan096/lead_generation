@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import '../../core/constants/api_constants.dart';
 import '../../domain/entities/lead.dart';
 import '../../domain/entities/lead_page.dart';
+import '../../domain/entities/app_update_config.dart';
 import '../../domain/entities/salesman_stats.dart';
 import '../../domain/entities/validation_start.dart';
 import '../../domain/entities/multi_search_snapshot.dart';
@@ -831,6 +832,43 @@ class LeadRemoteDataSource {
     final body = jsonDecode(response.body) as Map<String, dynamic>;
     final usersJson = (body['users'] as List<dynamic>? ?? []);
     return usersJson.map((e) => SalesUser.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  /// The Android app's update rule (minimum build, latest build, APK link).
+  Future<AppUpdateConfig> getAppUpdateConfig() async {
+    final response = await _client.get(_uri('/api/app-config/android'));
+    if (response.statusCode >= 400) {
+      final body = _tryDecode(response.body);
+      throw Exception(body['error'] ?? 'Failed to load the app update settings');
+    }
+    return AppUpdateConfig.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  Future<AppUpdateConfig> saveAppUpdateRule({required int minBuild, required int latestBuild, required String message}) async {
+    final response = await _client.put(
+      _uri('/api/app-config/android'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'minBuild': minBuild, 'latestBuild': latestBuild, 'message': message}),
+    );
+    final body = _tryDecode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['error'] ?? 'Failed to save the update rule');
+    }
+    return AppUpdateConfig.fromJson(body);
+  }
+
+  /// Uploads the APK and points the rule at it. Large file: the upload can take a minute.
+  Future<AppUpdateConfig> uploadAppApk(Uint8List apk, {required int buildNumber}) async {
+    final response = await _client.post(
+      _uri('/api/app-config/android/apk?buildNumber=$buildNumber'),
+      headers: {'Content-Type': 'application/octet-stream'},
+      body: apk,
+    );
+    final body = _tryDecode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['error'] ?? 'Failed to upload the APK');
+    }
+    return AppUpdateConfig.fromJson(body);
   }
 
   /// Each salesman's contacts: today against the limit, totals, and a daily
