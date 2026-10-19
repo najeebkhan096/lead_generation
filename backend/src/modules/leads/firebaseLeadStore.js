@@ -254,10 +254,12 @@ function locationMatchesStates(location, wantedLower) {
 }
 
 /**
- * Every saved lead that has not yet been checked for WhatsApp. No hard
- * cap — previously this stopped at 1000. Optional `states` (state names,
- * e.g. "California") filters on `location`, which the state-city scanner
- * stores as the state name.
+ * Every saved lead with a phone number that has not yet been checked for
+ * WhatsApp. No hard cap. Optional `states` (state names, e.g. "California")
+ * filters on `location`, which the state-city scanner stores as the state name.
+ *
+ * Reads every lead and filters here. A scanned lead has no `whatsAppCheckedAt`
+ * field at all, and a Firestore `== null` query does not match a missing field.
  */
 export async function listUnvalidatedLeads({ states } = {}) {
   const db = getFirestore();
@@ -265,11 +267,11 @@ export async function listUnvalidatedLeads({ states } = {}) {
     ? new Set(states.map((s) => String(s).trim().toLowerCase()).filter(Boolean))
     : null;
 
-  const snap = await db.collection('leads').where('whatsAppCheckedAt', '==', null).get();
+  const snap = await db.collection('leads').get();
   const out = [];
   for (const doc of snap.docs) {
     const d = doc.data();
-    if (!d.phone) continue;
+    if (!d.phone || d.whatsAppCheckedAt) continue;
     if (wanted && !locationMatchesStates(d.location, wanted)) continue;
     out.push(toValidationLead(doc.id, d));
   }
@@ -311,19 +313,45 @@ export async function getLeadsForValidation(ids) {
   return snaps.filter((s) => s.exists && s.data().phone).map((s) => toValidationLead(s.id, s.data()));
 }
 
-/** Distinct state labels among unvalidated leads, with counts — used by
- * the WhatsApp Tool so the user can pick "all" vs a subset of states. */
-export async function summarizeUnvalidatedLeads() {
-  const leads = await listUnvalidatedLeads();
+/**
+ * WhatsApp validation status of each state, from every saved lead:
+ *   validated      every number in the state has been checked
+ *   partial        some have been checked, some not
+ *   not_validated  none has been checked
+ *   no_phone       the state has no phone numbers to check
+ * `total` and each location's `count` are the unchecked numbers, which is
+ * what the validation job works through.
+ */
+export async function summarizeWhatsAppByState() {
+  const db = getFirestore();
+  const snap = await db.collection('leads').get();
   const byState = new Map();
-  for (const lead of leads) {
-    const name = stateKeyFromLocation(lead.location) || 'Unknown';
-    byState.set(name, (byState.get(name) || 0) + 1);
+  for (const doc of snap.docs) {
+    const d = doc.data();
+    const name = stateKeyFromLocation(d.location) || 'Unknown';
+    const row = byState.get(name) || { name, total: 0, withPhone: 0, checked: 0 };
+    row.total += 1;
+    if (d.phone) {
+      row.withPhone += 1;
+      if (d.whatsAppCheckedAt) row.checked += 1;
+    }
+    byState.set(name, row);
   }
-  const locations = [...byState.entries()]
-    .map(([name, count]) => ({ name, count }))
+  const locations = [...byState.values()]
+    .map((row) => {
+      const unchecked = row.withPhone - row.checked;
+      return { ...row, unchecked, count: unchecked, status: whatsAppStateStatus(row) };
+    })
     .sort((a, b) => a.name.localeCompare(b.name));
-  return { total: leads.length, locations };
+  return { total: locations.reduce((sum, l) => sum + l.unchecked, 0), locations };
+}
+
+/** The status of one state's counts, as summarizeWhatsAppByState reports it. */
+export function whatsAppStateStatus({ withPhone, checked }) {
+  if (!withPhone) return 'no_phone';
+  if (checked >= withPhone) return 'validated';
+  if (checked === 0) return 'not_validated';
+  return 'partial';
 }
 
 /**

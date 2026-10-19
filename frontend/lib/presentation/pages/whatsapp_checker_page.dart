@@ -295,8 +295,6 @@ class _AutomationCardState extends State<_AutomationCard> {
   UnvalidatedWhatsAppSummary? _summary;
   bool _loadingSummary = true;
   String? _summaryError;
-  bool _allStates = true;
-  final Set<String> _selectedStates = {};
 
   @override
   void initState() {
@@ -323,7 +321,6 @@ class _AutomationCardState extends State<_AutomationCard> {
       setState(() {
         _summary = summary;
         _loadingSummary = false;
-        _selectedStates.removeWhere((name) => summary.locations.every((l) => l.name != name));
       });
     } catch (e) {
       if (!mounted) return;
@@ -334,27 +331,15 @@ class _AutomationCardState extends State<_AutomationCard> {
     }
   }
 
-  int get _selectedCount {
-    final summary = _summary;
-    if (summary == null) return 0;
-    if (_allStates) return summary.total;
-    return summary.locations.where((l) => _selectedStates.contains(l.name)).fold<int>(0, (s, l) => s + l.count);
-  }
-
-  Future<void> _start() async {
-    if (_allStates) {
-      await widget.onStart();
-    } else {
-      await widget.onStart(states: _selectedStates.toList());
-    }
-  }
+  /// Numbers still to check across every state.
+  int get _remaining => _summary?.total ?? 0;
 
   @override
   Widget build(BuildContext context) {
     final active = widget.status?.active ?? false;
     final checked = widget.status?.checked ?? 0;
     final total = widget.status?.total ?? 0;
-    final canStart = !widget.busy && !active && _selectedCount > 0;
+    final canStart = !widget.busy && !active && _remaining > 0;
 
     return Container(
       padding: const EdgeInsets.all(22),
@@ -417,12 +402,12 @@ class _AutomationCardState extends State<_AutomationCard> {
                 )
               else
                 ElevatedButton(
-                  onPressed: canStart ? _start : null,
+                  onPressed: canStart ? () => widget.onStart() : null,
                   style: ElevatedButton.styleFrom(
                     minimumSize: const Size(100, 40),
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                   ),
-                  child: const Text('Start Now'),
+                  child: const Text('Validate all'),
                 ),
             ],
           ),
@@ -448,49 +433,76 @@ class _AutomationCardState extends State<_AutomationCard> {
               Text(_summaryError!, style: const TextStyle(fontSize: 12.5, color: AppTheme.danger))
             else if (_summary != null && _summary!.locations.isNotEmpty) ...[
               Text('States', style: Theme.of(context).textTheme.titleSmall),
-              const SizedBox(height: 8),
-              SegmentedButton<bool>(
-                segments: const [
-                  ButtonSegment(value: true, label: Text('All states'), icon: Icon(AppIcons.globe, size: 16)),
-                  ButtonSegment(value: false, label: Text('Selected states'), icon: Icon(AppIcons.mapPin, size: 16)),
-                ],
-                selected: {_allStates},
-                onSelectionChanged: (next) {
-                  setState(() => _allStates = next.first);
-                },
+              const SizedBox(height: 4),
+              const Text(
+                'Each state is validated on its own. A state that is already validated is not checked again.',
+                style: TextStyle(fontSize: 12.5, color: AppTheme.faint),
               ),
-              if (!_allStates) ...[
-                const SizedBox(height: 10),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    for (final loc in _summary!.locations)
-                      FilterChip(
-                        label: Text('${loc.name} (${loc.count})'),
-                        selected: _selectedStates.contains(loc.name),
-                        onSelected: (selected) {
-                          setState(() {
-                            if (selected) {
-                              _selectedStates.add(loc.name);
-                            } else {
-                              _selectedStates.remove(loc.name);
-                            }
-                          });
-                        },
-                      ),
-                  ],
+              const SizedBox(height: 10),
+              for (final loc in _summary!.locations)
+                _StateValidationRow(
+                  location: loc,
+                  enabled: canStart,
+                  onValidate: () => widget.onStart(states: [loc.name]),
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  _selectedStates.isEmpty
-                      ? 'Pick one or more states to validate.'
-                      : 'Will check $_selectedCount lead${_selectedCount == 1 ? '' : 's'} in ${_selectedStates.length} state${_selectedStates.length == 1 ? '' : 's'}.',
-                  style: const TextStyle(fontSize: 12.5, color: AppTheme.faint, fontWeight: FontWeight.w600),
-                ),
-              ],
             ],
           ],
+        ],
+      ),
+    );
+  }
+}
+
+/// One state in the WhatsApp Automation card: its validation status, and a
+/// button that checks only that state's numbers still to check. A state with
+/// nothing left to check has its button disabled, so it is not run again.
+class _StateValidationRow extends StatelessWidget {
+  const _StateValidationRow({
+    required this.location,
+    required this.enabled,
+    required this.onValidate,
+  });
+
+  final UnvalidatedLocationCount location;
+  final bool enabled;
+  final VoidCallback onValidate;
+
+  @override
+  Widget build(BuildContext context) {
+    final (label, color) = switch (location.status) {
+      'validated' => ('Validated · ${location.checked} of ${location.withPhone} checked', AppTheme.sage700),
+      'partial' => ('Partly validated · ${location.checked} of ${location.withPhone} checked', AppTheme.accent700),
+      'no_phone' => ('No phone numbers to check', AppTheme.faint),
+      _ => ('Not validated · ${location.withPhone} to check', AppTheme.neutral600),
+    };
+    final buttonLabel = switch (location.status) {
+      'validated' => 'Validated',
+      'partial' => 'Validate ${location.count} left',
+      'no_phone' => 'Nothing to check',
+      _ => 'Validate',
+    };
+    final canTap = enabled && location.count > 0;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(location.name, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+                const SizedBox(height: 2),
+                Text(label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: color)),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          OutlinedButton(
+            onPressed: canTap ? onValidate : null,
+            style: OutlinedButton.styleFrom(minimumSize: const Size(0, 36)),
+            child: Text(buttonLabel),
+          ),
         ],
       ),
     );

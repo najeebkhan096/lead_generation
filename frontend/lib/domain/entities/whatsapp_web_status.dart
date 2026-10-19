@@ -220,21 +220,45 @@ class WhatsAppValidationSnapshot extends Equatable {
       [active, status, total, checked, validCount, invalidCount, errorCount];
 }
 
+/// One state's WhatsApp validation: how many of its numbers are checked, and
+/// whether the state is validated, partly validated, not validated, or has no
+/// phone numbers to check.
 class UnvalidatedLocationCount extends Equatable {
-  const UnvalidatedLocationCount({required this.name, required this.count});
+  const UnvalidatedLocationCount({
+    required this.name,
+    required this.count,
+    this.total = 0,
+    this.withPhone = 0,
+    this.checked = 0,
+    this.status = 'not_validated',
+  });
 
   final String name;
+
+  /// Numbers still to check: what "Validate" would work through.
   final int count;
+  final int total;
+  final int withPhone;
+  final int checked;
+
+  /// `validated`, `partial`, `not_validated` or `no_phone` (set by the server).
+  final String status;
+
+  bool get isValidated => status == 'validated';
 
   factory UnvalidatedLocationCount.fromJson(Map<String, dynamic> json) {
     return UnvalidatedLocationCount(
       name: (json['name'] as String?) ?? 'Unknown',
       count: (json['count'] as num?)?.toInt() ?? 0,
+      total: (json['total'] as num?)?.toInt() ?? 0,
+      withPhone: (json['withPhone'] as num?)?.toInt() ?? 0,
+      checked: (json['checked'] as num?)?.toInt() ?? 0,
+      status: (json['status'] as String?) ?? 'not_validated',
     );
   }
 
   @override
-  List<Object?> get props => [name, count];
+  List<Object?> get props => [name, count, total, withPhone, checked, status];
 }
 
 /// Unchecked Firestore leads, grouped by state, so the WhatsApp Tool can

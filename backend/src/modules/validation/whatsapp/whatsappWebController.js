@@ -11,7 +11,7 @@ import {
 } from './whatsappValidationJob.js';
 import {
   listUnvalidatedLeads,
-  summarizeUnvalidatedLeads,
+  summarizeWhatsAppByState,
   getLeadsForValidation,
 } from '../../leads/firebaseLeadStore.js';
 
@@ -180,7 +180,7 @@ export async function startAutoValidation(req, res) {
 
 export async function getUnvalidatedSummary(_req, res) {
   try {
-    const summary = await summarizeUnvalidatedLeads();
+    const summary = await summarizeWhatsAppByState();
     return res.json(summary);
   } catch (err) {
     return res.status(err.status || 500).json({ error: err.message || 'Failed to load unvalidated leads' });
