@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 
 import '../models/sales_user.dart';
 
@@ -58,7 +59,9 @@ class DailyContactRepository {
         .collection('whatsappLeads')
         .where('sourceType', isEqualTo: 'review')
         .where('contactedBy', isEqualTo: uid)
-        .where('contactedAt', isGreaterThanOrEqualTo: todayStart);
+        .where('contactedAt', isGreaterThanOrEqualTo: todayStart)
+        // Newest first matches the deployed index; without it Firestore wants another one.
+        .orderBy('contactedAt', descending: true);
 
     StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? limitSub;
     StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? usedSub;
@@ -85,7 +88,10 @@ class DailyContactRepository {
             used = snap.size;
             emit();
           },
-          onError: controller.addError,
+          onError: (Object e, StackTrace s) {
+            debugPrint('[daily limit] could not count today\'s contacts: $e');
+            controller.addError(e, s);
+          },
         );
       },
       onCancel: () async {
