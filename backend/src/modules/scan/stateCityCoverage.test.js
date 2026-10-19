@@ -29,7 +29,6 @@ function makeJob(scrapeLocationFn, extra = {}) {
     requireSignIn: true,
     stoppedReason: null,
     scrapeLocationFn,
-    collectedLeadsByState: { 'Car Wash': {} },
     seenPlaces: { 'Car Wash': new Set() },
     activityLog: [],
     ...extra,
@@ -112,7 +111,9 @@ test('Google asking to sign in mid-scan stops the scan and keeps that city out o
   assert.equal(job.stoppedReason, 'google_session_expired');
   assert.ok(rec.pending.includes('Dallas'), 'the blocked city goes back to pending so it is redone');
   assert.ok(!rec.covered.includes('Dallas'));
-  assert.ok(!(job.collectedLeadsByState['Car Wash'].Texas || []).some((l) => l.business === 'Blocked'), 'its half-read results are discarded');
+  const texasLeads = [];
+  for await (const lead of job.leadSpool.read('Car Wash', 'Texas')) texasLeads.push(lead);
+  assert.ok(!texasLeads.some((l) => l.business === 'Blocked'), 'its half-read results are discarded');
   assert.notEqual(rec.status, 'done');
   assert.ok(job.activityLog.some((l) => l.level === 'error' && /Sign in to Google again/.test(l.message)));
 });

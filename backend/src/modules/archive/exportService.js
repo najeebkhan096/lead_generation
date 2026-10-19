@@ -115,6 +115,46 @@ export async function leadsToXlsxBuffer(sheets, { withEmail = false } = {}) {
 }
 
 /**
+ * The same workbook as [leadsToXlsxBuffer], written to a file one row at a
+ * time. `sheets` is `[{ name, leads }]` where `leads` is an async iterable, so
+ * a scan can write a workbook of any size without holding it in memory. Strings
+ * are written inline rather than through a shared table, which would otherwise
+ * grow with every distinct business name.
+ */
+export async function writeLeadsXlsxFile(filePath, sheets, { withEmail = false } = {}) {
+  const columns = withEmail ? [...LEAD_COLUMNS, ...EMAIL_COLUMNS] : LEAD_COLUMNS;
+  const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({
+    filename: filePath,
+    useSharedStrings: false,
+    useStyles: true,
+  });
+  workbook.creator = 'LeadFinder';
+  workbook.created = new Date();
+
+  const usedNames = new Set();
+  for (const { name, leads } of sheets) {
+    const sheet = workbook.addWorksheet(safeSheetName(name, usedNames));
+    sheet.columns = columns;
+    sheet.getRow(1).font = { bold: true };
+    sheet.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: columns.length } };
+    for await (const lead of leads) {
+      sheet.addRow(leadRow(lead)).commit();
+    }
+    sheet.commit();
+  }
+
+  // A workbook needs at least one sheet even if every category came back empty.
+  if (!sheets.length) {
+    const sheet = workbook.addWorksheet('Leads');
+    sheet.columns = columns;
+    sheet.commit();
+  }
+
+  await workbook.commit();
+  return filePath;
+}
+
+/**
  * Reads an .xlsx buffer back into plain JSON — used to show an archived
  * scan's data in the web/mobile UI without shipping an xlsx-parsing
  * library to either client. Assumes row 1 is a header row (true for

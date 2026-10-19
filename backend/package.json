@@ -8,7 +8,7 @@
     "start": "node --max-old-space-size=8192 src/index.js",
     "dev": "node --max-old-space-size=8192 --watch src/index.js",
     "build:web": "bash ../scripts/build-web.sh",
-    "test": "node --test src/lib/*.test.js src/scraper/*.test.js src/modules/validation/*.test.js src/modules/validation/*/*.test.js src/modules/twilio-test/*.test.js src/modules/twilio-chat/*.test.js src/modules/scan/*.test.js src/modules/sales/*.test.js src/modules/clients/*.test.js src/modules/users/*.test.js src/modules/leads/*.test.js",
+    "test": "node --test src/lib/*.test.js src/scraper/*.test.js src/modules/validation/*.test.js src/modules/validation/*/*.test.js src/modules/twilio-test/*.test.js src/modules/twilio-chat/*.test.js src/modules/scan/*.test.js src/modules/sales/*.test.js src/modules/clients/*.test.js src/modules/users/*.test.js src/modules/leads/*.test.js src/modules/archive/*.test.js",
     "maps:login": "node scripts/mapsLogin.mjs",
     "maps:session-check": "node scripts/mapsSessionCheck.mjs",
     "maps:test-scan": "node scripts/mapsTestScan.mjs",

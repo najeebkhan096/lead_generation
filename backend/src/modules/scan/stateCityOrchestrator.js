@@ -20,6 +20,9 @@
  */
 
 import crypto from 'crypto';
+import fsp from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import { launchBrowser, checkBrowserSignedIn, probeGoogleMaps } from '../../scraper/googleMapsScraper.js';
 import { GoogleBlockedError } from '../../scraper/googleBlock.js';
 import { sharedPace, _resetSharedPace } from '../../scraper/rateLimit.js';
@@ -27,7 +30,9 @@ import { buildCoverage, isCoverageTier } from '../../data/usCoverage.js';
 import { completedCitiesFromStates, placeIdsFromLeads, applyResumeProgress, checkpointDue } from './scanProgress.js';
 import { scrapeOneCity } from './leadService.js';
 import { Mutex } from '../../lib/asyncMutex.js';
-import { leadsToXlsxBuffer, xlsxBufferToJson, sheetsToLeadsJson } from '../archive/exportService.js';
+import { writeLeadsXlsxFile, xlsxBufferToJson, sheetsToLeadsJson } from '../archive/exportService.js';
+import { createLeadSpool } from './leadSpool.js';
+import { startMemoryLog } from '../../lib/memoryMonitor.js';
 import {
   uploadExcelArchive,
   buildArchiveFileName,
@@ -61,6 +66,10 @@ const CITY_ATTEMPTS = 2;
 const DEFAULT_MAX_RESULTS_PER_CITY = 160;
 const ACTIVITY_LOG_LIMIT = 400;
 const PAUSE_POLL_MS = 300;
+// The shared Chrome is replaced after this many cities, even inside one long
+// state. Every page a scan opens leaves memory behind in Chrome, so a state of
+// hundreds of cities would otherwise grow the browser for hours.
+const RECYCLE_EVERY_CITIES = 20;
 
 /** @type {Job | null} */
 let currentJob = null;
@@ -152,7 +161,7 @@ async function ensureBrowser(job, launch = launchBrowser) {
 }
 
 /** Test hook. */
-export { ensureBrowser as _ensureBrowserForTests };
+export { ensureBrowser as _ensureBrowserForTests, recycleWhenDue as _recycleWhenDue, recycleStateFor as _recycleStateFor };
 
 /** A fresh browser between states keeps a very long scan from bloating one Chrome. */
 async function recycleBrowser(job) {
@@ -163,6 +172,42 @@ async function recycleBrowser(job) {
   } catch (err) {
     logActivity(job, `Could not start a fresh browser (${err.message}); will retry before the next city.`, 'warn');
     job.browser = null; // ensureBrowser starts one
+  }
+}
+
+/** The leads this scan has found, kept on disk (see leadSpool.js). A scan with
+ * an injected scraper (tests) keeps them in memory instead. */
+function leadSpoolFor(job) {
+  job.leadSpool ??= createLeadSpool({
+    dir: job.scrapeLocationFn ? null : path.join(os.tmpdir(), 'leadfinder-scan-spool', job.id || crypto.randomUUID()),
+  });
+  return job.leadSpool;
+}
+
+/** How far the shared browser has been used since it was last replaced. */
+function recycleStateFor(job) {
+  job.recycle ??= { citiesSince: 0, due: false, busy: false, inFlight: 0, recycles: 0 };
+  return job.recycle;
+}
+
+/** Replaces the shared browser once it is due. Waits until no worker is in the
+ * middle of a city, so none of them is cut off. */
+async function recycleWhenDue(job) {
+  const rc = recycleStateFor(job);
+  if (!rc.due) return;
+  if (rc.busy || rc.inFlight > 0) {
+    await sleep(PAUSE_POLL_MS);
+    return;
+  }
+  rc.busy = true;
+  try {
+    await recycleBrowser(job);
+    rc.recycles += 1;
+    rc.citiesSince = 0;
+    rc.due = false;
+    logActivity(job, 'Browser replaced to keep memory down.');
+  } finally {
+    rc.busy = false;
   }
 }
 
@@ -239,12 +284,18 @@ async function scanStateCities(job, category, stateRec) {
       if (job.cancelled) return;
       await waitWhilePaused(job);
       if (job.cancelled) return;
+      // A recycle is only worth it while cities remain in this state.
+      if (recycleStateFor(job).due && stateRec.pending.length) {
+        await recycleWhenDue(job);
+        continue;
+      }
       const city = stateRec.pending[0];
       if (city === undefined) return;
       // Claim it immediately (synchronous, no await before this point in
       // the iteration) so two workers can never grab the same city.
       stateRec.pending.shift();
       stateRec.inProgress.push(city);
+      recycleStateFor(job).inFlight += 1;
       stateRec.activity[city] = 'starting…';
 
       try {
@@ -291,7 +342,7 @@ async function scanStateCities(job, category, stateRec) {
           return;
         }
 
-        (job.collectedLeadsByState[category][stateRec.state] ??= []).push(...leads);
+        await leadSpoolFor(job).append(category, stateRec.state, leads);
         stateRec.leadsCollected += leads.length;
         stateRec.businessesProcessed += businessesScraped;
         stateRec.incompleteBusinesses += reviewIssues?.incomplete || 0;
@@ -307,6 +358,9 @@ async function scanStateCities(job, category, stateRec) {
         }
         stateRec.prefiltered += prefiltered || 0;
         stateRec.covered.push(city);
+        const rc = recycleStateFor(job);
+        rc.citiesSince += 1;
+        if (rc.citiesSince >= (job.recycleEveryCities ?? RECYCLE_EVERY_CITIES)) rc.due = true;
         noteCityCovered(job, category);
         logActivity(
           job,
@@ -344,6 +398,7 @@ async function scanStateCities(job, category, stateRec) {
         const idx = stateRec.inProgress.indexOf(city);
         if (idx !== -1) stateRec.inProgress.splice(idx, 1);
         delete stateRec.activity[city];
+        recycleStateFor(job).inFlight -= 1;
       }
     }
   }
@@ -382,24 +437,34 @@ async function uploadCategoryArchiveNow(job, category, { isFinal }) {
   // Mirrors `multiCategoryOrchestrator.js`'s `allCountries`/`countries`
   // split for the same reason: a fresh (non-resumed) run has the two
   // equal, so this is a no-op change in that case.
+  // Leads stream from the spool into the workbook one at a time, so the
+  // checkpoint never holds the whole category in memory.
+  const spool = leadSpoolFor(job);
   const sheets = [];
   for (const state of archive.allStates) {
-    const leads = job.collectedLeadsByState[category][state];
-    if (leads && leads.length) sheets.push({ name: state, leads });
+    const count = spool.count(category, state);
+    if (count) sheets.push({ name: state, count, leads: spool.read(category, state) });
   }
   if (!sheets.length) {
     if (isFinal) archive.status = 'done';
     return;
   }
 
-  const totalLeads = sheets.reduce((sum, s) => sum + s.leads.length, 0);
+  const totalLeads = sheets.reduce((sum, s) => sum + s.count, 0);
   const totalBusinessesProcessed =
     (archive.priorBusinessesProcessed || 0) +
     job.categoryStates[category].reduce((sum, s) => sum + s.businessesProcessed, 0);
 
   archive.status = 'building';
   try {
-    const buffer = await leadsToXlsxBuffer(sheets);
+    const xlsxPath = path.join(spool.dir ?? os.tmpdir(), `${archive.id}.xlsx`);
+    let buffer;
+    try {
+      await writeLeadsXlsxFile(xlsxPath, sheets);
+      buffer = await fsp.readFile(xlsxPath);
+    } finally {
+      await fsp.rm(xlsxPath, { force: true }).catch(() => {});
+    }
     const record = await uploadExcelArchive({
       id: archive.id,
       buffer,
@@ -447,6 +512,11 @@ async function uploadCategoryArchiveNow(job, category, { isFinal }) {
 }
 
 async function runJob(job) {
+  const stopMemoryLog = startMemoryLog((s) => {
+    const found = Object.values(job.categoryStates).flat().reduce((n, st) => n + (st.leadsCollected || 0), 0);
+    console.log(`[scan memory] heap=${s.heapMB}MB rss=${s.rssMB}MB chrome=${s.chromeMB}MB leads=${found}`);
+    logActivity(job, `Memory: Node heap ${s.heapMB} MB, Node total ${s.rssMB} MB, Chrome ${s.chromeMB} MB, ${found} leads found.`);
+  });
   try {
     for (const category of job.categories) {
       if (job.cancelled) break;
@@ -480,6 +550,7 @@ async function runJob(job) {
         }
         await job.archiveMutexes[category].runExclusive(() => uploadCategoryArchiveNow(job, category, { isFinal: false }));
         await recycleBrowser(job);
+        recycleStateFor(job).citiesSince = 0;
       }
 
       job.categoryStatus[category] = fullyCompleted ? 'done' : 'cancelled';
@@ -515,6 +586,9 @@ async function runJob(job) {
   const sortSummary = describeSortDiagnostics();
   if (sortSummary) logActivity(job, sortSummary, sortSummary.includes('not sorted') ? 'warn' : 'info');
   logActivity(job, `Scan finished in ${Math.round((job.finishedAt - job.startedAt) / 1000)}s.`);
+  stopMemoryLog();
+  // The archives on disk hold every saved lead; the spool is only scratch space.
+  await job.leadSpool?.remove().catch(() => {});
 }
 
 /**
@@ -533,7 +607,7 @@ async function runJob(job) {
  *   by `resumeStateCityScan` — keyed by category, points a fresh job's
  *   `categoryArchives[category]` at an *existing* archive's id/fileName
  *   (so checkpoints/finalize upsert that same doc) and pre-seeds
- *   already-scraped states' leads back into `collectedLeadsByState`.
+ *   already-scraped states' leads back into the lead spool.
  */
 export async function startStateCityScan({
   categories,
@@ -580,7 +654,10 @@ export async function startStateCityScan({
 
   const categoryStates = {};
   const categoryStatus = {};
-  const collectedLeadsByState = {};
+  const jobId = crypto.randomUUID();
+  const leadSpool = createLeadSpool({
+    dir: scrapeLocationFn ? null : path.join(os.tmpdir(), 'leadfinder-scan-spool', jobId),
+  });
   const categoryArchives = {};
   const archiveMutexes = {};
   const seedSeen = {};
@@ -588,7 +665,6 @@ export async function startStateCityScan({
     const resume = resumeArchives?.[category];
     categoryStates[category] = states.map((s) => newStateRecord(s.state, s.cities));
     categoryStatus[category] = 'pending';
-    collectedLeadsByState[category] = {};
     categoryArchives[category] = {
       id: resume?.id || crypto.randomUUID(),
       fileName: resume?.fileName || buildArchiveFileName({ categories: [category], countries: ['US'] }),
@@ -606,7 +682,7 @@ export async function startStateCityScan({
     archiveMutexes[category] = new Mutex();
 
     for (const [state, leads] of Object.entries(resume?.seedLeadsByState || {})) {
-      collectedLeadsByState[category][state] = leads;
+      await leadSpool.append(category, state, leads);
     }
     // Resuming: skip the cities already covered and do not read a business twice.
     if (resume) {
@@ -651,7 +727,8 @@ export async function startStateCityScan({
     currentCategory: uniqueCategories[0],
     categoryStates,
     categoryStatus,
-    collectedLeadsByState,
+    id: jobId,
+    leadSpool,
     categoryArchives,
     archiveMutexes,
     activityLog: [],

@@ -24,13 +24,18 @@
  */
 
 import crypto from 'crypto';
+import fsp from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import { launchBrowser } from '../../scraper/googleMapsScraper.js';
 import { scrapeCategoryNationwide } from './leadService.js';
 import { saveLeadsToFirebase } from '../leads/firebaseLeadStore.js';
 import { setLastSearch } from '../../lib/memoryStore.js';
 import { countryMeta, countryCodeForName, regionsForCountry } from '../../data/countries.js';
 import { Mutex } from '../../lib/asyncMutex.js';
-import { leadsToXlsxBuffer, xlsxBufferToJson, sheetsToLeadsJson } from '../archive/exportService.js';
+import { writeLeadsXlsxFile, xlsxBufferToJson, sheetsToLeadsJson } from '../archive/exportService.js';
+import { createLeadSpool } from './leadSpool.js';
+import { startMemoryLog } from '../../lib/memoryMonitor.js';
 import { uploadExcelArchive, buildArchiveFileName, getExcelArchive, downloadExcelArchiveBuffer } from '../archive/excelArchiveStore.js';
 
 const MIN_CONCURRENCY = 2;
@@ -151,13 +156,13 @@ async function waitWhilePausedFor(thisJob, rec) {
   }
 }
 
-/** Default `saveLeadsFn` for `exportOnly` jobs — keeps leads in memory,
- * keyed by work item, instead of writing them to Firestore. Picked up by
- * `finishJob` once every category is done to build the Excel archive. */
-function collectInMemory(thisJob) {
+/** Default `saveLeadsFn` for `exportOnly` jobs — keeps the leads in the
+ * job's spool (on disk, see leadSpool.js), keyed by work item, instead of
+ * writing them to Firestore. The Excel archive is built from it once every
+ * category is done. */
+function collectToSpool(thisJob) {
   return async (leads, ctx) => {
-    const key = workKey(ctx.category, ctx.country);
-    (thisJob.collectedLeads[key] ??= []).push(...leads);
+    await thisJob.leadSpool.append(ctx.category, ctx.country, leads);
     return { saved: leads.length };
   };
 }
@@ -305,10 +310,13 @@ async function uploadCategoryArchiveNow(thisJob, category, { isFinal }) {
   // category — not `thisJob.countries`, which for a resumed run only
   // covers the countries still missing. A fresh (non-resumed) job has the
   // two equal, so this is a no-op change in that case.
+  // Leads stream from the spool into the workbook one at a time, so the
+  // checkpoint never holds the whole category in memory.
+  const spool = thisJob.leadSpool;
   const sheets = [];
   for (const countryCode of archive.allCountries) {
-    const leads = thisJob.collectedLeads[workKey(category, countryCode)];
-    if (leads && leads.length) sheets.push({ name: countryMeta(countryCode).name, leads });
+    const count = spool.count(category, countryCode);
+    if (count) sheets.push({ name: countryMeta(countryCode).name, count, leads: spool.read(category, countryCode) });
   }
   if (!sheets.length) {
     // Finished (or checkpointing) with zero leads collected — nothing to
@@ -318,7 +326,7 @@ async function uploadCategoryArchiveNow(thisJob, category, { isFinal }) {
     return;
   }
 
-  const totalLeads = sheets.reduce((sum, s) => sum + s.leads.length, 0);
+  const totalLeads = sheets.reduce((sum, s) => sum + s.count, 0);
   // This run's own contribution, plus whatever a resumed run's earlier
   // (now-crashed) attempt already reported — that history only exists on
   // the archive doc itself, not in this fresh in-memory job.
@@ -331,7 +339,14 @@ async function uploadCategoryArchiveNow(thisJob, category, { isFinal }) {
 
   archive.status = 'building';
   try {
-    const buffer = await leadsToXlsxBuffer(sheets);
+    const xlsxPath = path.join(spool.dir ?? os.tmpdir(), `${archive.id}.xlsx`);
+    let buffer;
+    try {
+      await writeLeadsXlsxFile(xlsxPath, sheets);
+      buffer = await fsp.readFile(xlsxPath);
+    } finally {
+      await fsp.rm(xlsxPath, { force: true }).catch(() => {});
+    }
     const record = await uploadExcelArchive({
       id: archive.id,
       buffer,
@@ -421,6 +436,9 @@ async function finishJob(thisJob) {
   // about "job done but an archive still building", it can just trust that
   // status === 'done' means everything, archives included, is final.
   thisJob.status = 'done';
+  thisJob.stopMemoryLog?.();
+  // The archives on disk hold every saved lead; the spool is only scratch space.
+  await thisJob.leadSpool?.remove().catch(() => {});
 }
 
 function isRunningStatus(status) {
@@ -457,7 +475,7 @@ function isRunningStatus(status) {
  *   job's `categoryArchives[category]` at an *existing* archive's id/
  *   fileName (so its checkpoints/finalize upsert that same doc instead of
  *   creating a new one) and pre-seeds already-scraped countries' leads back
- *   into `collectedLeads`, so this job only needs to actually scrape
+ *   into the job's lead spool, so this job only needs to actually scrape
  *   whatever's left in `countries`/`categories`.
  */
 export async function startMultiCategorySearch({
@@ -505,6 +523,11 @@ export async function startMultiCategorySearch({
     }
   }
 
+  const jobId = crypto.randomUUID();
+  const leadSpool = createLeadSpool({
+    dir: scrapeLocationFn ? null : path.join(os.tmpdir(), 'leadfinder-scan-spool', jobId),
+  });
+
   const thisJob = {
     categories: uniqueCategories,
     countries: uniqueCountries,
@@ -525,7 +548,8 @@ export async function startMultiCategorySearch({
     activeWorkers: poolSize,
     browser: null,
     firebaseMutex: new Mutex(),
-    collectedLeads: {},
+    id: jobId,
+    leadSpool,
     // One archive per category (not one per job) — each covers every
     // selected country as its own sheet, and finalizes (uploads) the
     // instant that category finishes across all of them, independently of
@@ -559,7 +583,7 @@ export async function startMultiCategorySearch({
         )
       : {},
   };
-  thisJob.saveLeadsFn = saveLeadsFn || (exportOnly ? collectInMemory(thisJob) : saveLeadsToFirebase);
+  thisJob.saveLeadsFn = saveLeadsFn || (exportOnly ? collectToSpool(thisJob) : saveLeadsToFirebase);
 
   // Seed already-scraped countries' leads back into this fresh job's memory
   // — pulled from the archive's existing workbook by `resumeCategoryArchive`
@@ -568,7 +592,7 @@ export async function startMultiCategorySearch({
   if (resumeArchives) {
     for (const [category, resume] of Object.entries(resumeArchives)) {
       for (const [countryCode, leads] of Object.entries(resume.seedLeadsByCountry || {})) {
-        thisJob.collectedLeads[workKey(category, countryCode)] = leads;
+        await thisJob.leadSpool.append(category, countryCode, leads);
       }
     }
   }
@@ -581,6 +605,12 @@ export async function startMultiCategorySearch({
   logActivity(thisJob, `Starting multi-category search: ${scopeDesc}, ${poolSize} workers.`);
 
   thisJob.browser = await launchBrowser();
+
+  thisJob.stopMemoryLog = startMemoryLog((s) => {
+    const found = Object.values(thisJob.records).reduce((n, r) => n + (r.leadsCollected || 0), 0);
+    console.log(`[multi-scan memory] heap=${s.heapMB}MB rss=${s.rssMB}MB chrome=${s.chromeMB}MB leads=${found}`);
+    logActivity(thisJob, `Memory: Node heap ${s.heapMB} MB, Node total ${s.rssMB} MB, Chrome ${s.chromeMB} MB, ${found} leads found.`);
+  });
 
   const workerIds = Array.from({ length: poolSize }, (_, i) => i + 1);
   Promise.all(workerIds.map((id) => runWorker(id, scrapeLocationFn, thisJob))).catch((err) => {

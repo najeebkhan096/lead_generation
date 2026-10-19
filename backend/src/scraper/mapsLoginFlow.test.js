@@ -43,6 +43,8 @@ test('the sign-in is noticed from the profile and its window is closed by the ap
   assert.equal(started.started, true);
   assert.equal((await getSessionSnapshot()).loginInProgress, true, 'waiting for the person to sign in');
 
+  // The fake Chrome writes its pid file a moment after it starts, so wait for it.
+  for (let i = 0; i < 100 && !fs.existsSync(`${chrome}.pid`); i++) await new Promise((r) => setTimeout(r, 50));
   const pid = Number(fs.readFileSync(`${chrome}.pid`, 'utf8').trim());
   assert.ok(alive(pid), 'the (fake) Chrome window is open');
 
