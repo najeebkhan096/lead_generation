@@ -53,9 +53,13 @@ class LeadCollectionPage<T> extends StatefulWidget {
     this.filters = const [],
     this.dateOf,
     this.groupWhen,
+    this.banner,
   });
 
   final String title;
+
+  /// Shown under the header, above the search: e.g. today's contact count.
+  final Widget? banner;
 
   /// Singular noun for counts ("business").
   final String noun;
@@ -362,6 +366,10 @@ class _LeadCollectionPageState<T> extends State<LeadCollectionPage<T>> {
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Column(
                 children: [
+                  if (widget.banner != null) ...[
+                    widget.banner!,
+                    const SizedBox(height: 12),
+                  ],
                   SearchField(
                     controller: _searchController,
                     value: _query,

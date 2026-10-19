@@ -3,6 +3,7 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
 
 import '../models/lead.dart';
+import '../services/daily_contact_repository.dart';
 import '../services/paged_query.dart';
 import '../services/verified_lead_repository.dart';
 import '../theme/app_theme.dart';
@@ -20,17 +21,22 @@ import '../widgets/verified_lead_card.dart';
 /// appears in the right list on its own.
 ///
 /// Opening WhatsApp on a New lead marks it Contacted, within the salesman's
-/// daily limit; "Move to New" puts it back.
+/// daily limit; "Move to New" puts it back. A banner shows today's count. When
+/// the limit is reached, New leads are hidden until the next day.
 class VerifiedLeadsPage extends StatefulWidget {
   const VerifiedLeadsPage({
     super.key,
     this.repository,
+    this.daily,
     this.collectionQuery,
     this.actions = const LeadActions(),
   });
 
   /// For tests; defaults to the Firestore-backed one.
   final VerifiedLeadRepository? repository;
+
+  /// For tests; defaults to the Firestore-backed one.
+  final DailyContactRepository? daily;
 
   /// For tests: the query for a collection (default: Firestore's).
   final Query<Map<String, dynamic>> Function(String collection)? collectionQuery;
@@ -44,6 +50,12 @@ class VerifiedLeadsPage extends StatefulWidget {
 
 class _VerifiedLeadsPageState extends State<VerifiedLeadsPage> {
   late final VerifiedLeadRepository _repo = widget.repository ?? VerifiedLeadRepository();
+  late final DailyContactRepository _daily = widget.daily ?? DailyContactRepository();
+
+  /// Today's limit and count, or null when there is no signed-in salesman.
+  /// Created once, so rebuilding the page does not resubscribe.
+  late final Stream<DailyContactStatus>? _today =
+      _repo.currentUid == null ? null : _daily.watchToday(_repo.currentUid!);
 
   static const _collection = 'whatsappLeads';
   static const _sourceType = 'review';
@@ -102,14 +114,32 @@ class _VerifiedLeadsPageState extends State<VerifiedLeadsPage> {
 
   @override
   Widget build(BuildContext context) {
+    final today = _today;
+    if (today == null) return _list(null);
+    // A failed or pending read leaves the list as it is: the server still
+    // enforces the limit, so the banner is only the salesman's view of it.
+    return StreamBuilder<DailyContactStatus>(
+      stream: today,
+      builder: (context, snap) => _list(snap.data),
+    );
+  }
+
+  Widget _list(DailyContactStatus? daily) {
+    final reached = daily?.reached ?? false;
     return LeadCollectionPage<VerifiedLead>(
+      // A new key when the limit is reached, so the page starts again with
+      // New hidden.
+      key: ValueKey('daily-limit-reached-$reached'),
       title: 'WhatsApp · 1-star reviews',
       noun: 'business',
       headerIcon: AppIcons.chat,
+      banner: daily == null ? null : _DailyBanner(status: daily),
       searchHint: 'Search WhatsApp leads...',
       emptyIcon: AppIcons.chat,
-      emptyTitle: 'No WhatsApp leads here yet',
-      emptyBody: 'Leads you validate in the web console appear here, and move to Contacted once you reach out.',
+      emptyTitle: reached ? 'Daily limit reached' : 'No WhatsApp leads here yet',
+      emptyBody: reached && daily != null
+          ? 'You have contacted ${daily.used} of ${daily.limit} new leads today. New leads come back tomorrow.'
+          : 'Leads you validate in the web console appear here, and move to Contacted once you reach out.',
       emptySubtitle: 'Validated leads will land here',
       filters: const [
         (label: 'New', value: null),
@@ -117,6 +147,8 @@ class _VerifiedLeadsPageState extends State<VerifiedLeadsPage> {
       ],
       controllerFor: (status) {
         final contactedList = status == _contacted;
+        // Today's limit reached: New leads are hidden. Contacted still shows.
+        final hideNew = reached && !contactedList;
         Query<Map<String, dynamic>> base(String? category) {
           Query<Map<String, dynamic>> q =
               (widget.collectionQuery ?? FirebaseFirestore.instance.collection)(_collection)
@@ -145,6 +177,7 @@ class _VerifiedLeadsPageState extends State<VerifiedLeadsPage> {
           // Firestore cannot filter for).
           counter: (category) async {
             if (contactedList) return countOf(myContacted(category));
+            if (hideNew) return 0;
             final all = await countOf(base(category));
             final contacted = await countOf(contactedByAnyone(category));
             return all > contacted ? all - contacted : 0;
@@ -154,7 +187,7 @@ class _VerifiedLeadsPageState extends State<VerifiedLeadsPage> {
             (category) => contactedList ? myContacted(category) : base(category).orderBy('updatedAt', descending: true),
           ],
           map: (doc) => VerifiedLead.fromData(Lead.fromDoc(doc), doc.data()),
-          include: contactedList ? null : (row) => !row.isContacted,
+          include: contactedList ? null : (row) => !hideNew && !row.isContacted,
         );
       },
       // Grouped by the date each list is ordered by.
@@ -168,6 +201,47 @@ class _VerifiedLeadsPageState extends State<VerifiedLeadsPage> {
         actions: widget.actions,
         onWhatsApp: () => _openWhatsApp(row),
         onMoveToNew: row.isContacted ? () => _moveTo(row, contacted: false) : null,
+      ),
+    );
+  }
+}
+
+/// Today's new leads contacted, against the daily limit. Becomes a notice
+/// once the limit is reached.
+class _DailyBanner extends StatelessWidget {
+  const _DailyBanner({required this.status});
+
+  final DailyContactStatus status;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    final reached = status.reached;
+    final text = reached
+        ? 'Daily limit reached · ${status.used} of ${status.limit} contacted today'
+        : 'Today · ${status.used} of ${status.limit} contacted · ${status.left} left';
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: reached ? t.accentTint : t.sageTint,
+        borderRadius: BorderRadius.circular(AppTheme.radius),
+      ),
+      child: Row(
+        children: [
+          Icon(reached ? AppIcons.clock : AppIcons.circleCheck, size: 16, color: reached ? t.accentText : t.sageText),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: reached ? t.accentTextStrong : t.sageTextStrong,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

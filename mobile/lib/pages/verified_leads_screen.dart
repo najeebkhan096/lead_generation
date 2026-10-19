@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
+import '../services/daily_contact_repository.dart';
 import '../services/verified_lead_repository.dart';
 import '../theme/app_theme.dart';
 import '../widgets/verified_lead_card.dart';
@@ -21,12 +22,14 @@ class VerifiedLeadsScreen extends StatelessWidget {
   const VerifiedLeadsScreen({
     super.key,
     this.repository,
+    this.daily,
     this.collectionQuery,
     this.actions = const LeadActions(),
   });
 
   /// For tests (see [VerifiedLeadsPage]).
   final VerifiedLeadRepository? repository;
+  final DailyContactRepository? daily;
   final Query<Map<String, dynamic>> Function(String collection)? collectionQuery;
   final LeadActions actions;
 
@@ -51,6 +54,7 @@ class VerifiedLeadsScreen extends StatelessWidget {
           Expanded(
             child: VerifiedLeadsPage(
               repository: repository,
+              daily: daily,
               collectionQuery: collectionQuery,
               actions: actions,
             ),

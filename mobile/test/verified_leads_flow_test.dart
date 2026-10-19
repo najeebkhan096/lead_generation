@@ -8,6 +8,7 @@ import 'package:firebase_core_platform_interface/test.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lead_mobile/pages/verified_leads_screen.dart';
+import 'package:lead_mobile/services/daily_contact_repository.dart';
 import 'package:lead_mobile/services/verified_lead_repository.dart';
 import 'package:lead_mobile/theme/app_theme.dart';
 import 'package:lead_mobile/widgets/verified_lead_card.dart';
@@ -167,6 +168,14 @@ class _FakeRepo extends VerifiedLeadRepository {
   }
 }
 
+/// Today's limit and count, set by each test.
+class _FakeDaily extends DailyContactRepository {
+  DailyContactStatus status = const DailyContactStatus(used: 0, limit: 10);
+
+  @override
+  Stream<DailyContactStatus> watchToday(String uid) => Stream.value(status);
+}
+
 Map<String, dynamic> _verified(String business, DateTime verified,
         {String phone = '+15125550001', DateTime? contacted, String? contactedBy, String sourceType = 'review'}) =>
     {
@@ -191,6 +200,7 @@ void main() {
 
   late _Store store;
   late _FakeRepo repo;
+  late _FakeDaily daily;
   late List<String> opened;
 
   final today = DateTime.now();
@@ -205,6 +215,7 @@ void main() {
       home: Scaffold(
         body: VerifiedLeadsScreen(
           repository: repo,
+          daily: daily,
           collectionQuery: (c) => _Query(store, c),
           actions: LeadActions(
             whatsapp: (url) async {
@@ -227,6 +238,7 @@ void main() {
   setUp(() {
     store = _Store();
     repo = _FakeRepo(store);
+    daily = _FakeDaily();
     opened = [];
     store.col('whatsappLeads')
       ..['a'] = _verified('Alpha Cafe', at(0, 9))
@@ -496,6 +508,28 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Gym USA'), findsOneWidget);
     });
+  });
+
+  testWidgets('the banner shows how many new leads were contacted today, and what is left', (tester) async {
+    daily.status = const DailyContactStatus(used: 3, limit: 10);
+    await pumpScreen(tester);
+
+    expect(find.text('Today · 3 of 10 contacted · 7 left'), findsOneWidget);
+    expect(find.text('Alpha Cafe'), findsOneWidget);
+  });
+
+  testWidgets('at the daily limit the New list is hidden and says so, and Contacted still shows', (tester) async {
+    daily.status = const DailyContactStatus(used: 10, limit: 10);
+    await pumpScreen(tester);
+
+    expect(find.text('Daily limit reached · 10 of 10 contacted today'), findsOneWidget);
+    expect(find.text('Alpha Cafe'), findsNothing);
+    expect(find.text('Daily limit reached'), findsOneWidget); // the empty New list's title
+    expect(find.widgetWithText(FilledButton, 'WhatsApp'), findsNothing);
+
+    await openTab(tester, 'Contacted');
+    expect(find.text('Charlie Cafe'), findsOneWidget);
+    expect(find.text('Delta Cafe'), findsOneWidget);
   });
 
   testWidgets('a no-website lead validated on WhatsApp stays out of the list', (tester) async {
