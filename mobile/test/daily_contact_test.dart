@@ -8,6 +8,10 @@ void main() {
       expect(dailyDayKey(DateTime.utc(2026, 10, 18, 20, 0)), '2026-10-19');
     });
 
+    test('a day starts at midnight in Dubai, which is 20:00 UTC the day before', () {
+      expect(dailyDayStart('2026-10-19'), DateTime.utc(2026, 10, 18, 20));
+    });
+
     test('pads month and day', () {
       expect(dailyDayKey(DateTime.utc(2026, 1, 2, 12)), '2026-01-02');
     });

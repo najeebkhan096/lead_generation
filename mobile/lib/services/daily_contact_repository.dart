@@ -27,8 +27,18 @@ String dailyDayKey(DateTime now) {
   return '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 }
 
-/// Watches the signed-in salesman's daily limit and today's contact count.
-/// The server keeps both (see functions/src/leadContact.js), so this only reads.
+/// Midnight at the start of [dayKey] in Asia/Dubai, as a UTC instant.
+DateTime dailyDayStart(String dayKey) {
+  final parts = dayKey.split('-').map(int.parse).toList();
+  return DateTime.utc(parts[0], parts[1], parts[2]).subtract(const Duration(hours: 4));
+}
+
+/// Watches the signed-in salesman's daily limit and how many new leads they
+/// have contacted today.
+///
+/// The count is the number of 1-star WhatsApp leads this salesman contacted
+/// since the day began. That is what the server counts against the limit,
+/// read from the leads themselves, so it needs no extra Firestore rule.
 class DailyContactRepository {
   DailyContactRepository({FirebaseFirestore? firestore, DateTime Function()? clock})
       : _firestore = firestore,
@@ -40,13 +50,18 @@ class DailyContactRepository {
   FirebaseFirestore get _db => _firestore ?? FirebaseFirestore.instance;
 
   /// Emits whenever the limit or today's count changes. A missing limit means
-  /// the default; a missing count means nothing contacted yet today.
+  /// the default. Errors are passed on, so the page can say so.
   Stream<DailyContactStatus> watchToday(String uid) {
     final user = _db.collection('users').doc(uid);
-    final today = user.collection('contactDays').doc(dailyDayKey(_clock()));
+    final todayStart = Timestamp.fromDate(dailyDayStart(dailyDayKey(_clock())));
+    final contactedToday = _db
+        .collection('whatsappLeads')
+        .where('sourceType', isEqualTo: 'review')
+        .where('contactedBy', isEqualTo: uid)
+        .where('contactedAt', isGreaterThanOrEqualTo: todayStart);
 
     StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? limitSub;
-    StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? usedSub;
+    StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? usedSub;
     int? limit;
     int? used;
     late final StreamController<DailyContactStatus> controller;
@@ -65,9 +80,9 @@ class DailyContactRepository {
           },
           onError: controller.addError,
         );
-        usedSub = today.snapshots().listen(
+        usedSub = contactedToday.snapshots().listen(
           (snap) {
-            used = (snap.data()?['count'] as num?)?.toInt() ?? 0;
+            used = snap.size;
             emit();
           },
           onError: controller.addError,

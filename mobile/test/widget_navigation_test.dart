@@ -27,31 +27,45 @@ void main() {
         home: const MainNavigationPage(),
       ));
 
-  testWidgets('the app opens on the WhatsApp 1-star review leads, New first, with no other sections', (tester) async {
+  /// Taps a destination in the bottom bar (its label, inside the bar only).
+  Future<void> tapTab(WidgetTester tester, String label) async {
+    await tester.tap(find.descendant(of: find.byType(NavigationBar), matching: find.text(label)));
+    await animate(tester);
+  }
+
+  int shownTab(WidgetTester tester) => tester.widget<IndexedStack>(find.byType(IndexedStack)).index!;
+
+  testWidgets('the bottom bar has Leads, Sales and More, and opens on the WhatsApp leads', (tester) async {
     await pumpApp(tester);
 
+    final labels = tester
+        .widgetList<NavigationDestination>(find.byType(NavigationDestination))
+        .map((d) => d.label)
+        .toList();
+    expect(labels, ['Leads', 'Sales', 'More']);
+    expect(shownTab(tester), 0);
     expect(find.text('WhatsApp · 1-star reviews'), findsOneWidget);
     expect(find.widgetWithText(ChoiceChip, 'New'), findsWidgets);
     expect(find.widgetWithText(ChoiceChip, 'Contacted'), findsWidgets);
     // Email and no-website leads are not part of the app.
-    expect(find.byType(NavigationBar), findsNothing);
     expect(find.widgetWithText(Tab, 'Email'), findsNothing);
     expect(find.textContaining('No website'), findsNothing);
   });
 
-  testWidgets('the account button opens More, with Sign out, and goes back', (tester) async {
+  testWidgets('Sales is its own tab, and More holds the account with Sign out but no outreach chat', (tester) async {
     await pumpApp(tester);
 
-    expect(find.text('Sign Out'), findsNothing);
-    await tester.tap(find.byTooltip('More').first);
-    await animate(tester);
+    await tapTab(tester, 'Sales');
+    expect(shownTab(tester), 1);
 
+    await tapTab(tester, 'More');
+    expect(shownTab(tester), 2);
     expect(find.text('Sign Out'), findsOneWidget);
-    expect(find.text('Outreach chat'), findsOneWidget);
+    expect(find.text('Outreach chat'), findsNothing);
+    expect(find.text('My sales'), findsNothing);
 
-    await tester.pageBack();
-    await animate(tester);
-    expect(find.text('Sign Out'), findsNothing);
+    await tapTab(tester, 'Leads');
+    expect(shownTab(tester), 0);
     expect(find.text('WhatsApp · 1-star reviews'), findsOneWidget);
   });
 }

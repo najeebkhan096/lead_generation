@@ -3,21 +3,12 @@ import 'package:flutter/material.dart';
 
 import '../services/daily_contact_repository.dart';
 import '../services/verified_lead_repository.dart';
-import '../theme/app_theme.dart';
 import '../widgets/verified_lead_card.dart';
-import 'profile_page.dart';
 import 'verified_leads_page.dart';
 
-/// Opens "More" — sales, settings, Sign out — as its own screen with a back
-/// arrow (the page draws its own "More" header).
-void openMore(BuildContext context) {
-  Navigator.of(context).push(
-    MaterialPageRoute(builder: (_) => Scaffold(appBar: AppBar(), body: const ProfilePage())),
-  );
-}
-
-/// The phone's one screen: the WhatsApp-validated 1-star review leads (see
-/// [VerifiedLeadsPage]), with the account button at the top right.
+/// The Leads tab: the WhatsApp-validated 1-star review leads (see
+/// [VerifiedLeadsPage]). The bottom bar (see MainNavigationPage) switches to
+/// Sales and More.
 class VerifiedLeadsScreen extends StatelessWidget {
   const VerifiedLeadsScreen({
     super.key,
@@ -35,31 +26,13 @@ class VerifiedLeadsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = context.tokens;
     return SafeArea(
-      child: Column(
-        children: [
-          Align(
-            alignment: Alignment.centerRight,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 16, 12, 0),
-              child: IconButton(
-                tooltip: 'More',
-                onPressed: () => openMore(context),
-                icon: const Icon(AppIcons.user),
-                color: t.subtle,
-              ),
-            ),
-          ),
-          Expanded(
-            child: VerifiedLeadsPage(
-              repository: repository,
-              daily: daily,
-              collectionQuery: collectionQuery,
-              actions: actions,
-            ),
-          ),
-        ],
+      bottom: false, // the bottom bar already keeps clear of the home indicator
+      child: VerifiedLeadsPage(
+        repository: repository,
+        daily: daily,
+        collectionQuery: collectionQuery,
+        actions: actions,
       ),
     );
   }

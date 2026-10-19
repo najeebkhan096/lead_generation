@@ -5,8 +5,6 @@ import '../services/lead_repository.dart';
 import '../services/open_links.dart';
 import '../theme/app_theme.dart';
 import '../widgets/page_header.dart';
-import '../features/twilio_outreach/twilio_outreach_page.dart';
-import 'sales_page.dart';
 import 'search_history_page.dart';
 import 'whatsapp_verified_leads_page.dart';
 import 'settings_page.dart';
@@ -30,7 +28,7 @@ class ProfilePage extends StatelessWidget {
             children: [
               const PageHeader(
                 title: 'More',
-                subtitle: 'Your account, outreach and extra tools',
+                subtitle: 'Your account and extra tools',
               ),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -41,25 +39,6 @@ class ProfilePage extends StatelessWidget {
                     const SizedBox(height: 16),
                     const _StatsRow(),
                     const SizedBox(height: 28),
-                    _ProfileItem(
-                      icon: AppIcons.send,
-                      label: 'Outreach chat',
-                      onTap: () => Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => const TwilioOutreachPage()),
-                      ),
-                    ),
-                    _ProfileItem(
-                      icon: AppIcons.wallet,
-                      label: 'My sales',
-                      onTap: () => Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => Scaffold(
-                            appBar: AppBar(title: const Text('My sales')),
-                            body: const SalesPage(),
-                          ),
-                        ),
-                      ),
-                    ),
                     _ProfileItem(
                       icon: AppIcons.shieldCheck,
                       label: 'WhatsApp archive leads',

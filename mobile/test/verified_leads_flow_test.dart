@@ -176,6 +176,13 @@ class _FakeDaily extends DailyContactRepository {
   Stream<DailyContactStatus> watchToday(String uid) => Stream.value(status);
 }
 
+/// Today's count cannot be read (no connection, or a rule refuses the read).
+class _BrokenDaily extends DailyContactRepository {
+  @override
+  Stream<DailyContactStatus> watchToday(String uid) =>
+      Stream.error(FirebaseException(plugin: 'cloud_firestore', code: 'unavailable'));
+}
+
 Map<String, dynamic> _verified(String business, DateTime verified,
         {String phone = '+15125550001', DateTime? contacted, String? contactedBy, String sourceType = 'review'}) =>
     {
@@ -516,6 +523,23 @@ void main() {
 
     expect(find.text('Today · 3 of 10 contacted · 7 left'), findsOneWidget);
     expect(find.text('Alpha Cafe'), findsOneWidget);
+  });
+
+  testWidgets('when today’s count cannot be read, the banner says so instead of showing nothing', (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      theme: AppTheme.light(),
+      home: Scaffold(
+        body: VerifiedLeadsScreen(
+          repository: repo,
+          daily: _BrokenDaily(),
+          collectionQuery: (c) => _Query(store, c),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Today\'s limit could not be loaded. Check your connection.'), findsOneWidget);
+    expect(find.text('Alpha Cafe'), findsOneWidget); // the list still works
   });
 
   testWidgets('at the daily limit the New list is hidden and says so, and Contacted still shows', (tester) async {

@@ -116,15 +116,15 @@ class _VerifiedLeadsPageState extends State<VerifiedLeadsPage> {
   Widget build(BuildContext context) {
     final today = _today;
     if (today == null) return _list(null);
-    // A failed or pending read leaves the list as it is: the server still
-    // enforces the limit, so the banner is only the salesman's view of it.
+    // A pending read leaves the list as it is; a failed one says so in the
+    // banner. The server still enforces the limit either way.
     return StreamBuilder<DailyContactStatus>(
       stream: today,
-      builder: (context, snap) => _list(snap.data),
+      builder: (context, snap) => _list(snap.data, unavailable: snap.hasError),
     );
   }
 
-  Widget _list(DailyContactStatus? daily) {
+  Widget _list(DailyContactStatus? daily, {bool unavailable = false}) {
     final reached = daily?.reached ?? false;
     return LeadCollectionPage<VerifiedLead>(
       // A new key when the limit is reached, so the page starts again with
@@ -133,7 +133,11 @@ class _VerifiedLeadsPageState extends State<VerifiedLeadsPage> {
       title: 'WhatsApp · 1-star reviews',
       noun: 'business',
       headerIcon: AppIcons.chat,
-      banner: daily == null ? null : _DailyBanner(status: daily),
+      banner: daily != null
+          ? _DailyBanner(status: daily)
+          : unavailable
+              ? const _DailyBannerUnavailable()
+              : null,
       searchHint: 'Search WhatsApp leads...',
       emptyIcon: AppIcons.chat,
       emptyTitle: reached ? 'Daily limit reached' : 'No WhatsApp leads here yet',
@@ -201,6 +205,28 @@ class _VerifiedLeadsPageState extends State<VerifiedLeadsPage> {
         actions: widget.actions,
         onWhatsApp: () => _openWhatsApp(row),
         onMoveToNew: row.isContacted ? () => _moveTo(row, contacted: false) : null,
+      ),
+    );
+  }
+}
+
+/// Shown in place of the daily count when it cannot be read.
+class _DailyBannerUnavailable extends StatelessWidget {
+  const _DailyBannerUnavailable();
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.tokens;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: t.neutralTint,
+        borderRadius: BorderRadius.circular(AppTheme.radius),
+      ),
+      child: Text(
+        'Today\'s limit could not be loaded. Check your connection.',
+        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: t.subtle),
       ),
     );
   }

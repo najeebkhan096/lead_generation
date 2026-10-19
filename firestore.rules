@@ -102,14 +102,6 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // Today's new-lead count for a salesman (written by the
-    // setWhatsAppLeadContacted function). The owner reads it to show the
-    // daily limit; nothing on the client writes it.
-    match /users/{userId}/contactDays/{day} {
-      allow read: if signedIn() && request.auth.uid == userId;
-      allow write: if false;
-    }
-
     // Excel-scan and WhatsApp-verified archive metadata (the actual .xlsx
     // lives in Storage, referenced by `downloadUrl` — a pre-signed URL,
     // fetchable without any Storage rule). Mobile reads these directly so
