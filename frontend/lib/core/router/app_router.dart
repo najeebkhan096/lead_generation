@@ -13,6 +13,7 @@ import '../../presentation/pages/lead_hubs.dart';
 import '../../presentation/pages/saved_businesses_page.dart';
 import '../../presentation/pages/settings_page.dart';
 import '../../presentation/pages/app_update_page.dart';
+import '../../presentation/pages/salesman_contacted_leads_page.dart';
 import '../../presentation/pages/salesman_stats_page.dart';
 import '../../presentation/pages/users_page.dart';
 import '../../presentation/pages/state_scan_page.dart';
@@ -55,48 +56,107 @@ final GoRouter appRouter = GoRouter(
   },
   routes: [
     StatefulShellRoute.indexedStack(
-      builder: (context, state, navigationShell) => AdminShell(navigationShell: navigationShell),
+      builder: (context, state, navigationShell) =>
+          AdminShell(navigationShell: navigationShell),
       branches: [
-        StatefulShellBranch(routes: [
-          GoRoute(path: '/', builder: (context, state) => const DashboardPage()),
-        ]),
-        StatefulShellBranch(routes: [
-          GoRoute(path: '/scan', builder: (context, state) => const ExcelScanPage()),
-        ]),
-        StatefulShellBranch(routes: [
-          GoRoute(path: '/archive', builder: (context, state) => const ExcelArchivePage()),
-        ]),
-        StatefulShellBranch(routes: [
-          GoRoute(
-            path: '/leads',
-            builder: (context, state) => LeadsHubPage(tab: state.uri.queryParameters['tab']),
-          ),
-        ]),
-        StatefulShellBranch(routes: [
-          GoRoute(
-            path: '/verified',
-            builder: (context, state) => VerifiedHubPage(tab: state.uri.queryParameters['tab']),
-          ),
-        ]),
-        StatefulShellBranch(routes: [
-          GoRoute(path: '/more', builder: (context, state) => const SettingsPage()),
-        ]),
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: '/',
+              builder: (context, state) => const DashboardPage(),
+            ),
+          ],
+        ),
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: '/scan',
+              builder: (context, state) => const ExcelScanPage(),
+            ),
+          ],
+        ),
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: '/archive',
+              builder: (context, state) => const ExcelArchivePage(),
+            ),
+          ],
+        ),
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: '/leads',
+              builder: (context, state) =>
+                  LeadsHubPage(tab: state.uri.queryParameters['tab']),
+            ),
+          ],
+        ),
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: '/verified',
+              builder: (context, state) =>
+                  VerifiedHubPage(tab: state.uri.queryParameters['tab']),
+            ),
+          ],
+        ),
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: '/more',
+              builder: (context, state) => const SettingsPage(),
+            ),
+          ],
+        ),
         // Reached from More — in the shell, but not in the nav.
-        StatefulShellBranch(routes: [
-          GoRoute(path: '/sales', builder: (context, state) => const SalesPage()),
-        ]),
-        StatefulShellBranch(routes: [
-          GoRoute(path: '/whatsapp', builder: (context, state) => const WhatsAppCheckerPage()),
-        ]),
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: '/sales',
+              builder: (context, state) => const SalesPage(),
+            ),
+          ],
+        ),
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: '/whatsapp',
+              builder: (context, state) => const WhatsAppCheckerPage(),
+            ),
+          ],
+        ),
       ],
     ),
-    GoRoute(path: '/scan-progress', builder: (context, state) => const StateScanPage()),
-    GoRoute(path: '/watchlist', builder: (context, state) => const WatchlistPage()),
+    GoRoute(
+      path: '/scan-progress',
+      builder: (context, state) => const StateScanPage(),
+    ),
+    GoRoute(
+      path: '/watchlist',
+      builder: (context, state) => const WatchlistPage(),
+    ),
     GoRoute(path: '/users', builder: (context, state) => const UsersPage()),
-    GoRoute(path: '/salesman-stats', builder: (context, state) => const SalesmanStatsPage()),
-    GoRoute(path: '/app-update', builder: (context, state) => const AppUpdatePage()),
+    GoRoute(
+      path: '/salesman-stats',
+      builder: (context, state) => const SalesmanStatsPage(),
+    ),
+    GoRoute(
+      path: '/salesman-stats/:userId',
+      builder: (context, state) => SalesmanContactedLeadsPage(
+        userId: state.pathParameters['userId']!,
+        salesmanName: state.uri.queryParameters['name'] ?? 'Salesman',
+      ),
+    ),
+    GoRoute(
+      path: '/app-update',
+      builder: (context, state) => const AppUpdatePage(),
+    ),
     GoRoute(path: '/clients', builder: (context, state) => const ClientsPage()),
-    GoRoute(path: '/twilio-test', builder: (context, state) => const TwilioTestLeadsPage()),
+    GoRoute(
+      path: '/twilio-test',
+      builder: (context, state) => const TwilioTestLeadsPage(),
+    ),
     // The lead comes via `extra`; a refreshed tab (no extra) goes back to the list.
     GoRoute(
       path: '/twilio-test/chat',
@@ -106,10 +166,16 @@ final GoRouter appRouter = GoRouter(
         return const TwilioTestLeadsPage();
       },
     ),
-    GoRoute(path: '/whatsapp-verified', builder: (context, state) => const WhatsAppValidatedArchivePage()),
+    GoRoute(
+      path: '/whatsapp-verified',
+      builder: (context, state) => const WhatsAppValidatedArchivePage(),
+    ),
     // Legacy/dormant multi-country scan dashboard — still reachable from
     // the handful of old archives that predate the state/city scan engine.
-    GoRoute(path: '/multi-scan', builder: (context, state) => const MultiScanPage()),
+    GoRoute(
+      path: '/multi-scan',
+      builder: (context, state) => const MultiScanPage(),
+    ),
     // Carries its [Lead] via `extra` rather than fetching by id — an
     // internal admin tool's detail drill-down, not something meant to be
     // cold-loaded from a bare URL. Falls back to the Leads list if opened

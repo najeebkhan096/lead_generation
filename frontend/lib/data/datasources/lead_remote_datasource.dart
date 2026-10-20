@@ -8,6 +8,7 @@ import '../../core/constants/api_constants.dart';
 import '../../domain/entities/lead.dart';
 import '../../domain/entities/lead_page.dart';
 import '../../domain/entities/app_update_config.dart';
+import '../../domain/entities/contacted_lead.dart';
 import '../../domain/entities/salesman_stats.dart';
 import '../../domain/entities/validation_start.dart';
 import '../../domain/entities/multi_search_snapshot.dart';
@@ -832,6 +833,28 @@ class LeadRemoteDataSource {
     final body = jsonDecode(response.body) as Map<String, dynamic>;
     final usersJson = (body['users'] as List<dynamic>? ?? []);
     return usersJson.map((e) => SalesUser.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  /// The 1-star WhatsApp leads this salesman has contacted, newest first.
+  Future<List<ContactedLead>> getSalesmanContactedLeads(String userId) async {
+    final response = await _client.get(_uri('${ApiConstants.users}/$userId/contacted-leads'));
+    if (response.statusCode >= 400) {
+      final body = _tryDecode(response.body);
+      throw Exception(body['error'] ?? 'Failed to load the contacted leads');
+    }
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    final list = body['leads'] as List<dynamic>? ?? const [];
+    return [for (final l in list) ContactedLead.fromJson(l as Map<String, dynamic>)];
+  }
+
+  /// Puts a contacted lead back in New. Returns whether it freed a slot in today's count.
+  Future<bool> moveContactedLeadBack(String userId, String leadId) async {
+    final response = await _client.post(_uri('${ApiConstants.users}/$userId/contacted-leads/$leadId/move-back'));
+    final body = _tryDecode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['error'] ?? 'Failed to move the lead back');
+    }
+    return body['refunded'] == true;
   }
 
   /// The Android app's update rule (minimum build, latest build, APK link).

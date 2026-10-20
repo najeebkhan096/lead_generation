@@ -12,6 +12,7 @@ import '../entities/sale.dart';
 import '../entities/client_record.dart';
 import '../entities/sales_user.dart';
 import '../entities/app_update_config.dart';
+import '../entities/contacted_lead.dart';
 import '../entities/salesman_stats.dart';
 import '../entities/watchlist_entry.dart';
 import '../entities/whatsapp_check_result.dart';
@@ -208,6 +209,11 @@ abstract class LeadRepository {
 
   /// Every mobile account, including ones waiting on approval.
   Future<List<SalesUser>> listUsers();
+
+  Future<List<ContactedLead>> getSalesmanContactedLeads(String userId);
+
+  /// Returns whether the move freed a slot in today's count.
+  Future<bool> moveContactedLeadBack(String userId, String leadId);
 
   Future<AppUpdateConfig> getAppUpdateConfig();
 

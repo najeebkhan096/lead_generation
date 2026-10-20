@@ -33,6 +33,7 @@ class SalesmanStat {
     this.firstContactAt,
     this.lastContactAt,
     this.daily = const [],
+    this.hourlyToday = const [],
   });
 
   final String id;
@@ -56,6 +57,9 @@ class SalesmanStat {
   /// One entry per day in the chart window, oldest first.
   final List<SalesmanDay> daily;
 
+  /// Contacts today by hour of the day (0 to 23, Dubai time).
+  final List<int> hourlyToday;
+
   factory SalesmanStat.fromJson(Map<String, dynamic> json) {
     return SalesmanStat(
       id: (json['id'] as String?) ?? '',
@@ -76,6 +80,7 @@ class SalesmanStat {
       daily: [
         for (final d in (json['daily'] as List<dynamic>? ?? const [])) SalesmanDay.fromJson(d as Map<String, dynamic>),
       ],
+      hourlyToday: [for (final n in (json['hourlyToday'] as List<dynamic>? ?? const [])) (n as num).toInt()],
     );
   }
 }
@@ -90,6 +95,7 @@ class SalesmanStatsTotals {
     this.reviewLeads = 0,
     this.newLeft = 0,
     this.daily = const [],
+    this.hourlyToday = const [],
   });
 
   /// Every new lead contacted by anyone, all time.
@@ -105,6 +111,9 @@ class SalesmanStatsTotals {
   final int newLeft;
   final List<SalesmanDay> daily;
 
+  /// Everyone's contacts today by hour of the day (0 to 23, Dubai time).
+  final List<int> hourlyToday;
+
   factory SalesmanStatsTotals.fromJson(Map<String, dynamic> json) {
     return SalesmanStatsTotals(
       contactedTotal: (json['contactedTotal'] as num?)?.toInt() ?? 0,
@@ -116,6 +125,7 @@ class SalesmanStatsTotals {
       daily: [
         for (final d in (json['daily'] as List<dynamic>? ?? const [])) SalesmanDay.fromJson(d as Map<String, dynamic>),
       ],
+      hourlyToday: [for (final n in (json['hourlyToday'] as List<dynamic>? ?? const [])) (n as num).toInt()],
     );
   }
 }

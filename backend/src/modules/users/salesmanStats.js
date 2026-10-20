@@ -11,6 +11,11 @@ export function dayKey(date, timeZone = DAY_TIMEZONE) {
   return new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(date);
 }
 
+/** The hour of the day (0 to 23) that [date] falls in, in [timeZone]. */
+export function hourOf(date, timeZone = DAY_TIMEZONE) {
+  return Number(new Intl.DateTimeFormat('en-GB', { timeZone, hour: '2-digit', hourCycle: 'h23' }).format(date));
+}
+
 /** The `days` day keys ending on [today], oldest first. */
 export function recentDayKeys(today, days) {
   const [y, m, d] = today.split('-').map(Number);
@@ -44,6 +49,7 @@ export function buildSalesmanStats({ users, leads, now = new Date(), days = DEFA
     approved: u.approved === true,
     dailyLeadLimit: Number.isInteger(u.dailyLeadLimit) ? u.dailyLeadLimit : DEFAULT_DAILY_LEAD_LIMIT,
     byDay: new Map(),
+    hourlyToday: Array(24).fill(0),
     contactedTotal: 0,
     firstContactAt: null,
     lastContactAt: null,
@@ -64,6 +70,7 @@ export function buildSalesmanStats({ users, leads, now = new Date(), days = DEFA
     if (!s || !contacted) continue;
     const day = dayKey(lead.contactedAt, timeZone);
     s.byDay.set(day, (s.byDay.get(day) || 0) + 1);
+    if (day === today) s.hourlyToday[hourOf(lead.contactedAt, timeZone)] += 1;
     s.contactedTotal += 1;
     if (!s.firstContactAt || lead.contactedAt < s.firstContactAt) s.firstContactAt = lead.contactedAt;
     if (!s.lastContactAt || lead.contactedAt > s.lastContactAt) s.lastContactAt = lead.contactedAt;
@@ -88,6 +95,7 @@ export function buildSalesmanStats({ users, leads, now = new Date(), days = DEFA
       activeDays,
       averagePerActiveDay: activeDays ? Math.round((s.contactedTotal / activeDays) * 10) / 10 : 0,
       daysAtLimit: daily.filter((d) => d.count > 0 && d.count >= s.dailyLeadLimit).length,
+      hourlyToday: s.hourlyToday,
       firstContactAt: s.firstContactAt ? s.firstContactAt.toISOString() : null,
       lastContactAt: s.lastContactAt ? s.lastContactAt.toISOString() : null,
       daily,
@@ -108,6 +116,7 @@ export function buildSalesmanStats({ users, leads, now = new Date(), days = DEFA
       reviewLeads,
       newLeft,
       daily: window.map((day) => ({ day, count: rows.reduce((sum, r) => sum + (r.daily.find((d) => d.day === day)?.count || 0), 0) })),
+      hourlyToday: Array.from({ length: 24 }, (_, h) => rows.reduce((sum, r) => sum + r.hourlyToday[h], 0)),
     },
     salesmen: rows,
   };

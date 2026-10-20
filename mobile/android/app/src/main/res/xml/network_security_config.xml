@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Plain HTTP only to the team backend on the office Wi-Fi (the Mac running
+     the backend). Everything else stays HTTPS. If the Mac address changes,
+     update this file and rebuild the APK with the API_BASE_URL define. -->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">192.168.18.15</domain>
+    </domain-config>
+</network-security-config>

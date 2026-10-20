@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildSalesmanStats, clampDays, dayKey, recentDayKeys } from './salesmanStats.js';
+import { buildSalesmanStats, clampDays, dayKey, hourOf, recentDayKeys } from './salesmanStats.js';
 
 const NOW = new Date('2026-10-18T10:00:00Z'); // 14:00 on the 18th in Dubai
 
@@ -77,4 +77,14 @@ test('totals cover every salesman, and leads not yet contacted are counted as Ne
 test('salesmen with the most contacts are listed first', () => {
   const stats = buildSalesmanStats({ users, leads, now: NOW, days: 14 });
   assert.deepEqual(stats.salesmen.map((s) => s.id), ['ali', 'bo']);
+});
+
+test('today is also split by the hour, in Dubai time', () => {
+  assert.equal(hourOf(new Date('2026-10-18T06:00:00Z')), 10); // 10:00 in Dubai
+  const stats = buildSalesmanStats({ users, leads, now: NOW, days: 14 });
+  const ali = stats.salesmen.find((s) => s.id === 'ali');
+  assert.equal(ali.hourlyToday[10], 1);
+  assert.equal(ali.hourlyToday[13], 1);
+  assert.equal(ali.hourlyToday.reduce((a, b) => a + b, 0), 2);
+  assert.equal(stats.totals.hourlyToday.reduce((a, b) => a + b, 0), 3); // Ali's two and Bo's one
 });
