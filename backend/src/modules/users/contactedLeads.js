@@ -19,6 +19,7 @@ export function toContactedLead(id, data) {
     category: data.category || null,
     location: data.location || null,
     phone: data.phone || null,
+    mapsUrl: data.mapsUrl || null,
     rating: typeof data.rating === 'number' ? data.rating : null,
     totalReviews: typeof data.totalReviews === 'number' ? data.totalReviews : null,
     status: data.status || 'contacted',

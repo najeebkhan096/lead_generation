@@ -1,10 +1,30 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/date_labels.dart';
 import '../../domain/entities/contacted_lead.dart';
 import '../../domain/repositories/lead_repository.dart';
+
+/// Whether [lead] matches a search. Every word of [query] must appear, in any
+/// order and ignoring case, in the business, category, location, phone or review.
+bool matchesLeadSearch(ContactedLead lead, String query) {
+  final words = query
+      .trim()
+      .toLowerCase()
+      .split(RegExp(r'\s+'))
+      .where((w) => w.isNotEmpty);
+  if (words.isEmpty) return true;
+  final haystack = [
+    lead.business,
+    lead.category ?? '',
+    lead.location ?? '',
+    lead.phone ?? '',
+    lead.reviewText,
+  ].join(' ').toLowerCase();
+  return words.every(haystack.contains);
+}
 
 /// One salesman's contacted leads, newest contact first. The admin can move any
 /// of them back to New; the salesman's contact count for today goes down with it
@@ -30,6 +50,8 @@ class _SalesmanContactedLeadsPageState
   bool _loading = true;
   String? _error;
   final Set<String> _busyIds = {};
+  final _search = TextEditingController();
+  String _query = '';
 
   LeadRepository get _repo => context.read<LeadRepository>();
 
@@ -37,6 +59,12 @@ class _SalesmanContactedLeadsPageState
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -162,14 +190,44 @@ class _SalesmanContactedLeadsPageState
         ),
       );
     }
-    final leads = _leads ?? const [];
+    final all = _leads ?? const [];
+    final leads = all.where((l) => matchesLeadSearch(l, _query)).toList();
+    final searching = _query.trim().isNotEmpty;
+    final String summary;
+    if (all.isEmpty) {
+      summary = '${widget.salesmanName} has not contacted any leads yet.';
+    } else if (searching) {
+      summary = '${leads.length} of ${all.length} match "${_query.trim()}"';
+    } else {
+      summary =
+          '${all.length} contacted ${all.length == 1 ? 'lead' : 'leads'} · newest first';
+    }
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 40),
       children: [
+        if (all.isNotEmpty) ...[
+          TextField(
+            controller: _search,
+            onChanged: (v) => setState(() => _query = v),
+            decoration: InputDecoration(
+              hintText: 'Search business, category, place, phone or review',
+              prefixIcon: const Icon(AppIcons.search, size: 18),
+              suffixIcon: _query.isEmpty
+                  ? null
+                  : IconButton(
+                      tooltip: 'Clear search',
+                      icon: const Icon(AppIcons.close, size: 16),
+                      onPressed: () {
+                        _search.clear();
+                        setState(() => _query = '');
+                      },
+                    ),
+            ),
+          ),
+          const SizedBox(height: 12),
+        ],
         Text(
-          leads.isEmpty
-              ? '${widget.salesmanName} has not contacted any leads yet.'
-              : '${leads.length} contacted ${leads.length == 1 ? 'lead' : 'leads'} · newest first',
+          summary,
           style: const TextStyle(
             fontSize: 12.5,
             color: AppTheme.faint,
@@ -177,6 +235,16 @@ class _SalesmanContactedLeadsPageState
           ),
         ),
         const SizedBox(height: 12),
+        if (searching && leads.isEmpty)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 32),
+            child: Center(
+              child: Text(
+                'No contacted leads match that search.',
+                style: TextStyle(color: AppTheme.faint),
+              ),
+            ),
+          ),
         for (final lead in leads)
           _LeadCard(
             lead: lead,
@@ -184,6 +252,42 @@ class _SalesmanContactedLeadsPageState
             onMoveBack: () => _moveBack(lead),
           ),
       ],
+    );
+  }
+}
+
+/// The business name. When the lead has a Google Maps listing, the name opens it.
+class _BusinessName extends StatelessWidget {
+  const _BusinessName({required this.lead});
+
+  final ContactedLead lead;
+
+  @override
+  Widget build(BuildContext context) {
+    final url = lead.mapsUrl;
+    final name = Text(
+      lead.business,
+      style: TextStyle(
+        fontWeight: FontWeight.w700,
+        fontSize: 15,
+        color: url == null || url.isEmpty ? null : AppTheme.accent700,
+        decoration: url == null || url.isEmpty
+            ? null
+            : TextDecoration.underline,
+      ),
+    );
+    if (url == null || url.isEmpty) return name;
+    return InkWell(
+      onTap: () =>
+          launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Flexible(child: name),
+          const SizedBox(width: 6),
+          const Icon(AppIcons.mapPin, size: 14, color: AppTheme.accent700),
+        ],
+      ),
     );
   }
 }
@@ -224,13 +328,7 @@ class _LeadCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      lead.business,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 15,
-                      ),
-                    ),
+                    _BusinessName(lead: lead),
                     if (details.isNotEmpty)
                       Text(
                         details,

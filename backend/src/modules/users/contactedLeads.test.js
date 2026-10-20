@@ -18,6 +18,8 @@ test('a contacted lead is shaped for the admin page', () => {
   assert.equal(lead.business, 'Acme Motors');
   assert.equal(lead.contactedAt, '2026-10-19T08:00:00.000Z');
   assert.equal(lead.reviewText, 'Never showed up');
+  assert.equal(lead.mapsUrl, null, 'no map link when the lead has none');
+  assert.equal(toContactedLead('y', { mapsUrl: 'https://maps.google.com/?cid=1' }).mapsUrl, 'https://maps.google.com/?cid=1');
   assert.equal(lead.rating, 3.2);
   assert.equal(lead.totalReviews, null);
 });

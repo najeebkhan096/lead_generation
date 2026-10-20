@@ -11,6 +11,7 @@ class ContactedLead {
     this.status = 'contacted',
     this.contactedAt,
     this.reviewText = '',
+    this.mapsUrl,
   });
 
   /// The Firestore id of the `whatsappLeads` document.
@@ -27,6 +28,9 @@ class ContactedLead {
   /// The 1-star review that made the business a lead.
   final String reviewText;
 
+  /// The business's Google Maps listing, if known.
+  final String? mapsUrl;
+
   factory ContactedLead.fromJson(Map<String, dynamic> json) {
     return ContactedLead(
       id: (json['id'] as String?) ?? '',
@@ -37,8 +41,11 @@ class ContactedLead {
       rating: (json['rating'] as num?)?.toDouble(),
       totalReviews: (json['totalReviews'] as num?)?.toInt(),
       status: (json['status'] as String?) ?? 'contacted',
-      contactedAt: json['contactedAt'] is String ? DateTime.tryParse(json['contactedAt'] as String)?.toLocal() : null,
+      contactedAt: json['contactedAt'] is String
+          ? DateTime.tryParse(json['contactedAt'] as String)?.toLocal()
+          : null,
       reviewText: (json['reviewText'] as String?) ?? '',
+      mapsUrl: json['mapsUrl'] as String?,
     );
   }
 }
