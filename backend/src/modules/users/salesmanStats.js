@@ -2,7 +2,7 @@ import { getFirestore } from '../../firebase/admin.js';
 import { DEFAULT_DAILY_LEAD_LIMIT, listUsers } from './userStore.js';
 
 // The same business day the contact limit counts by (see functions/src/leadContact.js).
-const DAY_TIMEZONE = process.env.LEAD_DAY_TIMEZONE || 'Asia/Dubai';
+const DAY_TIMEZONE = process.env.LEAD_DAY_TIMEZONE || 'Asia/Qatar';
 const DEFAULT_DAYS = 14;
 const MAX_DAYS = 60;
 

@@ -35,7 +35,7 @@ function fakeDb(seed, serverTime) {
   return { db, docs };
 }
 
-const DAY1 = new Date('2026-10-18T10:00:00Z'); // 14:00 in Dubai
+const DAY1 = new Date('2026-10-18T10:00:00Z'); // 13:00 in Qatar
 const DAY2 = new Date('2026-10-19T10:00:00Z');
 
 function seed({ limit, leads = 15, others = {} } = {}) {
@@ -131,9 +131,15 @@ test('moving back a lead contacted on an earlier day does not free today’s slo
 });
 
 test('days are counted in the configured zone, not UTC', () => {
-  const lateUtc = new Date('2026-10-18T22:30:00Z'); // 02:30 on the 19th in Dubai
-  assert.equal(dayKey(lateUtc, 'Asia/Dubai'), '2026-10-19');
+  const lateUtc = new Date('2026-10-18T22:30:00Z'); // 01:30 on the 19th in Qatar
+  assert.equal(dayKey(lateUtc, 'Asia/Qatar'), '2026-10-19');
   assert.equal(dayKey(lateUtc, 'America/Chicago'), '2026-10-18');
+});
+
+test('the default day is Qatar: a contact at 23:30 Qatar time is still that day', () => {
+  // 23:30 on the 20th in Qatar is 00:30 on the 21st in Dubai, which used to count as the 21st.
+  assert.equal(dayKey(new Date('2026-10-20T20:30:00Z')), '2026-10-20');
+  assert.equal(dayKey(new Date('2026-10-20T21:00:00Z')), '2026-10-21');
 });
 
 test('bad input and unknown leads are refused before any write', async () => {

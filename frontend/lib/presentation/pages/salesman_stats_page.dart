@@ -155,7 +155,7 @@ class _SalesmanStatsPageState extends State<SalesmanStatsPage> {
           ),
         const SizedBox(height: 8),
         Text(
-          'Updated ${_updated(stats)} · business day ${dayLabel(stats.today)} (Asia/Dubai)',
+          'Updated ${_updated(stats)} · business day ${dayLabel(stats.today)} (Asia/Qatar)',
           style: const TextStyle(fontSize: 12, color: AppTheme.faint),
         ),
       ],

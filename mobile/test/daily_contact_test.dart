@@ -3,13 +3,17 @@ import 'package:lead_mobile/services/daily_contact_repository.dart';
 
 void main() {
   group('dailyDayKey', () {
-    test('the day turns over at midnight in Dubai (UTC+4), not UTC', () {
-      expect(dailyDayKey(DateTime.utc(2026, 10, 18, 19, 59)), '2026-10-18');
-      expect(dailyDayKey(DateTime.utc(2026, 10, 18, 20, 0)), '2026-10-19');
+    test('the day turns over at midnight in Qatar (UTC+3), not UTC', () {
+      expect(dailyDayKey(DateTime.utc(2026, 10, 18, 20, 59)), '2026-10-18');
+      expect(dailyDayKey(DateTime.utc(2026, 10, 18, 21, 0)), '2026-10-19');
     });
 
-    test('a day starts at midnight in Dubai, which is 20:00 UTC the day before', () {
-      expect(dailyDayStart('2026-10-19'), DateTime.utc(2026, 10, 18, 20));
+    test('a 23:04 Qatar contact is still the same day, not the next one', () {
+      expect(dailyDayKey(DateTime.utc(2026, 10, 20, 20, 4)), '2026-10-20');
+    });
+
+    test('a day starts at midnight in Qatar, which is 21:00 UTC the day before', () {
+      expect(dailyDayStart('2026-10-19'), DateTime.utc(2026, 10, 18, 21));
     });
 
     test('pads month and day', () {

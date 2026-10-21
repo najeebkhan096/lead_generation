@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildSalesmanStats, clampDays, dayKey, hourOf, recentDayKeys } from './salesmanStats.js';
 
-const NOW = new Date('2026-10-18T10:00:00Z'); // 14:00 on the 18th in Dubai
+const NOW = new Date('2026-10-18T10:00:00Z'); // 13:00 on the 18th in Qatar
 
 const users = [
   { id: 'ali', name: 'Ali', role: 'salesman', approved: true, dailyLeadLimit: 2 },
@@ -21,9 +21,20 @@ const leads = [
   { sourceType: 'review', status: 'lead', contactedBy: null, contactedAt: null }, // still New
 ];
 
-test('a day belongs to the Dubai date it falls on', () => {
-  assert.equal(dayKey(new Date('2026-10-18T19:59:00Z')), '2026-10-18');
-  assert.equal(dayKey(new Date('2026-10-18T20:00:00Z')), '2026-10-19');
+test('a day belongs to the Qatar date it falls on', () => {
+  assert.equal(dayKey(new Date('2026-10-18T20:59:00Z')), '2026-10-18');
+  assert.equal(dayKey(new Date('2026-10-18T21:00:00Z')), '2026-10-19');
+});
+
+test('a contact at 23:00 to 23:59 Qatar time counts on that day, not the next one', () => {
+  // The bug: 23:04 on the 20th in Qatar is 00:04 on the 21st in Dubai.
+  const late = [
+    { sourceType: 'review', status: 'contacted', contactedBy: 'ali', contactedAt: new Date('2026-10-20T20:04:00Z') },
+  ];
+  const stats = buildSalesmanStats({ users, leads: late, now: new Date('2026-10-21T13:38:00Z'), days: 14 });
+  const ali = stats.salesmen.find((s) => s.id === 'ali');
+  assert.equal(ali.contactedToday, 0);
+  assert.deepEqual(ali.daily.at(-2), { day: '2026-10-20', count: 1 });
 });
 
 test('recentDayKeys lists the days ending today, oldest first', () => {
@@ -79,12 +90,12 @@ test('salesmen with the most contacts are listed first', () => {
   assert.deepEqual(stats.salesmen.map((s) => s.id), ['ali', 'bo']);
 });
 
-test('today is also split by the hour, in Dubai time', () => {
-  assert.equal(hourOf(new Date('2026-10-18T06:00:00Z')), 10); // 10:00 in Dubai
+test('today is also split by the hour, in Qatar time', () => {
+  assert.equal(hourOf(new Date('2026-10-18T06:00:00Z')), 9); // 09:00 in Qatar
   const stats = buildSalesmanStats({ users, leads, now: NOW, days: 14 });
   const ali = stats.salesmen.find((s) => s.id === 'ali');
-  assert.equal(ali.hourlyToday[10], 1);
-  assert.equal(ali.hourlyToday[13], 1);
+  assert.equal(ali.hourlyToday[9], 1);
+  assert.equal(ali.hourlyToday[12], 1);
   assert.equal(ali.hourlyToday.reduce((a, b) => a + b, 0), 2);
   assert.equal(stats.totals.hourlyToday.reduce((a, b) => a + b, 0), 3); // Ali's two and Bo's one
 });

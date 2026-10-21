@@ -31,9 +31,9 @@ test('a lead with missing fields still shows, with blanks where the data is miss
   assert.equal(lead.reviewText, '');
 });
 
-test('moving a lead back frees a slot only when it was contacted today (Dubai day)', () => {
-  const now = new Date('2026-10-19T10:00:00Z'); // 14:00 in Dubai on the 19th
-  const today = Timestamp.fromDate(new Date('2026-10-19T06:00:00Z')); // 10:00 Dubai, same day
+test('moving a lead back frees a slot only when it was contacted today (Qatar day)', () => {
+  const now = new Date('2026-10-19T10:00:00Z'); // 13:00 in Qatar on the 19th
+  const today = Timestamp.fromDate(new Date('2026-10-19T06:00:00Z')); // 09:00 Qatar, same day
   const yesterday = Timestamp.fromDate(new Date('2026-10-18T10:00:00Z'));
   assert.equal(refundsToday({ contactedAt: today }, '2026-10-19'), true);
   assert.equal(refundsToday({ contactedAt: yesterday }, '2026-10-19'), false);

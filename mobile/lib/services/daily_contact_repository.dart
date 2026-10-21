@@ -21,17 +21,18 @@ class DailyContactStatus {
   int get left => limit > used ? limit - used : 0;
 }
 
-/// The day a contact counts toward, as the server keys it: Asia/Dubai, which
-/// is UTC+4 all year. Keep in step with LEAD_DAY_TIMEZONE in the functions.
+/// The day a contact counts toward, as the server keys it: Asia/Qatar, which
+/// is UTC+3 all year (no daylight saving). Keep in step with LEAD_DAY_TIMEZONE
+/// in the functions.
 String dailyDayKey(DateTime now) {
-  final d = now.toUtc().add(const Duration(hours: 4));
+  final d = now.toUtc().add(const Duration(hours: 3));
   return '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 }
 
-/// Midnight at the start of [dayKey] in Asia/Dubai, as a UTC instant.
+/// Midnight at the start of [dayKey] in Asia/Qatar, as a UTC instant.
 DateTime dailyDayStart(String dayKey) {
   final parts = dayKey.split('-').map(int.parse).toList();
-  return DateTime.utc(parts[0], parts[1], parts[2]).subtract(const Duration(hours: 4));
+  return DateTime.utc(parts[0], parts[1], parts[2]).subtract(const Duration(hours: 3));
 }
 
 /// Watches the signed-in salesman's daily limit and how many new leads they

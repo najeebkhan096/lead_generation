@@ -16,8 +16,9 @@ export const DEFAULT_DAILY_LEAD_LIMIT = 10;
 
 const LEADS = 'whatsappLeads';
 
-// A day runs midnight to midnight in this zone, for every salesman.
-const DAY_TIMEZONE = process.env.LEAD_DAY_TIMEZONE || 'Asia/Dubai';
+// A day runs midnight to midnight in this zone, for every salesman. Qatar, the
+// zone the team's clocks and the admin console show, so "today" matches them.
+const DAY_TIMEZONE = process.env.LEAD_DAY_TIMEZONE || 'Asia/Qatar';
 
 /** 'YYYY-MM-DD' for [date] in [timeZone]. */
 export function dayKey(date, timeZone = DAY_TIMEZONE) {

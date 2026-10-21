@@ -2,7 +2,7 @@
 class SalesmanDay {
   const SalesmanDay({required this.day, required this.count});
 
-  /// 'YYYY-MM-DD' in the business day zone (Asia/Dubai).
+  /// 'YYYY-MM-DD' in the business day zone (Asia/Qatar).
   final String day;
   final int count;
 
@@ -57,7 +57,7 @@ class SalesmanStat {
   /// One entry per day in the chart window, oldest first.
   final List<SalesmanDay> daily;
 
-  /// Contacts today by hour of the day (0 to 23, Dubai time).
+  /// Contacts today by hour of the day (0 to 23, Qatar time).
   final List<int> hourlyToday;
 
   factory SalesmanStat.fromJson(Map<String, dynamic> json) {
@@ -111,7 +111,7 @@ class SalesmanStatsTotals {
   final int newLeft;
   final List<SalesmanDay> daily;
 
-  /// Everyone's contacts today by hour of the day (0 to 23, Dubai time).
+  /// Everyone's contacts today by hour of the day (0 to 23, Qatar time).
   final List<int> hourlyToday;
 
   factory SalesmanStatsTotals.fromJson(Map<String, dynamic> json) {
