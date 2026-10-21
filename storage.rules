@@ -10,6 +10,13 @@ service firebase.storage {
       allow read: if request.auth != null;
     }
 
+    // The .xlsx behind a WhatsApp-verified archive. Admins delete it with the record.
+    match /whatsapp-validated-scans/{file} {
+      allow delete: if request.auth != null
+                    && firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'admin'
+                    && firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.approved == true;
+    }
+
     // Media attached in a chat. Uploaded by the app, then handed to Twilio by
     // the outreachApi function (Admin SDK). Create-only, typed and size-capped.
     match /outreach_media/{uid}/{leadId}/{messageId}/{file} {

@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:http/http.dart' as http;
 
 import '../models/excel_archive.dart';
@@ -26,6 +27,24 @@ class ArchiveRepository {
   Future<List<ExcelArchive>> _list(String collection) async {
     final snap = await _db.collection(collection).orderBy('createdAt', descending: true).get();
     return snap.docs.map(ExcelArchive.fromDoc).toList();
+  }
+
+  /// Deletes a verified archive: its workbook in Storage, then its record.
+  /// Admins only; firestore.rules and storage.rules refuse everyone else.
+  Future<void> deleteValidatedScan(String id) async {
+    final ref = _db.collection('whatsappValidatedScans').doc(id);
+    final snap = await ref.get();
+    if (!snap.exists) return;
+    final path = snap.data()?['storagePath'];
+    if (path is String && path.isNotEmpty) {
+      try {
+        await FirebaseStorage.instance.ref(path).delete();
+      } on FirebaseException catch (e) {
+        // Already gone from Storage: still remove the record.
+        if (e.code != 'object-not-found') rethrow;
+      }
+    }
+    await ref.delete();
   }
 
   /// Downloads and parses one archive's workbook on-device.

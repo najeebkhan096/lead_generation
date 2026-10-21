@@ -1,136 +1,206 @@
-import 'dart:convert';
-
-import 'package:http/http.dart' as http;
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../models/client_record.dart';
 import '../models/sale.dart';
 import '../models/sales_user.dart';
-import 'api_service.dart';
+import 'admin_records.dart';
 
-/// Admin reads and writes over the backend REST API.
+/// Admin reads and writes, straight from Firestore — no backend server.
 ///
-/// Admins go through the backend (Admin SDK) rather than Firestore because
-/// firestore.rules only let a signed-in account read its own `sales` and
-/// `users` documents.
+/// firestore.rules let an admin (role 'admin', approved) read every user, sale
+/// and client and write sales, clients and the account fields an admin sets
+/// (approval, daily limit, role). The record shapes and checks are in
+/// admin_records.dart, mirroring the backend stores so the web console and the
+/// phone write the same documents.
 class AdminRepository {
-  static const Duration _timeout = Duration(seconds: 8);
+  AdminRepository({FirebaseFirestore? firestore}) : _firestore = firestore;
 
-  String get _baseUrl => ApiService.baseUrl;
+  // Read lazily so building the repository does not touch Firebase (tests build one without it).
+  final FirebaseFirestore? _firestore;
+  FirebaseFirestore get _db => _firestore ?? FirebaseFirestore.instance;
 
-  Future<List<SalesUser>> listUsers() async {
-    final data = await _send('GET', '/api/users', failure: 'Failed to load users');
-    final list = data['users'] as List<dynamic>? ?? const [];
-    return list.map((e) => SalesUser.fromJson(e as Map<String, dynamic>)).toList();
-  }
+  // ── Users ───────────────────────────────────────────────────────────
 
-  Future<SalesUser> setUserApproved(String userId, {required bool approved}) async {
-    final data = await _send('PATCH', '/api/users/$userId', body: {'approved': approved}, failure: 'Failed to update approval');
-    return SalesUser.fromJson(data['user'] as Map<String, dynamic>);
-  }
+  Future<List<SalesUser>> listUsers() => _run(() async {
+        final snap = await _db.collection('users').get();
+        final users = [for (final d in snap.docs) SalesUser.fromJson(userJson(d.id, d.data()))];
+        // Waiting for approval first, then by name — as the backend lists them.
+        users.sort((a, b) {
+          if (a.approved != b.approved) return a.approved ? 1 : -1;
+          return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+        });
+        return users;
+      }, 'Failed to load users');
+
+  Future<SalesUser> setUserApproved(String userId, {required bool approved}) =>
+      _updateUser(userId, {'approved': approved});
 
   /// `null` puts the salesman back on the default limit.
-  Future<SalesUser> setUserDailyLeadLimit(String userId, int? limit) async {
-    final data = await _send('PATCH', '/api/users/$userId', body: {'dailyLeadLimit': limit}, failure: 'Failed to update the daily limit');
-    return SalesUser.fromJson(data['user'] as Map<String, dynamic>);
+  Future<SalesUser> setUserDailyLeadLimit(String userId, int? limit) {
+    checkDailyLeadLimit(limit);
+    return _updateUser(userId, {'dailyLeadLimit': limit ?? FieldValue.delete()});
   }
 
-  Future<SalesUser> setUserRole(String userId, String role) async {
-    final data = await _send('PATCH', '/api/users/$userId', body: {'role': role}, failure: 'Failed to update role');
-    return SalesUser.fromJson(data['user'] as Map<String, dynamic>);
+  Future<SalesUser> setUserRole(String userId, String role) {
+    checkRole(role);
+    return _updateUser(userId, {'role': role});
   }
 
-  Future<List<Sale>> listSales() async {
-    final data = await _send('GET', '/api/sales', failure: 'Failed to load sales');
-    final list = data['sales'] as List<dynamic>? ?? const [];
-    return list.map((e) => Sale.fromJsonMap(e as Map<String, dynamic>)).toList();
+  Future<SalesUser> _updateUser(String userId, Map<String, dynamic> patch) => _run(() async {
+        final ref = _db.collection('users').doc(userId);
+        try {
+          await ref.update({...patch, 'updatedAt': FieldValue.serverTimestamp()});
+        } on FirebaseException catch (e) {
+          if (e.code == 'not-found') throw const AdminInputException('User not found');
+          rethrow;
+        }
+        final saved = await ref.get();
+        return SalesUser.fromJson(userJson(saved.id, saved.data() ?? const {}));
+      }, 'Failed to update the user');
+
+  // ── Sales ───────────────────────────────────────────────────────────
+
+  Future<List<Sale>> listSales() => _run(
+        () async => [for (final s in await _salesJson()) Sale.fromJsonMap(s)],
+        'Failed to load sales',
+      );
+
+  Future<Sale> createSale(Map<String, dynamic> body) => _run(() async {
+        final ref = _db.collection('sales').doc();
+        await ref.set(newSaleDocument(body));
+        return _readSale(ref.id);
+      }, 'Failed to create sale');
+
+  Future<Sale> updateSale(String saleId, Map<String, dynamic> body) => _run(() async {
+        final ref = _db.collection('sales').doc(saleId);
+        await ref.update({...saleFields(body), 'updatedAt': FieldValue.serverTimestamp()});
+        return _readSale(saleId);
+      }, 'Failed to update sale');
+
+  Future<void> deleteSale(String saleId) => _run(
+        () => _db.collection('sales').doc(saleId).delete(),
+        'Failed to delete sale',
+      );
+
+  Future<Sale> _readSale(String id) async {
+    final snap = await _db.collection('sales').doc(id).get();
+    return Sale.fromJsonMap(saleJson(snap.id, snap.data() ?? const {}));
   }
 
-  Future<Sale> createSale(Map<String, dynamic> body) async {
-    final data = await _send('POST', '/api/sales', body: body, failure: 'Failed to create sale');
-    return Sale.fromJsonMap(data['sale'] as Map<String, dynamic>);
+  /// Every sale as the admin feed shows it, newest first.
+  Future<List<Map<String, dynamic>>> _salesJson() async {
+    final snap = await _db.collection('sales').get();
+    final rows = [for (final d in snap.docs) saleJson(d.id, d.data())];
+    rows.sort((a, b) => ((b['createdAt'] as String?) ?? '').compareTo((a['createdAt'] as String?) ?? ''));
+    return rows;
   }
 
-  Future<Sale> updateSale(String saleId, Map<String, dynamic> body) async {
-    final data = await _send('PATCH', '/api/sales/$saleId', body: body, failure: 'Failed to update sale');
-    return Sale.fromJsonMap(data['sale'] as Map<String, dynamic>);
+  // ── Clients ─────────────────────────────────────────────────────────
+
+  Future<List<ClientRecord>> listClients() => _run(() async {
+        final snap = await _db.collection('clients').get();
+        final clients = [for (final d in snap.docs) ClientRecord.fromJson(clientJson(d.id, d.data()))];
+        clients.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+        return clients;
+      }, 'Failed to load clients');
+
+  Future<ClientRecord> createClient({required String name, required String mapsUrl}) => _run(() async {
+        final clean = cleanClientName(name);
+        final url = requireMapsUrl(mapsUrl);
+        final ref = _db.collection('clients').doc(clientDocId(clean));
+        final existing = await ref.get();
+        if (existing.exists) {
+          throw AdminInputException('"${existing.data()?['businessName']}" is already a client');
+        }
+        await ref.set({
+          'businessName': clean,
+          'nameKey': clientNameKey(clean),
+          'mapsUrl': url,
+          'createdAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+        return _readClient(ref.id);
+      }, 'Failed to add client');
+
+  Future<ClientRecord> updateClient(String id, {String? name, String? mapsUrl}) => _run(() async {
+        final ref = _db.collection('clients').doc(id);
+        final existing = await ref.get();
+        if (!existing.exists) throw const AdminInputException('Client not found');
+        final patch = <String, dynamic>{};
+        if (name != null) {
+          final clean = cleanClientName(name);
+          final key = clientNameKey(clean);
+          if (key != existing.data()?['nameKey']) {
+            final clash = await _db.collection('clients').where('nameKey', isEqualTo: key).limit(1).get();
+            if (clash.docs.isNotEmpty && clash.docs.first.id != id) {
+              throw AdminInputException('"${clash.docs.first.data()['businessName']}" is already a client');
+            }
+          }
+          patch['businessName'] = clean;
+          patch['nameKey'] = key;
+        }
+        if (mapsUrl != null) patch['mapsUrl'] = requireMapsUrl(mapsUrl);
+        await ref.update({...patch, 'updatedAt': FieldValue.serverTimestamp()});
+        return _readClient(id);
+      }, 'Failed to update client');
+
+  Future<void> deleteClient(String id) => _run(
+        () => _db.collection('clients').doc(id).delete(),
+        'Failed to delete client',
+      );
+
+  Future<ClientRecord> _readClient(String id) async {
+    final snap = await _db.collection('clients').doc(id).get();
+    return ClientRecord.fromJson(clientJson(snap.id, snap.data() ?? const {}));
   }
 
-  Future<void> deleteSale(String saleId) async {
-    await _send('DELETE', '/api/sales/$saleId', failure: 'Failed to delete sale');
-  }
-
-  Future<List<ClientRecord>> listClients() async {
-    final data = await _send('GET', '/api/clients', failure: 'Failed to load clients');
-    final list = data['clients'] as List<dynamic>? ?? const [];
-    return list.map((e) => ClientRecord.fromJson(e as Map<String, dynamic>)).toList();
-  }
-
-  Future<ClientRecord> createClient({required String name, required String mapsUrl}) async {
-    final data = await _send('POST', '/api/clients', body: {'businessName': name, 'mapsUrl': mapsUrl}, failure: 'Failed to add client');
-    return ClientRecord.fromJson(data['client'] as Map<String, dynamic>);
-  }
-
-  Future<ClientRecord> updateClient(String id, {String? name, String? mapsUrl}) async {
-    final body = <String, dynamic>{'businessName': ?name, 'mapsUrl': ?mapsUrl};
-    final data = await _send('PATCH', '/api/clients/$id', body: body, failure: 'Failed to update client');
-    return ClientRecord.fromJson(data['client'] as Map<String, dynamic>);
-  }
-
-  Future<void> deleteClient(String id) async {
-    await _send('DELETE', '/api/clients/$id', failure: 'Failed to delete client');
-  }
+  // ── Fresh start ─────────────────────────────────────────────────────
 
   /// Flags sales created before [before] so their payments stop counting
   /// (or undoes it with [restore]). Nothing is deleted. With [apply] false
   /// it only reports how many sales would be affected.
-  Future<ArchiveResult> archivePayments({required DateTime before, bool restore = false, bool apply = false}) async {
-    final data = await _send(
-      'POST',
-      '/api/sales/archive-payments',
-      body: {'before': before.toUtc().toIso8601String(), 'restore': restore, 'apply': apply},
-      failure: 'Failed to update payment records',
-    );
-    final r = data['result'] as Map<String, dynamic>? ?? const {};
-    return ArchiveResult(
-      matched: (r['matched'] as num?)?.toInt() ?? 0,
-      updated: (r['updated'] as num?)?.toInt() ?? 0,
-      alreadyArchived: (r['alreadyArchived'] as num?)?.toInt() ?? 0,
-      totalSales: (r['totalSales'] as num?)?.toInt() ?? 0,
-    );
-  }
+  Future<ArchiveResult> archivePayments({required DateTime before, bool restore = false, bool apply = false}) => _run(() async {
+        final sales = await _salesJson();
+        final targets = selectForArchive(sales, before: before, restore: restore);
+        var updated = 0;
+        if (apply) {
+          const batchSize = 400;
+          for (var i = 0; i < targets.length; i += batchSize) {
+            final chunk = targets.skip(i).take(batchSize).toList();
+            final batch = _db.batch();
+            for (final s in chunk) {
+              // updatedAt is left alone so lists ordered by it do not reshuffle.
+              batch.update(_db.collection('sales').doc(s['id'] as String), {
+                'paymentsArchived': !restore,
+                'paymentsArchivedAt': restore ? null : FieldValue.serverTimestamp(),
+              });
+            }
+            await batch.commit();
+            updated += chunk.length;
+          }
+        }
+        return ArchiveResult(
+          matched: targets.length,
+          updated: updated,
+          alreadyArchived: sales.where((s) => s['paymentsArchived'] == true).length,
+          totalSales: sales.length,
+        );
+      }, 'Failed to update payment records');
 
-  /// One request; returns the decoded JSON object (empty for an empty body).
-  /// Throws an [Exception] whose message is safe to show the admin.
-  Future<Map<String, dynamic>> _send(
-    String method,
-    String path, {
-    Map<String, dynamic>? body,
-    required String failure,
-  }) async {
-    final request = http.Request(method, Uri.parse('$_baseUrl$path'));
-    if (body != null) {
-      request.headers['Content-Type'] = 'application/json';
-      request.body = jsonEncode(body);
-    }
-    final http.Response response;
+  /// Runs one Firestore operation. Input errors pass through as they are; a
+  /// refused or failed read or write becomes a message the admin can act on.
+  Future<T> _run<T>(Future<T> Function() operation, String failure) async {
     try {
-      response = await http.Response.fromStream(await request.send().timeout(_timeout));
-    } catch (_) {
-      throw Exception('Could not reach the server. Check the connection and that the backend is running.');
-    }
-    final decoded = response.body.isEmpty ? null : _tryDecode(response.body);
-    if (response.statusCode >= 400) {
-      final detail = decoded is Map ? decoded['error'] : null;
-      throw Exception(detail is String && detail.isNotEmpty ? detail : '$failure (${response.statusCode})');
-    }
-    return decoded is Map<String, dynamic> ? decoded : <String, dynamic>{};
-  }
-
-  static dynamic _tryDecode(String body) {
-    try {
-      return jsonDecode(body);
-    } catch (_) {
-      return null;
+      return await operation();
+    } on AdminInputException {
+      rethrow;
+    } on FirebaseException catch (e) {
+      if (e.code == 'permission-denied') throw Exception('Only an admin can make this change.');
+      if (e.code == 'not-found') throw Exception('Not found. It may have been deleted.');
+      if (e.code == 'unavailable' || e.code == 'deadline-exceeded') {
+        throw Exception('Could not reach Firebase. Check the connection.');
+      }
+      throw Exception('$failure (${e.code})');
     }
   }
 }

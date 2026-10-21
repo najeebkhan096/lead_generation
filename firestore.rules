@@ -13,6 +13,22 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.approved == true;
     }
 
+    // Admins (role 'admin', approved) run the admin console on the phone and
+    // read and manage sales, salesmen and clients straight from Firestore.
+    // The role is set only by an admin (see the users rules), so this cannot
+    // be granted to oneself.
+    function isAdmin() {
+      return isApproved()
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    // Stored values for a sale's stages, as the backend and the admin console write them.
+    function validSaleFields(d) {
+      return (!('leadStatus' in d) || d.leadStatus in ['new', 'in_progress', 'payment', 'completed', 'cancelled'])
+          && (!('clientPaymentStatus' in d) || d.clientPaymentStatus in ['pending', 'paid', 'stuck', 'received', 'in_process'])
+          && (!('employeePaymentStatus' in d) || d.employeePaymentStatus in ['pending', 'paid']);
+    }
+
     // The one client edit allowed on a verified lead (whatsappLeads /
     // emailLeads): mark it contacted, or move it back to New. Marking
     // contacted must carry its timestamp, and `contactedBy` can only name
@@ -89,16 +105,27 @@ service cloud.firestore {
     // list to populate "assign to salesman" pickers (Admin SDK bypasses
     // these rules entirely).
     match /users/{userId} {
-      allow read: if signedIn() && request.auth.uid == userId;
+      allow read: if signedIn() && (request.auth.uid == userId || isAdmin());
       allow create: if signedIn()
                     && request.auth.uid == userId
                     && request.resource.data.approved == false
-                    && !('dailyLeadLimit' in request.resource.data);
-      // Own-profile refresh on sign-in — cannot flip `approved` or its
-      // admin-set `dailyLeadLimit`.
+                    && !('dailyLeadLimit' in request.resource.data)
+                    && (!('role' in request.resource.data) || request.resource.data.role == 'salesman');
+      // Own-profile refresh on sign-in — cannot flip `approved`, its admin-set
+      // `dailyLeadLimit`, or its `role`.
       allow update: if signedIn()
                     && request.auth.uid == userId
-                    && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['approved', 'dailyLeadLimit']);
+                    && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['approved', 'dailyLeadLimit', 'role']);
+      // An admin approves accounts, sets their daily limit and role, and nothing else.
+      allow update: if isAdmin()
+                    && request.resource.data.diff(resource.data).affectedKeys()
+                       .hasOnly(['approved', 'dailyLeadLimit', 'role', 'updatedAt'])
+                    && (!('approved' in request.resource.data) || request.resource.data.approved is bool)
+                    && (!('role' in request.resource.data) || request.resource.data.role in ['admin', 'salesman'])
+                    && (!('dailyLeadLimit' in request.resource.data)
+                        || (request.resource.data.dailyLeadLimit is int
+                            && request.resource.data.dailyLeadLimit >= 0
+                            && request.resource.data.dailyLeadLimit <= 1000));
       allow delete: if false;
     }
 
@@ -122,7 +149,9 @@ service cloud.firestore {
 
     match /whatsappValidatedScans/{id} {
       allow read: if isApproved();
-      allow write: if false;
+      // Admins remove an archive (its record here, its .xlsx in Storage).
+      allow delete: if isAdmin();
+      allow create, update: if false;
     }
 
     // First salesman to tap WhatsApp on a verified business owns it.
@@ -137,9 +166,23 @@ service cloud.firestore {
     // Salesman orders/earnings (mobile's Sales tab) — each mobile user can
     // only read their own sales (salesmanId == their uid). Writes (status,
     // payment amounts) stay Admin-SDK-only, set from the web app.
+    // Admins create, edit, delete and settle sales from the phone and the web.
     match /sales/{saleId} {
-      allow read: if isApproved() && resource.data.salesmanId == request.auth.uid;
-      allow write: if false;
+      allow read: if (isApproved() && resource.data.salesmanId == request.auth.uid) || isAdmin();
+      allow create, update: if isAdmin() && validSaleFields(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    // Client businesses (name + Google Maps link), admin only.
+    // Older clients may have no Maps link yet, so an update only checks the fields it sends.
+    match /clients/{clientId} {
+      allow read, delete: if isAdmin();
+      allow create: if isAdmin()
+                    && request.resource.data.businessName is string
+                    && request.resource.data.mapsUrl is string;
+      allow update: if isAdmin()
+                    && (!('businessName' in request.resource.data) || request.resource.data.businessName is string)
+                    && (!('mapsUrl' in request.resource.data) || request.resource.data.mapsUrl is string);
     }
 
     // Website-dev outreach is admin-backend only (Admin SDK). Mobile

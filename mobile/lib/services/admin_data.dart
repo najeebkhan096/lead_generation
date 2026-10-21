@@ -8,7 +8,7 @@ import 'admin_repository.dart';
 
 /// The admin app's single source of truth: one load of users + sales,
 /// shared by every tab and detail page through [AdminScope]. Writes go to
-/// the backend and then update the in-memory lists, so every screen
+/// Firestore and then update the in-memory lists, so every screen
 /// (counts, ongoing/completed splits, payouts) stays consistent without a
 /// refetch per screen.
 class AdminData extends ChangeNotifier {
@@ -48,8 +48,7 @@ class AdminData extends ChangeNotifier {
     notifyListeners();
     try {
       // Sales and users are essential. The client list is not: if it fails
-      // (e.g. an older backend without /api/clients) the app still shows
-      // everything, with clients derived from the sales.
+      // the app still shows everything, with clients derived from the sales.
       final clients = _repo.listClients().then<List<ClientRecord>?>((c) => c).catchError((Object e) {
         _warning = 'Couldn\'t load the client list: ${e.toString().replaceFirst('Exception: ', '')}';
         return null;

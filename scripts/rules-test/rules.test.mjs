@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { initializeTestEnvironment, assertFails, assertSucceeds } from '@firebase/rules-unit-testing';
 import { doc, getDoc, setDoc, updateDoc, deleteDoc, collection, getDocs, query, where, serverTimestamp, deleteField } from 'firebase/firestore';
-import { ref, uploadBytes, getBytes } from 'firebase/storage';
+import { ref, uploadBytes, getBytes, deleteObject } from 'firebase/storage';
 
 let env;
 before(async () => {
@@ -148,4 +148,92 @@ test('storage: template images folder still works', async () => {
   const alice = env.authenticatedContext('alice').storage();
   await assertSucceeds(uploadBytes(ref(alice, 'outreach_images/alice/1.jpg'), png, { contentType: 'image/jpeg' }));
   await assertFails(uploadBytes(ref(alice, 'outreach_images/bob/1.jpg'), png, { contentType: 'image/jpeg' }));
+});
+
+// ── Admin console (phone and web): admins read and manage sales, salesmen and clients.
+
+async function seedAdmin() {
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    const db = ctx.firestore();
+    await setDoc(doc(db, 'users', 'root'), { approved: true, role: 'admin', name: 'Root' });
+    await setDoc(doc(db, 'sales', 'sA'), { salesmanId: 'alice', businessName: 'Alpha Sale', leadStatus: 'new', clientPaymentStatus: 'pending', employeePaymentStatus: 'pending', priceChargedToClient: 100 });
+    await setDoc(doc(db, 'sales', 'sB'), { salesmanId: 'bob', businessName: 'Bravo Sale', leadStatus: 'new' });
+    await setDoc(doc(db, 'clients', 'c1'), { businessName: 'Client One', mapsUrl: 'https://maps.app.goo.gl/one' });
+    await setDoc(doc(db, 'whatsappValidatedScans', 'v1'), { storagePath: 'whatsapp-validated-scans/v1.xlsx' });
+    await setDoc(doc(db, 'whatsappValidatedScans', 'v2'), { storagePath: 'whatsapp-validated-scans/v2.xlsx' });
+    await uploadBytes(ref(ctx.storage(), 'whatsapp-validated-scans/v1.xlsx'), new Uint8Array([1, 2, 3]));
+  });
+}
+
+test('a salesman cannot make themselves an admin, on sign-up or later', async () => {
+  const alice = env.authenticatedContext('alice').firestore();
+  await assertFails(updateDoc(doc(alice, 'users/alice'), { role: 'admin' }));
+  await assertFails(setDoc(doc(alice, 'users/alice'), { role: 'admin' }, { merge: true }));
+  const newbie = env.authenticatedContext('newbie').firestore();
+  await assertFails(setDoc(doc(newbie, 'users/newbie'), { approved: false, role: 'admin' }));
+  await assertSucceeds(setDoc(doc(newbie, 'users/newbie'), { approved: false, role: 'salesman' }));
+});
+
+test('an admin reads every user and sale; a salesman reads only their own sales', async () => {
+  await seedAdmin();
+  const root = env.authenticatedContext('root').firestore();
+  const alice = env.authenticatedContext('alice').firestore();
+  await assertSucceeds(getDocs(collection(root, 'users')));
+  await assertSucceeds(getDocs(collection(root, 'sales')));
+  await assertSucceeds(getDoc(doc(alice, 'sales/sA')));
+  await assertFails(getDoc(doc(alice, 'sales/sB')));
+  await assertFails(getDocs(collection(alice, 'sales')));
+  await assertFails(getDoc(doc(alice, 'users/bob')));
+});
+
+test('an admin approves a salesman and sets their limit or role, but not their name', async () => {
+  await seedAdmin();
+  const root = env.authenticatedContext('root').firestore();
+  await assertSucceeds(updateDoc(doc(root, 'users/bob'), { approved: true, dailyLeadLimit: 5, role: 'salesman', updatedAt: serverTimestamp() }));
+  await assertSucceeds(updateDoc(doc(root, 'users/bob'), { dailyLeadLimit: deleteField(), updatedAt: serverTimestamp() }));
+  await assertFails(updateDoc(doc(root, 'users/bob'), { name: 'Renamed' }));
+  await assertFails(updateDoc(doc(root, 'users/bob'), { dailyLeadLimit: 5000 }));
+  await assertFails(updateDoc(doc(root, 'users/bob'), { role: 'boss' }));
+  await assertFails(updateDoc(doc(root, 'users/bob'), { approved: 'yes' }));
+});
+
+test('an admin creates, edits and deletes sales with valid stages; a salesman cannot write sales', async () => {
+  await seedAdmin();
+  const root = env.authenticatedContext('root').firestore();
+  const alice = env.authenticatedContext('alice').firestore();
+  await assertSucceeds(setDoc(doc(root, 'sales/sNew'), { businessName: 'New', leadStatus: 'payment', clientPaymentStatus: 'paid', employeePaymentStatus: 'pending' }));
+  await assertFails(setDoc(doc(root, 'sales/sBad'), { businessName: 'Bad', leadStatus: 'shipped' }));
+  await assertSucceeds(updateDoc(doc(root, 'sales/sA'), { paymentsArchived: true, paymentsArchivedAt: serverTimestamp() }));
+  await assertSucceeds(deleteDoc(doc(root, 'sales/sNew')));
+  await assertFails(setDoc(doc(alice, 'sales/sX'), { salesmanId: 'alice', businessName: 'Mine' }));
+  await assertFails(updateDoc(doc(alice, 'sales/sA'), { leadStatus: 'completed' }));
+  await assertFails(deleteDoc(doc(alice, 'sales/sA')));
+});
+
+test('clients are admin-only, and need a name and a Maps link', async () => {
+  await seedAdmin();
+  const root = env.authenticatedContext('root').firestore();
+  const alice = env.authenticatedContext('alice').firestore();
+  await assertSucceeds(getDoc(doc(root, 'clients/c1')));
+  await assertFails(getDoc(doc(alice, 'clients/c1')));
+  await assertFails(setDoc(doc(alice, 'clients/c9'), { businessName: 'Nope', mapsUrl: 'https://maps.app.goo.gl/x' }));
+  await assertSucceeds(setDoc(doc(root, 'clients/c2'), { businessName: 'Client Two', mapsUrl: 'https://maps.app.goo.gl/two' }));
+  await assertFails(setDoc(doc(root, 'clients/c3'), { businessName: 'No link' }));
+  // An older client with no link can still be renamed.
+  await env.withSecurityRulesDisabled((ctx) => setDoc(doc(ctx.firestore(), 'clients/c4'), { businessName: 'Old Client' }));
+  await assertSucceeds(updateDoc(doc(root, 'clients/c4'), { businessName: 'Old Client Renamed' }));
+});
+
+test('an admin deletes a verified archive and its file; a salesman cannot', async () => {
+  await seedAdmin();
+  const root = env.authenticatedContext('root').firestore();
+  const alice = env.authenticatedContext('alice').firestore();
+  await assertFails(deleteDoc(doc(alice, 'whatsappValidatedScans/v2')));
+  await assertFails(setDoc(doc(root, 'whatsappValidatedScans/v3'), { storagePath: 'x' }));
+  await assertSucceeds(deleteDoc(doc(root, 'whatsappValidatedScans/v2')));
+
+  const rootStore = env.authenticatedContext('root').storage();
+  const aliceStore = env.authenticatedContext('alice').storage();
+  await assertFails(deleteObject(ref(aliceStore, 'whatsapp-validated-scans/v1.xlsx')));
+  await assertSucceeds(deleteObject(ref(rootStore, 'whatsapp-validated-scans/v1.xlsx')));
 });

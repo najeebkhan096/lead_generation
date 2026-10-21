@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../models/excel_archive.dart';
-import '../services/api_service.dart';
 import '../services/archive_repository.dart';
+import '../services/auth_service.dart';
 import '../services/whatsapp_claim_store.dart';
 import '../theme/app_theme.dart';
 import '../widgets/business_row_card.dart';
@@ -33,16 +33,20 @@ class WhatsAppValidatedArchivePage extends StatefulWidget {
 }
 
 class _WhatsAppValidatedArchivePageState extends State<WhatsAppValidatedArchivePage> {
-  final _api = ApiService();
   final _archiveRepo = ArchiveRepository();
   List<ExcelArchive> _archives = [];
   bool _loading = true;
   String? _error;
+  // Only an admin may remove an archive (the rules refuse everyone else).
+  bool _isAdmin = false;
 
   @override
   void initState() {
     super.initState();
     _load();
+    AuthService().loadAccess().then((access) {
+      if (mounted) setState(() => _isAdmin = access.isAdmin);
+    });
   }
 
   Future<void> _load() async {
@@ -66,7 +70,7 @@ class _WhatsAppValidatedArchivePageState extends State<WhatsAppValidatedArchiveP
 
   Future<void> _delete(ExcelArchive archive) async {
     try {
-      await _api.deleteValidatedArchive(archive.id);
+      await _archiveRepo.deleteValidatedScan(archive.id);
       await _load();
     } catch (e) {
       if (!mounted) return;
@@ -166,7 +170,7 @@ class _WhatsAppValidatedArchivePageState extends State<WhatsAppValidatedArchiveP
                               itemCount: _archives.length,
                               itemBuilder: (context, i) => _VerifiedArchiveCard(
                                 archive: _archives[i],
-                                onDelete: () => _delete(_archives[i]),
+                                onDelete: _isAdmin ? () => _delete(_archives[i]) : null,
                               ),
                             ),
             ),
@@ -199,10 +203,12 @@ class _ScrollableCenter extends StatelessWidget {
 }
 
 class _VerifiedArchiveCard extends StatelessWidget {
-  const _VerifiedArchiveCard({required this.archive, required this.onDelete});
+  const _VerifiedArchiveCard({required this.archive, this.onDelete});
 
   final ExcelArchive archive;
-  final VoidCallback onDelete;
+
+  /// Removes the archive. Null hides the button (for anyone but an admin).
+  final VoidCallback? onDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -250,10 +256,11 @@ class _VerifiedArchiveCard extends StatelessWidget {
                   ],
                 ),
               ),
-              IconButton(
-                icon: Icon(AppIcons.trash, size: 18, color: t.faint),
-                onPressed: onDelete,
-              ),
+              if (onDelete != null)
+                IconButton(
+                  icon: Icon(AppIcons.trash, size: 18, color: t.faint),
+                  onPressed: onDelete,
+                ),
             ],
           ),
         ),
