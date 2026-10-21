@@ -1,13 +1,31 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { FieldValue, Timestamp } from 'firebase-admin/firestore';
-import { DEFAULT_DAILY_LEAD_LIMIT, dayKey, setWhatsAppLeadContacted, setWhatsAppLeadDealDone } from './leadContact.js';
+import { DEFAULT_DAILY_LEAD_LIMIT, dayKey, dayStart, setWhatsAppLeadContacted, setWhatsAppLeadDealDone } from './leadContact.js';
 
 // An in-memory stand-in for the parts of Firestore the module uses: documents,
 // subcollections, and transactions that read before they write.
 function fakeDb(seed, serverTime) {
   const docs = new Map(Object.entries(seed));
+  // The time a serverTimestamp() is written as; each call moves it to its own `now`.
+  const clock = { now: serverTime };
   const isSentinel = (v, s) => v && typeof v === 'object' && v.constructor === s.constructor;
+
+  const toMs = (v) => (v?.toMillis ? v.toMillis() : v instanceof Date ? v.getTime() : v);
+  const matches = (value, op, expected) => {
+    if (op === '==') return value === expected;
+    if (op === '>=') return toMs(value) >= toMs(expected);
+    throw new Error(`unsupported operator ${op}`);
+  };
+  // A query over one top-level collection, as the transaction reads it.
+  const query = (name, filters = []) => ({
+    where: (field, op, value) => query(name, [...filters, { field, op, value }]),
+    orderBy: () => query(name, filters),
+    rows: () => [...docs.entries()]
+      .filter(([path]) => path.startsWith(`${name}/`) && !path.slice(name.length + 1).includes('/'))
+      .filter(([, data]) => filters.every((f) => matches(data[f.field], f.op, f.value)))
+      .map(([path, data]) => ({ id: path.split('/').pop(), data: () => ({ ...data }) })),
+  });
 
   const ref = (path) => ({
     path,
@@ -18,20 +36,25 @@ function fakeDb(seed, serverTime) {
     const next = { ...(docs.get(r.path) ?? {}) };
     for (const [k, v] of Object.entries(patch)) {
       if (isSentinel(v, FieldValue.delete())) delete next[k];
-      else if (isSentinel(v, FieldValue.serverTimestamp())) next[k] = Timestamp.fromDate(serverTime);
+      else if (isSentinel(v, FieldValue.serverTimestamp())) next[k] = Timestamp.fromDate(clock.now);
       else next[k] = v;
     }
     docs.set(r.path, next);
   };
 
   const db = {
-    collection: (name) => ({ doc: (id) => ref(`${name}/${id}`) }),
+    collection: (name) => ({ doc: (id) => ref(`${name}/${id}`), where: (f, op, v) => query(name).where(f, op, v) }),
     runTransaction: async (fn) => fn({
-      get: async (r) => read(r),
+      get: async (r) => {
+        if (typeof r.rows !== 'function') return read(r);
+        const rows = r.rows();
+        return { docs: rows, size: rows.length };
+      },
       update: write,
       set: write,
     }),
   };
+  db.clock = clock;
   return { db, docs };
 }
 
@@ -42,12 +65,16 @@ function seed({ limit, leads = 15, others = {} } = {}) {
   const data = {
     'users/me': { approved: true, ...(limit === undefined ? {} : { dailyLeadLimit: limit }) },
   };
-  for (let i = 1; i <= leads; i++) data[`whatsappLeads/L${i}`] = { business: `Lead ${i}`, status: 'lead' };
+  for (let i = 1; i <= leads; i++) data[`whatsappLeads/L${i}`] = { business: `Lead ${i}`, status: 'lead', sourceType: 'review' };
   return { ...data, ...others };
 }
 
-const contact = (db, leadId, now, contacted = true) =>
-  setWhatsAppLeadContacted({ uid: 'me', leadId, contacted, now, db });
+const contacted = (uid, when) => ({ business: 'Done', sourceType: 'review', status: 'contacted', contactedBy: uid, contactedAt: Timestamp.fromDate(when) });
+
+const contact = (db, leadId, now, contacted = true) => {
+  db.clock.now = now;
+  return setWhatsAppLeadContacted({ uid: 'me', leadId, contacted, now, db });
+};
 
 async function failureOf(promise) {
   try {
@@ -192,4 +219,27 @@ test('deal-done input is checked before any write', async () => {
   assert.equal((await failureOf(setWhatsAppLeadDealDone({ uid: 'me', leadId: '', done: true, db }))).code, 'invalid-argument');
   assert.equal((await failureOf(setWhatsAppLeadDealDone({ uid: 'me', leadId: 'L1', done: 'yes', db }))).code, 'invalid-argument');
   assert.equal((await failureOf(setWhatsAppLeadDealDone({ uid: 'me', leadId: 'missing', done: true, db }))).code, 'not-found');
+});
+
+test('the limit counts the leads contacted today, so a counter that has drifted cannot block a salesman', async () => {
+  const data = seed({ limit: 3 });
+  data['users/me/contactDays/2026-10-18'] = { count: 3 }; // drifted: says 3, but only 2 leads were contacted today
+  data['whatsappLeads/L1'] = contacted('me', DAY1);
+  data['whatsappLeads/L2'] = contacted('me', DAY1);
+  const { db } = fakeDb(data, DAY1);
+  assert.equal((await contact(db, 'L3', DAY1)).used, 3);
+});
+
+test('a contact made late at night in Qatar counts toward that day, not the next one', async () => {
+  const data = seed({ limit: 2 });
+  data['whatsappLeads/L1'] = contacted('me', new Date('2026-10-20T20:04:00Z')); // 23:04 on the 20th in Qatar
+  data['whatsappLeads/L2'] = contacted('me', new Date('2026-10-20T20:30:00Z')); // 23:30 on the 20th in Qatar
+  const { db } = fakeDb(data, DAY1);
+  const today = new Date('2026-10-21T10:00:00Z'); // 13:00 on the 21st in Qatar
+  assert.equal((await contact(db, 'L3', today)).used, 1);
+});
+
+test('a day starts at midnight in its own zone', () => {
+  assert.equal(dayStart('2026-10-21', 'Asia/Qatar').toISOString(), '2026-10-20T21:00:00.000Z');
+  assert.equal(dayStart('2026-10-21', 'Asia/Dubai').toISOString(), '2026-10-20T20:00:00.000Z');
 });

@@ -26,9 +26,33 @@ export function dayKey(date, timeZone = DAY_TIMEZONE) {
   return new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(date);
 }
 
+/** The instant [timeZone]'s day [day] ('YYYY-MM-DD') begins: its midnight. */
+export function dayStart(day, timeZone = DAY_TIMEZONE) {
+  const [y, m, d] = day.split('-').map(Number);
+  const asUtc = Date.UTC(y, m - 1, d);
+  return new Date(asUtc - zoneOffsetMs(new Date(asUtc), timeZone));
+}
+
+/** How far ahead of UTC [timeZone] is at [date], in milliseconds. */
+function zoneOffsetMs(date, timeZone) {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat('en-US', {
+      timeZone, hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric',
+      hour: 'numeric', minute: 'numeric', second: 'numeric',
+    }).formatToParts(date).map((p) => [p.type, Number(p.value)]),
+  );
+  const local = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second);
+  return local - Math.floor(date.getTime() / 1000) * 1000;
+}
+
 /**
  * Marks [leadId] contacted by [uid] (`contacted: true`), or moves it back to
  * New (`false`). Throws an HttpsError when the daily limit is reached.
+ *
+ * The limit counts the leads this salesman has contacted today, the same leads
+ * the app lists, so the two cannot disagree. `users/{uid}/contactDays/{day}` is
+ * still read and written in the same transaction: two contacts at once both
+ * touch it, so one of them retries and sees the other's lead.
  */
 export async function setWhatsAppLeadContacted({ uid, leadId, contacted, now = new Date(), db = getFirestore() }) {
   if (typeof leadId !== 'string' || !leadId) {
@@ -42,6 +66,13 @@ export async function setWhatsAppLeadContacted({ uid, leadId, contacted, now = n
   const leadRef = db.collection(LEADS).doc(leadId);
   const userRef = db.collection('users').doc(uid);
   const counterRef = userRef.collection('contactDays').doc(today);
+  const contactedToday = db
+    .collection(LEADS)
+    .where('sourceType', '==', 'review')
+    .where('contactedBy', '==', uid)
+    .where('contactedAt', '>=', dayStart(today))
+    // Newest first matches the deployed index (sourceType, contactedBy, contactedAt); the order does not change the count.
+    .orderBy('contactedAt', 'desc');
 
   return db.runTransaction(async (tx) => {
     // Transactions read everything before they write anything.
@@ -58,7 +89,8 @@ export async function setWhatsAppLeadContacted({ uid, leadId, contacted, now = n
 
       const user = (await tx.get(userRef)).data() ?? {};
       const limit = Number.isInteger(user.dailyLeadLimit) ? user.dailyLeadLimit : DEFAULT_DAILY_LEAD_LIMIT;
-      const used = (await tx.get(counterRef)).data()?.count ?? 0;
+      await tx.get(counterRef);
+      const used = (await tx.get(contactedToday)).size;
       if (used >= limit) {
         throw new HttpsError(
           'resource-exhausted',
@@ -80,14 +112,10 @@ export async function setWhatsAppLeadContacted({ uid, leadId, contacted, now = n
       throw new HttpsError('failed-precondition', 'This is a done deal. Reopen it before moving it back to New.', { code: 'DEAL_DONE' });
     }
 
-    // Moving back frees today's slot only when the contact itself was today.
+    // Moving back frees a slot only when the contact itself was today; the count above no longer needs a refund.
     const contactedDay = lead.contactedAt?.toDate ? dayKey(lead.contactedAt.toDate()) : null;
-    const refund = contactedDay === today;
-    const used = refund ? ((await tx.get(counterRef)).data()?.count ?? 0) : 0;
-
     tx.update(leadRef, { status: 'lead', contactedAt: FieldValue.delete(), contactedBy: FieldValue.delete() });
-    if (refund) tx.set(counterRef, { count: Math.max(0, used - 1) }, { merge: true });
-    return { contacted: false, counted: refund };
+    return { contacted: false, counted: contactedDay === today };
   });
 }
 
