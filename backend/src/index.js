@@ -21,6 +21,7 @@ import stateCityScanRoutes from './modules/scan/stateCityScanRoutes.js';
 import mapsSessionRoutes from './modules/scan/mapsSessionRoutes.js';
 import twilioTestRoutes from './modules/twilio-test/testLeadRoutes.js';
 import { initFirebase, getFirebaseStatus } from './firebase/admin.js';
+import { getSessionConfig, stopOrphanedProfileChromes } from './scraper/mapsSession.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -89,6 +90,10 @@ app.use((err, _req, res, _next) => {
   console.error(err);
   res.status(500).json({ error: err.message || 'Internal error' });
 });
+
+// Chrome left on the Google profile by an earlier run would lock it for every check and scan.
+const orphans = await stopOrphanedProfileChromes(getSessionConfig().profileDir);
+if (orphans) console.log(`Stopped ${orphans} Chrome process(es) left on the Google profile by an earlier run.`);
 
 app.listen(PORT, '0.0.0.0', () => {
   const fb = getFirebaseStatus();

@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {
   getSessionConfig,
+  stopOrphanedProfileChromes,
   defaultProfileDir,
   profileExists,
   ensureProfileDir,
@@ -290,4 +291,34 @@ test('anonymous Google cookies, other sites\' cookies, or no store at all are no
   assert.equal(await hasGoogleSignInCookies(profileWithCookies('anon', [['.google.com', 'NID'], ['.google.com', 'AEC']])), false);
   assert.equal(await hasGoogleSignInCookies(profileWithCookies('other-site', [['.example.com', 'SID']])), false, 'only Google hosts count');
   assert.equal(await hasGoogleSignInCookies(path.join(tmp, 'no-store-here')), false);
+});
+
+test('stops the Chrome left on the profile by an earlier run, asking it to quit first', async () => {
+  const sent = [];
+  let alive = [4242, 4243];
+  const stopped = await stopOrphanedProfileChromes('/some/profile', {
+    listPids: async () => alive,
+    signal: (pid, sig) => {
+      sent.push([pid, sig]);
+      if (sig === 'SIGTERM') alive = [];
+    },
+    waitMs: 1000,
+  });
+  assert.equal(stopped, 2);
+  assert.deepEqual(sent, [[4242, 'SIGTERM'], [4243, 'SIGTERM']]);
+});
+
+test('forces a Chrome that will not quit, and does nothing when none is running', async () => {
+  const sent = [];
+  const alive = [7];
+  const stopped = await stopOrphanedProfileChromes('/some/profile', {
+    listPids: async () => alive,
+    signal: (pid, sig) => sent.push([pid, sig]),
+    waitMs: 300,
+  });
+  assert.equal(stopped, 1);
+  assert.deepEqual(sent, [[7, 'SIGTERM'], [7, 'SIGKILL']]);
+
+  const none = await stopOrphanedProfileChromes('/some/profile', { listPids: async () => [], signal: () => assert.fail('no signal') });
+  assert.equal(none, 0);
 });

@@ -13,7 +13,7 @@
 
 import fs from 'node:fs';
 import net from 'node:net';
-import { spawn } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -138,6 +138,49 @@ export async function waitForProfileFree(profileDir, ms = 10000) {
     });
   const deadline = Date.now() + ms;
   while (Date.now() < deadline && (await inUse())) await new Promise((r) => setTimeout(r, 300));
+}
+
+/** Process ids of the Chrome processes using [profileDir] (empty when none, or without pgrep). */
+function profilePids(profileDir) {
+  return new Promise((resolve) => {
+    execFile('pgrep', ['-f', `user-data-dir=${profileDir}`], (err, stdout) => {
+      resolve(err ? [] : stdout.split('\n').map((line) => Number(line.trim())).filter((pid) => pid > 0 && pid !== process.pid));
+    });
+  });
+}
+
+/**
+ * Stops the Chrome processes still holding [profileDir] from an earlier run of
+ * this app. A scanner Chrome stops with its app; if the app is killed instead,
+ * Chrome keeps the profile locked and every later check reports it "busy".
+ * Only call this at startup, before any scan in this process can start.
+ * Resolves with how many processes it asked to stop.
+ */
+export async function stopOrphanedProfileChromes(
+  profileDir,
+  { listPids = profilePids, signal = (pid, sig) => process.kill(pid, sig), waitMs = 8000 } = {},
+) {
+  if (process.platform === 'win32') return 0;
+  const pids = await listPids(profileDir);
+  for (const pid of pids) {
+    try {
+      signal(pid, 'SIGTERM'); // a normal quit, so cookies are saved
+    } catch {
+      // already gone
+    }
+  }
+  const deadline = Date.now() + waitMs;
+  while (Date.now() < deadline && (await listPids(profileDir)).length) {
+    await new Promise((r) => setTimeout(r, 300));
+  }
+  for (const pid of await listPids(profileDir)) {
+    try {
+      signal(pid, 'SIGKILL');
+    } catch {
+      // already gone
+    }
+  }
+  return pids.length;
 }
 
 /** A profile exists once a browser has been opened on it (the folder is non-empty). */
