@@ -54,6 +54,7 @@ class LeadCollectionPage<T> extends StatefulWidget {
     this.dateOf,
     this.groupWhen,
     this.banner,
+    this.showCounts = true,
   });
 
   final String title;
@@ -63,6 +64,10 @@ class LeadCollectionPage<T> extends StatefulWidget {
 
   /// Singular noun for counts ("business").
   final String noun;
+
+  /// Whether the header shows how many leads there are. Off on the salesman
+  /// app, where the size of the pool is not theirs to see.
+  final bool showCounts;
   final IconData headerIcon;
   final String searchHint;
   final IconData emptyIcon;
@@ -256,6 +261,7 @@ class _LeadCollectionPageState<T> extends State<LeadCollectionPage<T>> {
     }
 
     String subtitle() {
+      if (!widget.showCounts) return widget.emptySubtitle;
       if (c.loading && c.items.isEmpty) return 'Loading…';
       if (c.items.isEmpty && !searching && c.category == null) return widget.emptySubtitle;
       // The true total when the list can count itself; otherwise only what

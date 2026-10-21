@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { FieldValue, Timestamp } from 'firebase-admin/firestore';
-import { DEFAULT_DAILY_LEAD_LIMIT, dayKey, setWhatsAppLeadContacted } from './leadContact.js';
+import { DEFAULT_DAILY_LEAD_LIMIT, dayKey, setWhatsAppLeadContacted, setWhatsAppLeadDealDone } from './leadContact.js';
 
 // An in-memory stand-in for the parts of Firestore the module uses: documents,
 // subcollections, and transactions that read before they write.
@@ -147,4 +147,49 @@ test('bad input and unknown leads are refused before any write', async () => {
   assert.equal((await failureOf(setWhatsAppLeadContacted({ uid: 'me', leadId: '', contacted: true, now: DAY1, db }))).code, 'invalid-argument');
   assert.equal((await failureOf(setWhatsAppLeadContacted({ uid: 'me', leadId: 'L1', contacted: 'yes', now: DAY1, db }))).code, 'invalid-argument');
   assert.equal((await failureOf(contact(db, 'missing', DAY1))).code, 'not-found');
+});
+
+test('a contacted lead becomes a deal done, and reopening it puts it back to Contacted', async () => {
+  const { db, docs } = fakeDb(seed({ limit: 5 }), DAY1);
+  await contact(db, 'L1', DAY1);
+  const done = await setWhatsAppLeadDealDone({ uid: 'me', leadId: 'L1', done: true, db });
+  assert.deepEqual(done, { dealDone: true, changed: true });
+  assert.equal(docs.get('whatsappLeads/L1').status, 'dealDone');
+  assert.ok(docs.get('whatsappLeads/L1').dealDoneAt);
+
+  const again = await setWhatsAppLeadDealDone({ uid: 'me', leadId: 'L1', done: true, db });
+  assert.deepEqual(again, { dealDone: true, changed: false });
+
+  const reopened = await setWhatsAppLeadDealDone({ uid: 'me', leadId: 'L1', done: false, db });
+  assert.deepEqual(reopened, { dealDone: false, changed: true });
+  assert.equal(docs.get('whatsappLeads/L1').status, 'contacted');
+  assert.equal('dealDoneAt' in docs.get('whatsappLeads/L1'), false);
+});
+
+test('only the salesman who contacted a lead can mark it a deal', async () => {
+  const { db } = fakeDb(seed({ limit: 5 }), DAY1);
+  await contact(db, 'L1', DAY1);
+  const err = await failureOf(setWhatsAppLeadDealDone({ uid: 'someone-else', leadId: 'L1', done: true, db }));
+  assert.equal(err.code, 'permission-denied');
+});
+
+test('a New lead cannot be marked a deal done before it is contacted', async () => {
+  const { db } = fakeDb(seed({ limit: 5 }), DAY1);
+  const err = await failureOf(setWhatsAppLeadDealDone({ uid: 'me', leadId: 'L2', done: true, db }));
+  assert.equal(err.code, 'permission-denied'); // L2 has no contactedBy, so it is not this salesman's
+});
+
+test('a done deal cannot be moved back to New until it is reopened', async () => {
+  const { db } = fakeDb(seed({ limit: 5 }), DAY1);
+  await contact(db, 'L1', DAY1);
+  await setWhatsAppLeadDealDone({ uid: 'me', leadId: 'L1', done: true, db });
+  const err = await failureOf(setWhatsAppLeadContacted({ uid: 'me', leadId: 'L1', contacted: false, now: DAY1, db }));
+  assert.equal(err.details.code, 'DEAL_DONE');
+});
+
+test('deal-done input is checked before any write', async () => {
+  const { db } = fakeDb(seed(), DAY1);
+  assert.equal((await failureOf(setWhatsAppLeadDealDone({ uid: 'me', leadId: '', done: true, db }))).code, 'invalid-argument');
+  assert.equal((await failureOf(setWhatsAppLeadDealDone({ uid: 'me', leadId: 'L1', done: 'yes', db }))).code, 'invalid-argument');
+  assert.equal((await failureOf(setWhatsAppLeadDealDone({ uid: 'me', leadId: 'missing', done: true, db }))).code, 'not-found');
 });

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
+import 'deals_page.dart';
 import 'profile_page.dart';
 import 'sales_page.dart';
 import 'verified_leads_screen.dart';
@@ -9,6 +10,7 @@ import 'verified_leads_screen.dart';
 ///
 ///   Leads  — the WhatsApp-validated 1-star review leads, New and Contacted
 ///            (see [VerifiedLeadsScreen]); the daily limit is shown here.
+///   Deals  — the contacted leads this salesman has marked a deal done.
 ///   Sales  — the salesman's own orders and earnings.
 ///   More   — the account, settings and Sign out.
 ///
@@ -31,6 +33,7 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
         index: _selectedIndex,
         children: const [
           VerifiedLeadsScreen(),
+          DealsPage(),
           SalesPage(),
           ProfilePage(),
         ],
@@ -40,6 +43,7 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
         onDestinationSelected: (index) => setState(() => _selectedIndex = index),
         destinations: const [
           NavigationDestination(icon: Icon(AppIcons.chat), label: 'Leads'),
+          NavigationDestination(icon: Icon(AppIcons.handshake), label: 'Deals'),
           NavigationDestination(icon: Icon(AppIcons.wallet), label: 'Sales'),
           NavigationDestination(icon: Icon(AppIcons.user), label: 'More'),
         ],

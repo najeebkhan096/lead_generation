@@ -35,14 +35,14 @@ void main() {
 
   int shownTab(WidgetTester tester) => tester.widget<IndexedStack>(find.byType(IndexedStack)).index!;
 
-  testWidgets('the bottom bar has Leads, Sales and More, and opens on the WhatsApp leads', (tester) async {
+  testWidgets('the bottom bar has Leads, Deals, Sales and More, and opens on the WhatsApp leads', (tester) async {
     await pumpApp(tester);
 
     final labels = tester
         .widgetList<NavigationDestination>(find.byType(NavigationDestination))
         .map((d) => d.label)
         .toList();
-    expect(labels, ['Leads', 'Sales', 'More']);
+    expect(labels, ['Leads', 'Deals', 'Sales', 'More']);
     expect(shownTab(tester), 0);
     expect(find.text('WhatsApp · 1-star reviews'), findsOneWidget);
     expect(find.widgetWithText(ChoiceChip, 'New'), findsWidgets);
@@ -56,10 +56,10 @@ void main() {
     await pumpApp(tester);
 
     await tapTab(tester, 'Sales');
-    expect(shownTab(tester), 1);
+    expect(shownTab(tester), 2);
 
     await tapTab(tester, 'More');
-    expect(shownTab(tester), 2);
+    expect(shownTab(tester), 3);
     expect(find.text('Sign Out'), findsOneWidget);
     expect(find.text('Outreach chat'), findsNothing);
     expect(find.text('My sales'), findsNothing);

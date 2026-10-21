@@ -7,6 +7,9 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_core_platform_interface/test.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lead_mobile/models/lead.dart';
+import 'package:lead_mobile/pages/deals_page.dart';
+import 'package:lead_mobile/pages/verified_lead_detail_page.dart';
 import 'package:lead_mobile/pages/verified_leads_screen.dart';
 import 'package:lead_mobile/services/daily_contact_repository.dart';
 import 'package:lead_mobile/services/verified_lead_repository.dart';
@@ -166,6 +169,21 @@ class _FakeRepo extends VerifiedLeadRepository {
     }
     store.changed();
   }
+
+  @override
+  Future<void> setDealDone(String leadId, {required bool done}) async {
+    store.writes.add('whatsappLeads/$leadId dealDone=$done');
+    final doc = store.col('whatsappLeads')[leadId]!;
+    if (done) {
+      doc['status'] = 'dealDone';
+      doc['dealDoneAt'] = Timestamp.now();
+    } else {
+      doc['status'] = 'contacted';
+      doc.remove('dealDoneAt');
+    }
+    store.changed();
+  }
+
 }
 
 /// Today's limit and count, set by each test.
@@ -562,5 +580,91 @@ void main() {
 
     expect(find.text('Alpha Cafe'), findsOneWidget);
     expect(find.text('Whiskey Web'), findsNothing);
+  });
+
+  group('deals', () {
+    setUp(() {
+      store.col('whatsappLeads')
+        ..['h'] = _verified('Hotel Cafe', at(2), phone: '+15125550008', contacted: at(1, 9), contactedBy: _FakeRepo.me)
+        ..['o'] = _verified('Other Deal', at(2), phone: '+15125550009', contacted: at(1, 9), contactedBy: 'other');
+      store.col('whatsappLeads')['h']!['status'] = 'dealDone';
+      store.col('whatsappLeads')['h']!['dealDoneAt'] = Timestamp.fromDate(at(0, 14));
+      store.col('whatsappLeads')['o']!['status'] = 'dealDone';
+    });
+
+    testWidgets('a done deal leaves the Contacted list', (tester) async {
+      await pumpScreen(tester);
+      await openTab(tester, 'Contacted');
+
+      expect(find.text('Charlie Cafe'), findsOneWidget);
+      expect(find.text('Hotel Cafe'), findsNothing);
+    });
+
+    testWidgets('Deals lists only the deals I closed', (tester) async {
+      tester.view.physicalSize = const Size(900, 2000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(MaterialApp(
+        theme: AppTheme.light(),
+        home: DealsPage(
+          repository: repo,
+          uid: _FakeRepo.me,
+          collectionQuery: (c) => _Query(store, c),
+        ),
+      ));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Hotel Cafe'), findsOneWidget);
+      expect(find.text('Other Deal'), findsNothing);
+      expect(find.text('Charlie Cafe'), findsNothing); // contacted, not a deal
+      expect(find.text('1 deal done'), findsOneWidget);
+    });
+
+    testWidgets('a contacted lead is marked a deal done on its detail page, and can be reopened', (tester) async {
+      tester.view.physicalSize = const Size(900, 2000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final doc = store.col('whatsappLeads')['c']!;
+      final item = VerifiedLead.fromData(Lead.fromDoc(_Doc('c', doc)), doc);
+      await tester.pumpWidget(MaterialApp(
+        theme: AppTheme.light(),
+        home: VerifiedLeadDetailPage(
+          item: item,
+          onDealDone: (done) async {
+            await repo.setDealDone('c', done: done);
+            return true;
+          },
+        ),
+      ));
+      await tester.pumpAndSettle();
+
+      final markDone = find.widgetWithText(FilledButton, 'Mark as deal done');
+      await tester.ensureVisible(markDone);
+      await tester.tap(markDone);
+      await tester.pumpAndSettle();
+
+      expect(store.writes, ['whatsappLeads/c dealDone=true']);
+      expect(store.col('whatsappLeads')['c']!['status'], 'dealDone');
+      expect(find.text('Moved to Deals'), findsOneWidget);
+
+      final reopen = find.widgetWithText(OutlinedButton, 'Reopen to Contacted');
+      await tester.ensureVisible(reopen);
+      await tester.tap(reopen);
+      await tester.pumpAndSettle();
+
+      expect(store.col('whatsappLeads')['c']!['status'], 'contacted');
+      expect(find.widgetWithText(FilledButton, 'Mark as deal done'), findsOneWidget);
+    });
+
+    testWidgets('tapping a lead opens its detail page', (tester) async {
+      await pumpScreen(tester);
+      await openTab(tester, 'Contacted');
+
+      await tester.tap(find.text('Charlie Cafe'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Lead details'), findsOneWidget);
+      expect(find.widgetWithText(FilledButton, 'Mark as deal done'), findsOneWidget);
+    });
   });
 }

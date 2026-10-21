@@ -242,7 +242,7 @@ class _VerifiedArchiveCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 3),
                     Text(
-                      '${archive.totalLeads} verified · ${_timeAgo(archive.createdAt)}',
+                      _timeAgo(archive.createdAt),
                       style: TextStyle(fontSize: 12, color: t.faint),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,

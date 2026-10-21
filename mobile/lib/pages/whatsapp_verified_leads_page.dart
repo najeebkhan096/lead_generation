@@ -203,8 +203,6 @@ class _WhatsAppVerifiedLeadsPageState extends State<WhatsAppVerifiedLeadsPage> w
   Widget build(BuildContext context) {
     final t = context.tokens;
     final visible = _visibleRows;
-    final newCount = _forTab(visible, 0).length;
-    final contactedCount = visible.length - newCount;
     final available = _forTab(visible, _tab);
     final categories = _categoriesOf(available);
     final categoryValue = categories.contains(_category) ? _category : _allCategories;
@@ -226,11 +224,10 @@ class _WhatsAppVerifiedLeadsPageState extends State<WhatsAppVerifiedLeadsPage> w
           children: [
             PageHeader(
               title: 'WhatsApp Verified Leads',
-              subtitle: available.isEmpty
-                  ? (_tab == 0
-                      ? 'Verified businesses from every upload will show up here'
-                      : 'Leads you open on WhatsApp will show up here')
-                  : '${filtered.length} of ${available.length} businesses shown',
+              // No counts here: how many leads there are is for the web console.
+              subtitle: _tab == 0
+                  ? 'Verified businesses from every upload'
+                  : 'Leads you open on WhatsApp',
               trailing: HeaderBadge(icon: AppIcons.shieldCheck, background: t.sageTint, foreground: t.sageDeep),
             ),
             Padding(
@@ -240,8 +237,8 @@ class _WhatsAppVerifiedLeadsPageState extends State<WhatsAppVerifiedLeadsPage> w
                 child: SegmentedButton<int>(
                   showSelectedIcon: false,
                   segments: [
-                    ButtonSegment(value: 0, label: Text('New Lead ($newCount)')),
-                    ButtonSegment(value: 1, label: Text('Contacted ($contactedCount)')),
+                    ButtonSegment(value: 0, label: Text('New Lead')),
+                    ButtonSegment(value: 1, label: Text('Contacted')),
                   ],
                   selected: {_tab},
                   onSelectionChanged: (v) => setState(() {

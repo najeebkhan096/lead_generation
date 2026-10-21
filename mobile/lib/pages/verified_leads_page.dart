@@ -9,6 +9,7 @@ import '../services/verified_lead_repository.dart';
 import '../theme/app_theme.dart';
 import '../widgets/lead_collection_page.dart';
 import '../widgets/verified_lead_card.dart';
+import 'verified_lead_detail_page.dart';
 
 /// The WhatsApp-validated 1-star review leads (`whatsappLeads` documents with
 /// `sourceType == 'review'`) — the only leads the phone shows.
@@ -95,20 +96,36 @@ class _VerifiedLeadsPageState extends State<VerifiedLeadsPage> {
   }
 
   /// Opens WhatsApp for a lead. A New lead is marked Contacted first, and if
-  /// the daily limit refuses that, WhatsApp stays closed.
-  Future<void> _openWhatsApp(VerifiedLead item) async {
+  /// the daily limit refuses that, WhatsApp stays closed. Returns whether
+  /// WhatsApp opened.
+  Future<bool> _openWhatsApp(VerifiedLead item) async {
     final isNew = !item.isContacted;
-    if (isNew && !await _save(item, contacted: true)) return;
+    if (isNew && !await _save(item, contacted: true)) return false;
     final opened = await widget.actions.whatsapp(item.lead.whatsAppUrl);
-    if (!isNew) return;
+    if (!isNew) return opened;
     if (!opened) {
       await _save(item, contacted: false);
       _say('Could not open WhatsApp');
-      return;
+      return false;
     }
     _say(
       'Moved to Contacted',
       action: SnackBarAction(label: 'Undo', onPressed: () => _moveTo(item, contacted: false, offerUndo: false)),
+    );
+    return true;
+  }
+
+  /// The lead's own page, where it can be marked a deal done.
+  void _openDetail(VerifiedLead item) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => VerifiedLeadDetailPage(
+          item: item,
+          actions: widget.actions,
+          onWhatsApp: () => _openWhatsApp(item),
+          onDealDone: (done) => runLeadWrite(context, () => _repo.setDealDone(item.lead.id, done: done)),
+        ),
+      ),
     );
   }
 
@@ -138,6 +155,8 @@ class _VerifiedLeadsPageState extends State<VerifiedLeadsPage> {
           : unavailable
               ? const _DailyBannerUnavailable()
               : null,
+      // The size of the pool stays on the web console, not on the salesman's phone.
+      showCounts: false,
       searchHint: 'Search WhatsApp leads...',
       emptyIcon: AppIcons.chat,
       emptyTitle: reached ? 'Daily limit reached' : 'No WhatsApp leads here yet',
@@ -191,7 +210,8 @@ class _VerifiedLeadsPageState extends State<VerifiedLeadsPage> {
             (category) => contactedList ? myContacted(category) : base(category).orderBy('updatedAt', descending: true),
           ],
           map: (doc) => VerifiedLead.fromData(Lead.fromDoc(doc), doc.data()),
-          include: contactedList ? null : (row) => !hideNew && !row.isContacted,
+          // A done deal lives on the Deals tab, not here.
+          include: contactedList ? (row) => !row.isDealDone : (row) => !hideNew && !row.isContacted,
         );
       },
       // Grouped by the date each list is ordered by.
@@ -205,6 +225,7 @@ class _VerifiedLeadsPageState extends State<VerifiedLeadsPage> {
         actions: widget.actions,
         onWhatsApp: () => _openWhatsApp(row),
         onMoveToNew: row.isContacted ? () => _moveTo(row, contacted: false) : null,
+        onOpen: () => _openDetail(row),
       ),
     );
   }

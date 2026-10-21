@@ -15,6 +15,7 @@ import { getFirestore } from './firebase.js';
 export const DEFAULT_DAILY_LEAD_LIMIT = 10;
 
 const LEADS = 'whatsappLeads';
+const DEAL_DONE = 'dealDone';
 
 // A day runs midnight to midnight in this zone, for every salesman. Qatar, the
 // zone the team's clocks and the admin console show, so "today" matches them.
@@ -75,6 +76,9 @@ export async function setWhatsAppLeadContacted({ uid, leadId, contacted, now = n
     if (lead.contactedBy !== uid) {
       throw new HttpsError('permission-denied', 'Only the salesman who contacted this lead can move it back.', { code: 'NOT_YOURS' });
     }
+    if (lead.status === DEAL_DONE) {
+      throw new HttpsError('failed-precondition', 'This is a done deal. Reopen it before moving it back to New.', { code: 'DEAL_DONE' });
+    }
 
     // Moving back frees today's slot only when the contact itself was today.
     const contactedDay = lead.contactedAt?.toDate ? dayKey(lead.contactedAt.toDate()) : null;
@@ -84,5 +88,45 @@ export async function setWhatsAppLeadContacted({ uid, leadId, contacted, now = n
     tx.update(leadRef, { status: 'lead', contactedAt: FieldValue.delete(), contactedBy: FieldValue.delete() });
     if (refund) tx.set(counterRef, { count: Math.max(0, used - 1) }, { merge: true });
     return { contacted: false, counted: refund };
+  });
+}
+
+/**
+ * Marks a lead this salesman contacted as a deal done (`done: true`), or moves
+ * it back to Contacted (`false`). Only the salesman who contacted the lead can
+ * do either, and only a Contacted lead can become a deal.
+ *
+ *   whatsappLeads/{leadId}.status     contacted <-> dealDone
+ *   whatsappLeads/{leadId}.dealDoneAt  set when it becomes a deal, removed on reopen
+ */
+export async function setWhatsAppLeadDealDone({ uid, leadId, done, db = getFirestore() }) {
+  if (typeof leadId !== 'string' || !leadId) {
+    throw new HttpsError('invalid-argument', 'leadId is required.', { code: 'BAD_LEAD' });
+  }
+  if (typeof done !== 'boolean') {
+    throw new HttpsError('invalid-argument', 'done must be true or false.', { code: 'BAD_VALUE' });
+  }
+
+  const leadRef = db.collection(LEADS).doc(leadId);
+  return db.runTransaction(async (tx) => {
+    const leadSnap = await tx.get(leadRef);
+    if (!leadSnap.exists) throw new HttpsError('not-found', 'That lead no longer exists.', { code: 'NOT_FOUND' });
+    const lead = leadSnap.data();
+    if (lead.contactedBy !== uid) {
+      throw new HttpsError('permission-denied', 'Only the salesman who contacted this lead can mark it a deal.', { code: 'NOT_YOURS' });
+    }
+
+    if (done) {
+      if (lead.status === DEAL_DONE) return { dealDone: true, changed: false };
+      if (lead.status !== 'contacted') {
+        throw new HttpsError('failed-precondition', 'Only a contacted lead can be marked a deal done.', { code: 'NOT_CONTACTED' });
+      }
+      tx.update(leadRef, { status: DEAL_DONE, dealDoneAt: FieldValue.serverTimestamp() });
+      return { dealDone: true, changed: true };
+    }
+
+    if (lead.status !== DEAL_DONE) return { dealDone: false, changed: false };
+    tx.update(leadRef, { status: 'contacted', dealDoneAt: FieldValue.delete() });
+    return { dealDone: false, changed: true };
   });
 }

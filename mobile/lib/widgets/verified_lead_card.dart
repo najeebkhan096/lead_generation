@@ -14,6 +14,7 @@ class VerifiedLead {
     required this.lead,
     this.verifiedAt,
     this.contactedAt,
+    this.dealDoneAt,
   });
 
   final Lead lead;
@@ -24,11 +25,17 @@ class VerifiedLead {
   /// When a salesperson marked it contacted (null while it is a New lead).
   final DateTime? contactedAt;
 
+  /// When it was marked a deal done (null unless it is one).
+  final DateTime? dealDoneAt;
+
   /// The verified date to show: when it was confirmed, else the last write.
   DateTime? get shownDate => verifiedAt ?? lead.updatedAt ?? lead.createdAt;
 
   /// Anything past New (contacted, and the later deal stages) is "contacted".
   bool get isContacted => lead.status != LeadStatus.lead;
+
+  /// A contacted lead the salesman has closed as a deal.
+  bool get isDealDone => lead.status == LeadStatus.dealDone;
 
   /// Reads the WhatsApp check off a `whatsappLeads` document ([data]); the
   /// shared lead fields come from [lead].
@@ -38,6 +45,7 @@ class VerifiedLead {
       lead: lead,
       verifiedAt: checked is Timestamp ? checked.toDate() : null,
       contactedAt: data['contactedAt'] is Timestamp ? (data['contactedAt'] as Timestamp).toDate() : null,
+      dealDoneAt: data['dealDoneAt'] is Timestamp ? (data['dealDoneAt'] as Timestamp).toDate() : null,
     );
   }
 }
@@ -70,6 +78,7 @@ class VerifiedLeadCard extends StatelessWidget {
     required this.item,
     this.onWhatsApp,
     this.onMoveToNew,
+    this.onOpen,
     this.actions = const LeadActions(),
   });
 
@@ -83,6 +92,9 @@ class VerifiedLeadCard extends StatelessWidget {
 
   /// Moves a contacted lead back to New (button shown only when set).
   final Future<void> Function()? onMoveToNew;
+
+  /// Opens the lead's detail page. Tapping the business name does it.
+  final VoidCallback? onOpen;
 
   Future<void> _act(BuildContext context, Future<bool> Function() action, String failure) async {
     final ok = await action();
@@ -154,31 +166,36 @@ class VerifiedLeadCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 44,
-                height: 44,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: t.accentTint,
-                  borderRadius: BorderRadius.circular(AppTheme.radius),
+          InkWell(
+            onTap: onOpen,
+            borderRadius: const BorderRadius.all(Radius.circular(AppTheme.radius)),
+            child:
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: t.accentTint,
+                    borderRadius: BorderRadius.circular(AppTheme.radius),
+                  ),
+                  child: Text(initial, style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: t.accentText)),
                 ),
-                child: Text(initial, style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: t.accentText)),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(l.business, style: text.titleMedium, maxLines: 2, overflow: TextOverflow.ellipsis),
-                    const SizedBox(height: 2),
-                    Text(where, style: text.bodySmall, maxLines: 1, overflow: TextOverflow.ellipsis),
-                  ],
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(l.business, style: text.titleMedium, maxLines: 2, overflow: TextOverflow.ellipsis),
+                      const SizedBox(height: 2),
+                      Text(where, style: text.bodySmall, maxLines: 1, overflow: TextOverflow.ellipsis),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
           if (verified != null || item.isContacted) ...[
             const SizedBox(height: 12),

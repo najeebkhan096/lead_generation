@@ -1,7 +1,6 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
-import '../services/lead_repository.dart';
 import '../services/open_links.dart';
 import '../theme/app_theme.dart';
 import '../widgets/page_header.dart';
@@ -36,8 +35,6 @@ class ProfilePage extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _IdentityCard(user: user),
-                    const SizedBox(height: 16),
-                    const _StatsRow(),
                     const SizedBox(height: 28),
                     _ProfileItem(
                       icon: AppIcons.shieldCheck,
@@ -285,105 +282,6 @@ class _IdentityCard extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-/// Pipeline numbers, from server-side count aggregation — three tiny
-/// reads instead of downloading every lead to count it.
-class _StatsRow extends StatefulWidget {
-  const _StatsRow();
-
-  @override
-  State<_StatsRow> createState() => _StatsRowState();
-}
-
-class _StatsRowState extends State<_StatsRow> {
-  late final Future<({int total, int inProgress, int won})> _counts =
-      LeadRepository().fetchPipelineCounts();
-
-  @override
-  Widget build(BuildContext context) {
-    final t = context.tokens;
-    return FutureBuilder<({int total, int inProgress, int won})>(
-      future: _counts,
-      builder: (context, snapshot) {
-        final c = snapshot.data;
-        String show(int? n) => n == null ? '–' : '$n';
-
-        return Row(
-          children: [
-            _Stat(
-              value: show(c?.total),
-              label: 'Leads',
-              background: t.neutralTint,
-              foreground: t.subtle,
-            ),
-            const SizedBox(width: 10),
-            _Stat(
-              value: show(c?.inProgress),
-              label: 'In progress',
-              background: t.accentTint,
-              foreground: t.accentTextStrong,
-            ),
-            const SizedBox(width: 10),
-            _Stat(
-              value: show(c?.won),
-              label: 'Deals won',
-              background: t.sageTint,
-              foreground: t.sageTextStrong,
-            ),
-          ],
-        );
-      },
-    );
-  }
-}
-
-class _Stat extends StatelessWidget {
-  const _Stat({
-    required this.value,
-    required this.label,
-    required this.background,
-    required this.foreground,
-  });
-
-  final String value;
-  final String label;
-  final Color background;
-  final Color foreground;
-
-  @override
-  Widget build(BuildContext context) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 14),
-        decoration: BoxDecoration(
-          color: background,
-          borderRadius: BorderRadius.circular(AppTheme.radius + 4),
-        ),
-        child: Column(
-          children: [
-            Text(
-              value,
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w800,
-                color: foreground,
-              ),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 11.5,
-                fontWeight: FontWeight.w600,
-                color: foreground,
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }

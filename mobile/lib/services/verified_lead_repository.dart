@@ -24,4 +24,12 @@ class VerifiedLeadRepository {
         .httpsCallable('setWhatsAppLeadContacted');
     await callable.call<dynamic>({'leadId': leadId, 'contacted': contacted});
   }
+
+  /// Marks a lead this salesman contacted as a deal done (`done: true`), or
+  /// reopens it to Contacted (`false`). The server refuses other salesmen's leads.
+  Future<void> setDealDone(String leadId, {required bool done}) async {
+    final callable = (_functions ?? FirebaseFunctions.instanceFor(region: 'us-central1'))
+        .httpsCallable('setWhatsAppLeadDealDone');
+    await callable.call<dynamic>({'leadId': leadId, 'done': done});
+  }
 }

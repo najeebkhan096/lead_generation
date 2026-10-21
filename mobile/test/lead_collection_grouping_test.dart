@@ -55,7 +55,7 @@ class _FakeQuery implements Query<Map<String, dynamic>> {
 
 typedef _Lead = ({String name, DateTime found});
 
-Widget _page(List<_Doc> rows) => MaterialApp(
+Widget _page(List<_Doc> rows, {bool showCounts = true}) => MaterialApp(
       theme: AppTheme.light(),
       home: LeadCollectionPage<_Lead>(
         title: 'Discover leads',
@@ -79,6 +79,7 @@ Widget _page(List<_Doc> rows) => MaterialApp(
         itemBuilder: (context, l) => SizedBox(height: 56, child: Text(l.name)),
         searchText: (l) => l.name.toLowerCase(),
         categoryOf: (_) => '',
+        showCounts: showCounts,
       ),
     );
 
@@ -131,5 +132,19 @@ void main() {
     expect(find.text('YESTERDAY'), findsNothing);
     expect(find.text('Cafe A'), findsOneWidget);
     expect(find.textContaining('new today'), findsNothing);
+  });
+
+  testWidgets('with counts off, the header never says how many leads there are', (tester) async {
+    tester.view.physicalSize = const Size(900, 1800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(_page(rows, showCounts: false));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('businesses'), findsNothing);
+    expect(find.textContaining('new today'), findsNothing);
+    expect(find.text('Nothing yet'), findsOneWidget);
+    expect(find.text('Cafe A'), findsOneWidget);
   });
 }
