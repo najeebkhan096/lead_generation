@@ -8,7 +8,13 @@ enum LeadCollection {
   reviewLeads('leads', '/api/db/leads'),
 
   /// Numbers confirmed on WhatsApp (`whatsappLeads`).
-  whatsappLeads('whatsappLeads', '/api/db/whatsapp-leads');
+  whatsappLeads('whatsappLeads', '/api/db/whatsapp-leads'),
+
+  /// Businesses confirmed to have no website (`websiteLeads`).
+  websiteLeads('websiteLeads', '/api/db/website-leads'),
+
+  /// Businesses whose website publishes a business email (`emailLeads`).
+  emailLeads('emailLeads', '/api/db/email-leads');
 
   const LeadCollection(this.firestoreName, this.path);
 

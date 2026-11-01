@@ -13,6 +13,12 @@ import {
   getSavedWhatsAppLeads,
   deleteSavedWhatsAppLead,
   deleteSavedWhatsAppLeadsByCategory,
+  getSavedWebsiteLeads,
+  deleteSavedWebsiteLead,
+  deleteSavedWebsiteLeadsByCategory,
+  getSavedEmailLeads,
+  deleteSavedEmailLead,
+  deleteSavedEmailLeadsByCategory,
 } from './dbController.js';
 
 const router = Router();
@@ -29,6 +35,14 @@ router.delete('/leads', deleteSavedLeadsByCategory);
 router.get('/whatsapp-leads', getSavedWhatsAppLeads);
 router.delete('/whatsapp-leads/:id', deleteSavedWhatsAppLead);
 router.delete('/whatsapp-leads', deleteSavedWhatsAppLeadsByCategory);
+// "Website leads" — businesses confirmed to have no website; "Email leads" —
+// businesses whose website publishes a business email. Both are filled by the scan.
+router.get('/website-leads', getSavedWebsiteLeads);
+router.delete('/website-leads/:id', deleteSavedWebsiteLead);
+router.delete('/website-leads', deleteSavedWebsiteLeadsByCategory);
+router.get('/email-leads', getSavedEmailLeads);
+router.delete('/email-leads/:id', deleteSavedEmailLead);
+router.delete('/email-leads', deleteSavedEmailLeadsByCategory);
 router.get('/searches', getSavedSearches);
 router.get('/stats', getDbStats);
 router.post('/clear', clearDatabase);

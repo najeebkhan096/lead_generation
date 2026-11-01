@@ -1,6 +1,6 @@
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { readRatingAndReviewCount, collectOneStarReviews } from './googleMapsScraper.js';
+import { readRatingAndReviewCount, collectOneStarReviews, readWebsiteStatus } from './googleMapsScraper.js';
 import { SORT_STATUS, resetSortDiagnostics } from './reviewSort.js';
 import { placeHtml, manyReviews } from './mapsFixture.js';
 import { isWithinRange } from '../lib/dateUtils.js';
@@ -126,4 +126,22 @@ domTest('a restaurant-style page (tall header, lazily drawn cards) is read compl
   assert.equal(access.sorted, true);
   assert.equal(access.complete, true);
   assert.equal(found.length, 18);
+});
+
+// ---- website status: "missing" must be proven, a failed read is "unknown" --------
+
+domTest('a listing with a website link is available', async (page) => {
+  await page.setContent('<a data-item-id="authority" href="https://joes.test/">joes.test</a>');
+  assert.equal(await readWebsiteStatus(page, { website: 'https://joes.test/', address: null, phone: null }), 'available');
+});
+
+domTest('a fully rendered listing without a website link is missing', async (page) => {
+  await page.setContent('<button data-item-id="address">1 Main St</button><button data-item-id="phone:tel:5125550100">(512) 555-0100</button>');
+  assert.equal(await readWebsiteStatus(page, { website: null, address: '1 Main St', phone: null }), 'missing');
+  assert.equal(await readWebsiteStatus(page, { website: null, address: null, phone: null }), 'missing', 'info rows are on the page');
+});
+
+domTest('a page whose info panel never rendered is unknown, not missing', async (page) => {
+  await page.setContent('<h1>Joe</h1><div>Loading…</div>');
+  assert.equal(await readWebsiteStatus(page, { website: null, address: null, phone: null }), 'unknown');
 });

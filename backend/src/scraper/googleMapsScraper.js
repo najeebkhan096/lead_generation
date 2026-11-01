@@ -606,6 +606,21 @@ export async function readRatingAndReviewCount(page) {
   return { rating, totalReviews };
 }
 
+/**
+ * 'available' | 'missing' | 'unknown'.
+ *
+ * "No website" is only a conclusion when the listing's info panel (address,
+ * phone, plus code… every row carries a data-item-id) rendered and still
+ * showed no website link. A timeout or a half-loaded page also yields a null
+ * website, and must not be mistaken for a business that has none.
+ */
+export async function readWebsiteStatus(page, { website, address, phone }) {
+  if (website) return 'available';
+  if (address || phone) return 'missing';
+  const rows = await page.locator('[data-item-id]').count().catch(() => 0);
+  return rows > 0 ? 'missing' : 'unknown';
+}
+
 async function extractBusinessFromPlacePage(page, category, location, country, dateRange) {
   const name = await textOrNull(page, ['h1.DUwDvf', 'h1']);
   if (!name) return null;
@@ -628,6 +643,8 @@ async function extractBusinessFromPlacePage(page, category, location, country, d
     // ignore
   }
 
+  const websiteStatus = await readWebsiteStatus(page, { website, address, phone });
+
   const { reviews, access: reviewAccess } = await collectOneStarReviews(page, { totalReviews, dateRange });
 
   return {
@@ -637,6 +654,7 @@ async function extractBusinessFromPlacePage(page, category, location, country, d
     address: address || location,
     phone: phone || null,
     website: website || null,
+    websiteStatus,
     mapsUrl: withEnglish(page.url(), country),
     rating,
     totalReviews,

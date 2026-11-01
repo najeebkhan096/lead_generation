@@ -128,6 +128,33 @@ Nothing loads a whole collection. `websiteLeads` alone holds tens of thousands o
 
 **Mobile**: `PagedQueryController` behind `LeadCollectionPage`. Lists are live: the controller listens (`snapshots()`) to the first page and grows that one listener's `limit` a page at a time as you scroll, so a lead validated in the console or marked Contacted on another phone appears on its own (pull-to-refresh just rebuilds the listener). "Discover leads" starts each salesman at a point derived from their uid in the document-id order and wraps around, which keeps salesmen on different leads without downloading the pool to shuffle it. Search on the phone filters what has been read (up to 1,500 documents) — pick a category to search further. Profile stats use server-side `count()`.
 
+## 4c. Website leads and email leads (collected during the scan)
+
+While the scan reads a city it already has each opened business's website link, so after the city's review results are recorded (`stateCityOrchestrator.js` → `modules/website/siteLeadPipeline.js`) it also:
+
+| Business | Result |
+|----------|--------|
+| Listing fully read, **no website link** | upserted to `websiteLeads` (`websiteStatus: "missing"`) |
+| Has a website | queued for a background email lookup (`modules/website/emailQueue.js`) |
+| Website could not be told (page half-loaded, timeout) | **not** a website lead; remembered as `website.status = "unknown"` in `leadChecks` |
+
+The review path is untouched: this runs after a city's 1-star results are spooled, is wrapped so it cannot fail the city, and the email lookups run in a bounded queue (3 at a time, 5,000 backlog) beside the scan, not inside it.
+
+**Email lookup** (`websiteFetcher.js`, `emailExtraction.js`): plain HTTP, no browser. It reads the homepage and up to 3 same-site contact/about pages, and extracts only addresses the page publishes (`mailto:`, visible text, Cloudflare `data-cfemail`), normalised, syntax-checked and de-duplicated (placeholders, file names and no-reply addresses dropped, at most 5 kept). It respects robots.txt, uses a 10 s timeout and one retry for timeouts/network/5xx, refuses redirects to private addresses, and never attempts to get past a CAPTCHA, bot check or login (`check_failed` / `blocked`). Nothing is guessed.
+
+| Status | Meaning |
+|--------|---------|
+| `found` | at least one address published; saved to `emailLeads` with the page it came from |
+| `not_found` | every page read published none |
+| `check_failed` | the site could not be read (`timeout`, `blocked`, `http_5xx`…) — not evidence there is no email |
+| `not_checked` | deliberately skipped (robots.txt, unusable URL) |
+
+`emailLeads/{id}` holds only found addresses (`emails: [{address, sourceUrl, foundAt}]`, `email` = first); a later failed or empty check records `lastCheckStatus` on it but never removes an address. Every outcome is remembered in `leadChecks/{id}.email`, so a re-scan skips a business checked recently (30 days found/not_found, 2 days failed). A business can be several lead types: ids are the same in every collection and `leadTypes` lists `no_website` / `email` / `review`.
+
+**Not covered:** listings the scan skips because their rating and review count make a 1-star review impossible are never opened, so their website status is not known. `EMAIL_EXTRACTION_ENABLED=false` turns the email lookups off; `EMAIL_EXTRACTION_CONCURRENCY` (1–8) sets how many run at once.
+
+API: `GET /api/db/website-leads`, `GET /api/db/email-leads` (paged like the other lists; `DELETE …/:id` and `DELETE …?category=`). Web: **More → Website leads / Email leads**.
+
 ## 4a. Validation
 
 | | WhatsApp | Email |

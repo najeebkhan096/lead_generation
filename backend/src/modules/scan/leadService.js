@@ -573,6 +573,9 @@ export async function scrapeOneCity(category, { city, state, center }, {
     duplicatesSkipped: businesses.duplicatesSkipped || 0,
     prefiltered: businesses.prefiltered || 0,
     listingsFound: businesses.listingsFound || 0,
+    // What the scan read of each opened business, without its reviews — for
+    // the website / email lead pipeline (see website/siteLeadPipeline.js).
+    siteBusinesses: businesses.map(({ reviews, reviewAccess, ...rest }) => rest),
   };
 }
 

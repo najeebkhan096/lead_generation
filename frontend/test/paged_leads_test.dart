@@ -54,6 +54,8 @@ class _FakeRepository implements LeadRepository {
     final all = switch (collection) {
       LeadCollection.whatsappLeads => leads,
       LeadCollection.reviewLeads => leads,
+      LeadCollection.websiteLeads => leads,
+      LeadCollection.emailLeads => leads,
     };
     final q = (query ?? '').trim().toLowerCase();
     bool matches(Lead l) {

@@ -15,11 +15,13 @@ import {
   getWhatsAppLeadCount,
   clearAllWhatsAppLeads,
 } from '../validation/whatsapp/whatsappLeadStore.js';
+import { listWebsiteLeads, deleteWebsiteLead, deleteWebsiteLeadsByCategory } from './websiteLeadStore.js';
+import { listEmailLeads, deleteEmailLead, deleteEmailLeadsByCategory } from './emailLeadStore.js';
 import { getFirebaseStatus, getFirestore } from '../../firebase/admin.js';
 import { listCategories } from '../../lib/pagination.js';
 import { getOverview, invalidateOverview } from './overview.js';
 
-const CATEGORY_COLLECTIONS = ['leads', 'whatsappLeads'];
+const CATEGORY_COLLECTIONS = ['leads', 'whatsappLeads', 'websiteLeads', 'emailLeads'];
 
 /** The paging/filter parameters every lead list accepts — see lib/pagination.js. */
 function pageParams(req) {
@@ -33,7 +35,7 @@ function pageParams(req) {
 }
 
 /**
- * GET /api/db/categories?collection=leads|whatsappLeads
+ * GET /api/db/categories?collection=leads|whatsappLeads|websiteLeads|emailLeads
  * — distinct categories with counts, for the category filter. Cached
  * server-side; `refresh=1` forces a rescan.
  */
@@ -185,6 +187,75 @@ export async function deleteSavedWhatsAppLeadsByCategory(req, res) {
     });
   } catch (err) {
     return res.status(err.status || 500).json({ error: err.message || 'Failed to delete WhatsApp leads' });
+  }
+}
+
+/**
+ * GET /api/db/website-leads — businesses confirmed to have no website
+ * (`websiteLeads`). A business whose website merely failed to load is never
+ * in this list.
+ */
+export async function getSavedWebsiteLeads(req, res) {
+  try {
+    return res.json(await listWebsiteLeads(pageParams(req)));
+  } catch (err) {
+    return res.status(err.status || 500).json({ error: err.message || 'Failed to load website leads' });
+  }
+}
+
+/** DELETE /api/db/website-leads/:id — `:id` is the Firestore document id. */
+export async function deleteSavedWebsiteLead(req, res) {
+  try {
+    await deleteWebsiteLead(req.params.id);
+    return res.json({ success: true });
+  } catch (err) {
+    return res.status(err.status || 500).json({ error: err.message || 'Failed to delete website lead' });
+  }
+}
+
+/** DELETE /api/db/website-leads?category=... — every website lead in an exact category. */
+export async function deleteSavedWebsiteLeadsByCategory(req, res) {
+  try {
+    const category = String(req.query.category || '').trim();
+    if (!category) return res.status(400).json({ error: 'category query param is required' });
+    const result = await deleteWebsiteLeadsByCategory(category);
+    return res.json({ success: true, ...result, message: `Deleted ${result.deleted} website lead(s) in category "${category}".` });
+  } catch (err) {
+    return res.status(err.status || 500).json({ error: err.message || 'Failed to delete website leads' });
+  }
+}
+
+/**
+ * GET /api/db/email-leads — businesses whose website publishes a business
+ * email address (`emailLeads`), each with the page it was found on.
+ */
+export async function getSavedEmailLeads(req, res) {
+  try {
+    return res.json(await listEmailLeads(pageParams(req)));
+  } catch (err) {
+    return res.status(err.status || 500).json({ error: err.message || 'Failed to load email leads' });
+  }
+}
+
+/** DELETE /api/db/email-leads/:id — `:id` is the Firestore document id. */
+export async function deleteSavedEmailLead(req, res) {
+  try {
+    await deleteEmailLead(req.params.id);
+    return res.json({ success: true });
+  } catch (err) {
+    return res.status(err.status || 500).json({ error: err.message || 'Failed to delete email lead' });
+  }
+}
+
+/** DELETE /api/db/email-leads?category=... — every email lead in an exact category. */
+export async function deleteSavedEmailLeadsByCategory(req, res) {
+  try {
+    const category = String(req.query.category || '').trim();
+    if (!category) return res.status(400).json({ error: 'category query param is required' });
+    const result = await deleteEmailLeadsByCategory(category);
+    return res.json({ success: true, ...result, message: `Deleted ${result.deleted} email lead(s) in category "${category}".` });
+  } catch (err) {
+    return res.status(err.status || 500).json({ error: err.message || 'Failed to delete email leads' });
   }
 }
 

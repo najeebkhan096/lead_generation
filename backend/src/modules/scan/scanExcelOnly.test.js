@@ -18,7 +18,7 @@ const noSite = {
 test('a business with no website and no 1-star review is not a lead', async () => {
   const result = await scrapeOneCity('cafe', { city: 'Austin', state: 'TX' }, { dateRange: '28', scrapeLocationFn: async () => [noSite] });
   assert.equal(result.leads.length, 0);
-  assert.equal(result.websiteLeads, undefined, 'no-website results are not part of a scan any more');
+  assert.equal(result.websiteLeads, undefined, 'no-website businesses are not part of the review result (they go to the website pipeline via siteBusinesses)');
   assert.equal(result.businessesScraped, 1);
 });
 

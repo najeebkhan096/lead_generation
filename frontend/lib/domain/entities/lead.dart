@@ -29,6 +29,25 @@ class BadReview extends Equatable {
   List<Object?> get props => [stars, text, date, reviewer, link];
 }
 
+/// One email address a business's website publishes, and the page it was
+/// read from.
+class LeadEmail extends Equatable {
+  const LeadEmail({required this.address, this.sourceUrl});
+
+  final String address;
+
+  /// The page the address was found on — so a result can be traced back.
+  final String? sourceUrl;
+
+  factory LeadEmail.fromJson(Map<String, dynamic> json) => LeadEmail(
+        address: (json['address'] as String?) ?? '',
+        sourceUrl: json['sourceUrl'] as String?,
+      );
+
+  @override
+  List<Object?> get props => [address, sourceUrl];
+}
+
 /// A business with a recent 1-star review (see the scan), optionally verified
 /// on WhatsApp.
 class Lead extends Equatable {
@@ -49,6 +68,11 @@ class Lead extends Equatable {
     required this.badReview,
     this.savedAt,
     this.whatsAppCheckedAt,
+    this.websiteStatus,
+    this.email,
+    this.emails = const [],
+    this.emailStatus,
+    this.emailSourceUrl,
   });
 
   final String id;
@@ -79,6 +103,17 @@ class Lead extends Equatable {
   /// means it's never been checked (unverified, not "not on WhatsApp").
   final DateTime? whatsAppCheckedAt;
 
+  /// Website leads only: `missing` for a business confirmed to have no
+  /// website. `null` on review leads.
+  final String? websiteStatus;
+
+  /// Email leads only: the headline address, every address found, the
+  /// extraction status (`found`) and the page the headline address came from.
+  final String? email;
+  final List<LeadEmail> emails;
+  final String? emailStatus;
+  final String? emailSourceUrl;
+
   factory Lead.fromJson(Map<String, dynamic> json) {
     return Lead(
       id: (json['id'] as String?) ?? json['business']?.toString() ?? '',
@@ -99,6 +134,14 @@ class Lead extends Equatable {
       ),
       savedAt: DateTime.tryParse((json['savedAt'] as String?) ?? ''),
       whatsAppCheckedAt: DateTime.tryParse((json['whatsAppCheckedAt'] as String?) ?? ''),
+      websiteStatus: json['websiteStatus'] as String?,
+      email: json['email'] as String?,
+      emails: ((json['emails'] as List<dynamic>?) ?? const [])
+          .map((e) => LeadEmail.fromJson(e as Map<String, dynamic>))
+          .where((e) => e.address.isNotEmpty)
+          .toList(),
+      emailStatus: json['emailStatus'] as String?,
+      emailSourceUrl: json['emailSourceUrl'] as String?,
     );
   }
 
@@ -123,6 +166,11 @@ class Lead extends Equatable {
       badReview: badReview,
       savedAt: savedAt,
       whatsAppCheckedAt: whatsAppCheckedAt ?? this.whatsAppCheckedAt,
+      websiteStatus: websiteStatus,
+      email: email,
+      emails: emails,
+      emailStatus: emailStatus,
+      emailSourceUrl: emailSourceUrl,
     );
   }
 

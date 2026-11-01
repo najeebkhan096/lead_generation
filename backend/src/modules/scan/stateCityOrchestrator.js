@@ -29,6 +29,7 @@ import { sharedPace, _resetSharedPace } from '../../scraper/rateLimit.js';
 import { buildCoverage, isCoverageTier } from '../../data/usCoverage.js';
 import { completedCitiesFromStates, placeIdsFromLeads, applyResumeProgress, checkpointDue } from './scanProgress.js';
 import { scrapeOneCity } from './leadService.js';
+import { recordCityWebsites } from '../website/siteLeadPipeline.js';
 import { Mutex } from '../../lib/asyncMutex.js';
 import { writeLeadsXlsxFile, xlsxBufferToJson, sheetsToLeadsJson } from '../archive/exportService.js';
 import { createLeadSpool } from './leadSpool.js';
@@ -300,7 +301,7 @@ async function scanStateCities(job, category, stateRec) {
 
       try {
         await ensureBrowser(job);
-        const { leads, businessesScraped, reviewIssues, skippedListings, duplicatesSkipped, prefiltered } = await scrapeOneCity(
+        const { leads, businessesScraped, reviewIssues, skippedListings, duplicatesSkipped, prefiltered, siteBusinesses } = await scrapeOneCity(
           category,
           { city, state: stateRec.state, center: job.citySpecs?.[stateRec.state]?.[city] },
           {
@@ -369,6 +370,20 @@ async function scanStateCities(job, category, stateRec) {
             (skippedListings ? ` · ${skippedListings} listing${skippedListings === 1 ? '' : 's'} skipped` : ''),
           reviewIssues?.incomplete || skippedListings ? 'warn' : 'info'
         );
+
+        // Only now that this city's review results are fully recorded: file the
+        // businesses with no website, and queue those with one for email lookup.
+        // Failures are contained here: they cannot affect the review scan or the city's status.
+        try {
+          await (job.recordCityWebsitesFn || recordCityWebsites)(siteBusinesses, {
+            state: stateRec.state,
+            country: 'US',
+            reviewLeads: leads,
+            log: (message, level) => logActivity(job, `"${category}" · ${stateRec.state} · ${city} — ${message}`, level),
+          });
+        } catch (err) {
+          logActivity(job, `"${category}" · ${stateRec.state} · ${city} — website/email processing failed (${err.message}); review results are unaffected.`, 'warn');
+        }
       } catch (err) {
         if (err instanceof GoogleBlockedError || err?.code === 'GOOGLE_BLOCKED') {
           // Not a failed city: Google asked this network to slow down. Put the

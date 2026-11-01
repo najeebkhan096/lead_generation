@@ -4,6 +4,8 @@ import '../../domain/entities/lead.dart';
 import '../../domain/entities/twilio_test_lead.dart';
 import '../../presentation/pages/business_details_page.dart';
 import '../../presentation/pages/dashboard_page.dart';
+import '../../presentation/pages/email_leads_page.dart';
+import '../../presentation/pages/website_leads_page.dart';
 import '../../presentation/pages/excel_archive_page.dart';
 import '../../presentation/pages/excel_scan_page.dart';
 import '../../presentation/pages/multi_scan_page.dart';
@@ -123,6 +125,22 @@ final GoRouter appRouter = GoRouter(
             GoRoute(
               path: '/whatsapp',
               builder: (context, state) => const WhatsAppCheckerPage(),
+            ),
+          ],
+        ),
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: '/website-leads',
+              builder: (context, state) => const WebsiteLeadsPage(),
+            ),
+          ],
+        ),
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: '/email-leads',
+              builder: (context, state) => const EmailLeadsPage(),
             ),
           ],
         ),

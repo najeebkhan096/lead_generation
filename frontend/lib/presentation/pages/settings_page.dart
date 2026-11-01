@@ -46,6 +46,24 @@ class SettingsPage extends StatelessWidget {
                 ),
                 const SizedBox(height: 20),
                 _SettingsSection(
+                  title: 'More lead lists',
+                  items: [
+                    _SettingsItem(
+                      icon: AppIcons.globe,
+                      title: 'Website leads',
+                      subtitle: 'Businesses Google Maps lists with no website',
+                      onTap: () => context.go('/website-leads'),
+                    ),
+                    _SettingsItem(
+                      icon: AppIcons.mail,
+                      title: 'Email leads',
+                      subtitle: 'Business emails published on their websites',
+                      onTap: () => context.go('/email-leads'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                _SettingsSection(
                   title: 'Business tools',
                   items: [
                     _SettingsItem(
