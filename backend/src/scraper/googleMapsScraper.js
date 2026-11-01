@@ -482,6 +482,11 @@ export async function searchBusinesses(category, location, {
     for (const [key, value] of Object.entries(meta)) {
       Object.defineProperty(businesses, key, { value, enumerable: false, configurable: true });
     }
+    // Close the search page explicitly: with a signed-in session every scan
+    // shares one Chrome context whose close() is a no-op, so without this each
+    // city/category search left a Google Maps tab open for the whole scan and
+    // memory grew until macOS ran out of application memory.
+    await page.close().catch(() => {});
     await context.close().catch(() => {});
     if (ownsBrowser) await browser.close();
   }
