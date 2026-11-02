@@ -29,7 +29,7 @@ class _ExcelScanPageState extends State<ExcelScanPage> {
   final _categoryController = TextEditingController();
   final List<String> _targetServices = [];
 
-  String _dateRange = '365';
+  String _dateRange = '30';
   int _concurrency = 10;
   String _coverage = 'extended';
   List<CoverageOption> _coverageOptions = const [];
@@ -39,10 +39,12 @@ class _ExcelScanPageState extends State<ExcelScanPage> {
 
   static const _dateRanges = <String, String>{
     '7': 'Last 7 days',
+    '14': 'Last 14 days',
+    '21': 'Last 21 days',
+    '22': 'Last 22 days',
+    '23': 'Last 23 days',
     '28': 'Last 28 days',
     '30': 'Last 30 days',
-    '90': 'Last 90 days',
-    '365': 'Last 365 days',
   };
 
   @override
