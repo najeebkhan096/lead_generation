@@ -9,7 +9,7 @@ import {
 } from './stateCityOrchestrator.js';
 
 export async function startScan(req, res) {
-  const { categories, concurrency = 8, dateRange = '30', maxResultsPerCity = 160, analyze = false, allowUnsignedScan = false, coverage = 'standard' } = req.body || {};
+  const { categories, concurrency = 8, dateRange = '30', maxResultsPerCity = 160, analyze = false, allowUnsignedScan = false, coverage = 'standard', mode = 'reviews' } = req.body || {};
 
   if (!Array.isArray(categories) || !categories.length) {
     return res.status(400).json({ error: 'categories array is required' });
@@ -19,8 +19,13 @@ export async function startScan(req, res) {
     return res.status(400).json({ error: 'coverage must be standard, extended or maximum' });
   }
 
+  if (mode !== 'reviews' && mode !== 'no_website') {
+    return res.status(400).json({ error: 'mode must be reviews or no_website' });
+  }
+
   try {
     const result = await startStateCityScan({
+      mode,
       categories,
       concurrency: Number(concurrency),
       dateRange: String(dateRange),
@@ -34,7 +39,7 @@ export async function startScan(req, res) {
     return res.status(202).json({
       started: true,
       ...result,
-      message: `Scan started: ${result.categories.length} categories × ${result.totalStates} states, ${result.concurrency} workers.`,
+      message: `${mode === 'no_website' ? 'No-website scan' : 'Scan'} started: ${result.categories.length} categories × ${result.totalStates} states, ${result.concurrency} workers.`,
     });
   } catch (err) {
     const status = err.status || 500;

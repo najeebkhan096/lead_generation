@@ -167,3 +167,64 @@ test("the scan hands the pipeline each opened business (reviews stripped) and th
   assert.equal(seen[0].ctx.reviewLeads.length, 1, 'only the 1-star business is a review lead');
   assert.equal(rec.leadsCollected, 1, 'a no-website business is not a review lead');
 });
+
+// ── no-website scan mode ─────────────────────────────────────────────────
+
+test('a no-website scan never queues the sites of other businesses for email lookup', async () => {
+  const d = deps({ queueEmails: false });
+  const summary = await recordCityWebsites(
+    [biz('No Site'), biz('Has Site', { website: 'https://hassite.test', websiteStatus: 'available' })],
+    d.opts
+  );
+  assert.deepEqual(d.saved.map((s) => s.business), ['No Site']);
+  assert.deepEqual(d.queued, [], 'the business with a website is excluded, not crawled');
+  assert.equal(summary.available, 1);
+  assert.equal(summary.queued, 0);
+});
+
+test('no-website mode: listings are read without reviews, and only confirmed no-website businesses count as leads', async () => {
+  const calls = [];
+  const filed = [];
+  const job = scanJob(
+    async (_c, location, options) => {
+      calls.push(options);
+      // A real no-website scan returns businesses with no reviews at all.
+      return [
+        { ...biz(`NoSite ${location}`), reviews: [] },
+        { ...biz(`HasSite ${location}`, { website: 'https://x.test', websiteStatus: 'available' }), reviews: [] },
+        { ...biz(`Unclear ${location}`, { websiteStatus: 'unknown' }), reviews: [] },
+      ];
+    },
+    {
+      mode: 'no_website',
+      recordCityWebsitesFn: async (businesses, ctx) => {
+        filed.push(ctx);
+        // Mirror the real pipeline's summary: only `missing` are leads.
+        return { missing: businesses.filter((b) => b.websiteStatus === 'missing').length };
+      },
+    }
+  );
+  const rec = newStateRecord('Texas', ['Austin', 'Dallas']);
+  await scanStateCities(job, 'Plumber', rec);
+
+  assert.equal(calls.length, 2, 'both cities were searched');
+  assert.ok(calls.every((o) => o.skipReviews === true), 'the scraper was told not to read reviews');
+  assert.equal(rec.status, 'done');
+  assert.equal(rec.leadsCollected, 2, 'one confirmed no-website business per city; "has website" and "unclear" are not leads');
+  assert.ok(filed.every((c) => c.queueEmails === false));
+  assert.equal(rec.incompleteBusinesses, 0, 'no reviews were expected, so none are "not fully read"');
+});
+
+test('the review scan is unchanged: it still queues emails and counts only 1-star leads', async () => {
+  const filed = [];
+  const job = scanJob(async (_c, location) => [oneStar(`Plumb ${location}`), biz(`NoSite ${location}`)], {
+    recordCityWebsitesFn: async (_b, ctx) => {
+      filed.push(ctx);
+      return { missing: 1 };
+    },
+  });
+  const rec = newStateRecord('Texas', ['Austin']);
+  await scanStateCities(job, 'Plumber', rec);
+  assert.equal(filed[0].queueEmails, true);
+  assert.equal(rec.leadsCollected, 1, 'the no-website business is not added to the review count');
+});

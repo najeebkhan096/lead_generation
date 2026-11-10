@@ -116,7 +116,7 @@ async function persistReadyLeads(leads, { shouldStop, onLeadReady } = {}) {
   }
 }
 
-async function scrapeLocation(category, location, { maxResults, onProgress, browser, country, shouldStop, dateRange, seenPlaceIds, googleOnly = false, center } = {}) {
+async function scrapeLocation(category, location, { maxResults, onProgress, browser, country, shouldStop, dateRange, seenPlaceIds, googleOnly = false, center, skipReviews = false } = {}) {
   let businesses = await googleMaps.searchBusinesses(category, location, {
     maxResults,
     onProgress,
@@ -126,6 +126,7 @@ async function scrapeLocation(category, location, { maxResults, onProgress, brow
     dateRange,
     seenPlaceIds,
     center,
+    skipReviews,
   });
 
   // The review scan needs Google's own data: Bing and Yelp results carry no
@@ -530,7 +531,11 @@ export async function scrapeOneCity(category, { city, state, center }, {
   // to save each lead to Firestore immediately instead of waiting for the
   // whole city (or category) to finish. WhatsApp is not checked here.
   onLeadReady,
+  // 'reviews' (default): the 1-star scan. 'no_website': read each listing's
+  // website field only — no reviews, no date window, no 1-star leads.
+  mode = 'reviews',
 } = {}) {
+  const skipReviews = mode === 'no_website';
   // A grid point of a large city is searched around its coordinates; the name is only a label.
   const location = locationQuery({ city: center?.within || city, state });
 
@@ -544,6 +549,7 @@ export async function scrapeOneCity(category, { city, state, center }, {
     seenPlaceIds,
     googleOnly: true,
     center,
+    skipReviews,
   });
 
   // No result list at all is NOT an empty city: Google did not answer with
@@ -553,8 +559,8 @@ export async function scrapeOneCity(category, { city, state, center }, {
     throw new Error(`Google returned no result list for ${location}`);
   }
 
-  const reviewIssues = summarizeReviewAccess(businesses);
-  let leads = filterRecentOneStarLeads(businesses, { dateRange });
+  const reviewIssues = skipReviews ? { incomplete: 0, signInBlocked: 0 } : summarizeReviewAccess(businesses);
+  let leads = skipReviews ? [] : filterRecentOneStarLeads(businesses, { dateRange });
   leads = enrichLeadContacts(leads, country);
   leads = leads.map((l) => ({ ...l, location: state, searchLocation: location }));
   if (analyze) leads = leads.map(enrichLeadWithAnalysis);

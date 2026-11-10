@@ -83,6 +83,9 @@ export async function recordCityWebsites(businesses, {
   saveWebsiteLeadsFn = saveWebsiteLeads,
   recordUnknownFn = recordWebsiteUnknown,
   queue,
+  // A no-website scan only files businesses WITHOUT a website; it does not
+  // crawl the sites of the others for emails (that is the 1-star scan's add-on).
+  queueEmails = true,
   // Nowhere to store website / email leads without Firebase, so skip the lot
   // (and never start crawling sites whose results would be thrown away).
   enabled = getFirebaseStatus().configured,
@@ -96,7 +99,7 @@ export async function recordCityWebsites(businesses, {
     return summary;
   }
   try {
-    queue = queue || getEmailQueue();
+    if (queueEmails) queue = queue || getEmailQueue();
     const reviewLeadKeys = new Set(reviewLeads.map((l) => mapsKey(l.mapsUrl)));
     const { missing, available, unknown } = classifyBusinesses(businesses, { state, country, reviewLeadKeys });
     summary.missing = missing.length;
@@ -119,14 +122,16 @@ export async function recordCityWebsites(businesses, {
       for (const site of unknown) await recordUnknownFn(site, { reason: 'listing_not_fully_read' }).catch(() => {});
     }
 
-    for (const site of available) {
-      if (queue.enqueue(site) === 'queued') summary.queued += 1;
+    if (queueEmails) {
+      for (const site of available) {
+        if (queue.enqueue(site) === 'queued') summary.queued += 1;
+      }
     }
 
     if (summary.missing || summary.available || summary.unknown) {
       log(
         `Websites: ${summary.missing} without a website${summary.saved ? ` (${summary.saved} new)` : ''}, ` +
-          `${summary.available} with one (${summary.queued} queued for email lookup)` +
+          `${summary.available} with one${queueEmails ? ` (${summary.queued} queued for email lookup)` : ' (excluded)'}` +
           (summary.unknown ? `, ${summary.unknown} could not be determined` : '')
       );
     }

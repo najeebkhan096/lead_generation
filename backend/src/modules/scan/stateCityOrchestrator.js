@@ -29,6 +29,7 @@ import { sharedPace, _resetSharedPace } from '../../scraper/rateLimit.js';
 import { buildCoverage, isCoverageTier } from '../../data/usCoverage.js';
 import { completedCitiesFromStates, placeIdsFromLeads, applyResumeProgress, checkpointDue } from './scanProgress.js';
 import { scrapeOneCity } from './leadService.js';
+import { getFirebaseStatus } from '../../firebase/admin.js';
 import { recordCityWebsites } from '../website/siteLeadPipeline.js';
 import { Mutex } from '../../lib/asyncMutex.js';
 import { writeLeadsXlsxFile, xlsxBufferToJson, sheetsToLeadsJson } from '../archive/exportService.js';
@@ -316,6 +317,7 @@ async function scanStateCities(job, category, stateRec) {
             shouldStop: () => job.cancelled,
             scrapeLocationFn: job.scrapeLocationFn,
             seenPlaceIds: job.seenPlaces?.[category],
+            mode: job.mode,
           }
         );
 
@@ -365,7 +367,7 @@ async function scanStateCities(job, category, stateRec) {
         noteCityCovered(job, category);
         logActivity(
           job,
-          `"${category}" · ${stateRec.state} · ${city} — ${leads.length} lead${leads.length === 1 ? '' : 's'} (${stateRec.covered.length + stateRec.failed.length}/${stateRec.citiesTotal} cities)` +
+          `"${category}" · ${stateRec.state} · ${city} — ${job.mode === 'no_website' ? `${businessesScraped} listing${businessesScraped === 1 ? '' : 's'} read` : `${leads.length} lead${leads.length === 1 ? '' : 's'}`} (${stateRec.covered.length + stateRec.failed.length}/${stateRec.citiesTotal} cities)` +
             (reviewIssues?.incomplete ? ` · ${reviewIssues.incomplete} business${reviewIssues.incomplete === 1 ? '' : 'es'} not fully read` : '') +
             (skippedListings ? ` · ${skippedListings} listing${skippedListings === 1 ? '' : 's'} skipped` : ''),
           reviewIssues?.incomplete || skippedListings ? 'warn' : 'info'
@@ -375,12 +377,16 @@ async function scanStateCities(job, category, stateRec) {
         // businesses with no website, and queue those with one for email lookup.
         // Failures are contained here: they cannot affect the review scan or the city's status.
         try {
-          await (job.recordCityWebsitesFn || recordCityWebsites)(siteBusinesses, {
+          const siteSummary = await (job.recordCityWebsitesFn || recordCityWebsites)(siteBusinesses, {
             state: stateRec.state,
             country: 'US',
             reviewLeads: leads,
+            // A no-website scan only keeps businesses without a website.
+            queueEmails: job.mode !== 'no_website',
             log: (message, level) => logActivity(job, `"${category}" · ${stateRec.state} · ${city} — ${message}`, level),
           });
+          // In a no-website scan the leads ARE those businesses.
+          if (job.mode === 'no_website') stateRec.leadsCollected += siteSummary?.missing || 0;
         } catch (err) {
           logActivity(job, `"${category}" · ${stateRec.state} · ${city} — website/email processing failed (${err.message}); review results are unaffected.`, 'warn');
         }
@@ -588,7 +594,10 @@ async function runJob(job) {
   const allStates = Object.values(job.categoryStates).flat();
   const notFullyRead = allStates.reduce((n, st) => n + (st.incompleteBusinesses || 0), 0);
   const skipped = allStates.reduce((n, st) => n + (st.skippedListings || 0), 0);
-  if (notFullyRead || skipped) {
+  if (job.mode === 'no_website') {
+    if (skipped) logActivity(job, `Coverage: ${skipped} listing${skipped === 1 ? '' : 's'} could not be opened, so their website field was never confirmed. Run the scan again to try them.`, 'warn');
+    else if (!job.cancelled) logActivity(job, 'Coverage: every listing was opened and its website field confirmed.');
+  } else if (notFullyRead || skipped) {
     logActivity(
       job,
       `Coverage: ${notFullyRead} business${notFullyRead === 1 ? '' : 'es'} could not be proven fully read and ${skipped} listing${skipped === 1 ? '' : 's'} could not be opened. ` +
@@ -641,9 +650,23 @@ export async function startStateCityScan({
   // Refuse to scan (and stop mid-scan) without a signed-in Google session:
   // anonymous visitors cannot sort reviews, so 1-star reviews would be missed.
   requireSignIn = true,
+  // 'reviews' = the 1-star scan; 'no_website' = find businesses whose Maps
+  // listing has no website (no reviews read, no date window, no sign-in needed).
+  mode = 'reviews',
 }) {
+  if (mode !== 'reviews' && mode !== 'no_website') {
+    const err = new Error('mode must be reviews or no_website');
+    err.status = 400;
+    throw err;
+  }
   if (!Array.isArray(categories) || !categories.length) {
     throw new Error('categories array is required');
+  }
+  // No-website leads are saved straight to Firestore (there is no workbook).
+  if (mode === 'no_website' && !scrapeLocationFn && !getFirebaseStatus().configured) {
+    const err = new Error('Firebase is not configured, so there is nowhere to save no-website leads.');
+    err.status = 409;
+    throw err;
   }
   if (currentJob && currentJob.status !== 'done') {
     const err = new Error('A scan is already running.');
@@ -716,7 +739,8 @@ export async function startStateCityScan({
     maxResultsPerCity: Math.max(4, Number(maxResultsPerCity) || DEFAULT_MAX_RESULTS_PER_CITY),
     analyze: Boolean(analyze),
     scrapeLocationFn,
-    requireSignIn: Boolean(requireSignIn),
+    mode,
+    requireSignIn: mode === 'reviews' && Boolean(requireSignIn),
     stoppedReason: null,
     // Set while Google's "unusual traffic" check has the scan paused.
     blocked: null,
@@ -762,7 +786,7 @@ export async function startStateCityScan({
   const totalCities = categoryStates[uniqueCategories[0]].reduce((sum, s) => sum + s.citiesTotal, 0);
   logActivity(
     thisJob,
-    `Starting scan: ${uniqueCategories.length} categor${uniqueCategories.length === 1 ? 'y' : 'ies'} × ${categoryStates[uniqueCategories[0]].length} states (${totalCities} cities each), ${poolSize} workers.`
+    `Starting ${mode === 'no_website' ? 'no-website' : '1-star review'} scan: ${uniqueCategories.length} categor${uniqueCategories.length === 1 ? 'y' : 'ies'} × ${categoryStates[uniqueCategories[0]].length} states (${totalCities} cities each), ${poolSize} workers.`
   );
 
   try {
@@ -781,7 +805,7 @@ export async function startStateCityScan({
 
   // A scan that cannot sort reviews would quietly miss most 1-star reviews, so
   // it does not start. (Skipped for the injected scraper used by tests.)
-  if (requireSignIn && !scrapeLocationFn) {
+  if (mode === 'reviews' && requireSignIn && !scrapeLocationFn) {
     const session = await checkBrowserSignedIn(thisJob.browser).catch(() => ({ status: 'unknown' }));
     if (session.status === 'anonymous' || session.status === 'signed_out') {
       await thisJob.browser.close().catch(() => {});
@@ -822,6 +846,7 @@ export async function startStateCityScan({
     concurrency: poolSize,
     totalStates: categoryStates[uniqueCategories[0]].length,
     coverage: thisJob.coverage,
+    mode,
     totalSearches: categoryStates[uniqueCategories[0]].reduce((n, st) => n + st.citiesTotal, 0),
   };
 }
@@ -998,6 +1023,7 @@ export function getStateCityJobSnapshot() {
     paused: job.paused,
     stoppedReason: job.stoppedReason,
     blocked: job.blocked,
+    mode: job.mode || 'reviews',
     coverage: job.coverage,
     pace: job.pace ? { perMinute: job.pace.perMinute, max: job.pace.max, learnedCap: job.pace.learnedCap ?? null } : null,
     // How each review lookup went (sorted, sign-in required, ...): why some businesses are "not fully read".

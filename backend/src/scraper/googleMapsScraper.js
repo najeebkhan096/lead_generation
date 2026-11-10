@@ -307,6 +307,8 @@ export async function searchBusinesses(category, location, {
   center,
   feedTimeoutMs = 15000,
   pace = sharedPace(),
+  // No-website scans do not read reviews at all: no sort, no 1-star pre-filter.
+  skipReviews = false,
 } = {}) {
   const ownsBrowser = !sharedBrowser;
   const browser = sharedBrowser || (await launchBrowser());
@@ -399,7 +401,7 @@ export async function searchBusinesses(category, location, {
     const fresh = [];
     for (const l of listings) {
       // Provably no 1-star review (from the card's rating and count): nothing to read.
-      if (cannotHaveOneStar(l.rating, l.reviews)) {
+      if (!skipReviews && cannotHaveOneStar(l.rating, l.reviews)) {
         meta.prefiltered += 1;
         continue;
       }
@@ -449,7 +451,7 @@ export async function searchBusinesses(category, location, {
           // as an unhandled promise holding Playwright Page/Frame/CDP-session
           // references, which adds up across a multi-hour, thousands-of
           // -listings scan.
-          const scrapePromise = scrapeOnePlace(placePage, fresh[i].href, category, location, country, dateRange);
+          const scrapePromise = scrapeOnePlace(placePage, fresh[i].href, category, location, country, dateRange, { skipReviews });
           scrapePromise.catch(() => {});
           business = await raceWithCancel(withTimeout(scrapePromise, PLACE_TIMEOUT_MS, `place ${i + 1}`), shouldStop);
         } catch (err) {
@@ -464,7 +466,7 @@ export async function searchBusinesses(category, location, {
         businesses.push(business);
         const access = business.reviewAccess;
         onProgress?.(
-          `Collected: ${business.name} (${business.reviews.length}× 1★)` +
+          `Collected: ${business.name} (${skipReviews ? `website ${business.websiteStatus}` : `${business.reviews.length}× 1★`})` +
             (access && !access.complete ? ` [reviews NOT fully read: ${access.status}]` : '') +
             ` [${businesses.length}/${limit}]`
         );
@@ -494,7 +496,7 @@ export async function searchBusinesses(category, location, {
   return businesses;
 }
 
-async function scrapeOnePlace(page, href, category, location, country, dateRange) {
+async function scrapeOnePlace(page, href, category, location, country, dateRange, options = {}) {
   await page.goto(withEnglish(href, country), { waitUntil: 'domcontentloaded', timeout: 30000 });
   await throwIfBlocked(page);
   // Wait for the place's title to actually render rather than a fixed pause:
@@ -503,7 +505,7 @@ async function scrapeOnePlace(page, href, category, location, country, dateRange
   await page.waitForSelector('h1', { state: 'attached', timeout: 15000 }).catch(() => {});
   await page.waitForTimeout(800);
   await dismissConsent(page);
-  return extractBusinessFromPlacePage(page, category, location, country, dateRange);
+  return extractBusinessFromPlacePage(page, category, location, country, dateRange, options);
 }
 
 async function textOrNull(page, selectors) {
@@ -626,7 +628,7 @@ export async function readWebsiteStatus(page, { website, address, phone }) {
   return rows > 0 ? 'missing' : 'unknown';
 }
 
-async function extractBusinessFromPlacePage(page, category, location, country, dateRange) {
+async function extractBusinessFromPlacePage(page, category, location, country, dateRange, { skipReviews = false } = {}) {
   const name = await textOrNull(page, ['h1.DUwDvf', 'h1']);
   if (!name) return null;
 
@@ -650,7 +652,9 @@ async function extractBusinessFromPlacePage(page, category, location, country, d
 
   const websiteStatus = await readWebsiteStatus(page, { website, address, phone });
 
-  const { reviews, access: reviewAccess } = await collectOneStarReviews(page, { totalReviews, dateRange });
+  const { reviews, access: reviewAccess } = skipReviews
+    ? { reviews: [], access: null }
+    : await collectOneStarReviews(page, { totalReviews, dateRange });
 
   return {
     name,
