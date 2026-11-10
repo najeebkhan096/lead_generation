@@ -112,7 +112,7 @@ class _ClientsPageState extends State<ClientsPage> {
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Remove', style: TextStyle(color: AppTheme.danger)),
+            child: Text('Remove', style: TextStyle(color: AppTheme.error)),
           ),
         ],
       ),
@@ -192,7 +192,7 @@ class _ClientsPageState extends State<ClientsPage> {
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Text(_error!, style: const TextStyle(color: AppTheme.danger), textAlign: TextAlign.center),
+                              Text(_error!, style: TextStyle(color: AppTheme.error), textAlign: TextAlign.center),
                               const SizedBox(height: 12),
                               OutlinedButton.icon(
                                 onPressed: _load,
@@ -210,14 +210,14 @@ class _ClientsPageState extends State<ClientsPage> {
                             missing == 0
                                 ? '${_clients.length} client${_clients.length == 1 ? '' : 's'}'
                                 : '${_clients.length} client${_clients.length == 1 ? '' : 's'} · $missing without a Google Maps link',
-                            style: const TextStyle(fontSize: 12.5, color: AppTheme.faint, fontWeight: FontWeight.w700),
+                            style: TextStyle(fontSize: 12.5, color: AppTheme.textMuted, fontWeight: FontWeight.w700),
                           ),
                           if (_scanning) ...[
                             const SizedBox(height: 12),
                             Container(
                               padding: const EdgeInsets.all(14),
                               decoration: BoxDecoration(
-                                color: AppTheme.accent100,
+                                color: AppTheme.primary100,
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               child: Text(
@@ -246,7 +246,7 @@ class _ClientsPageState extends State<ClientsPage> {
                                   _clients.isEmpty
                                       ? 'No clients yet. Add one with its business name and Google Maps link.'
                                       : 'No clients match your search.',
-                                  style: const TextStyle(color: AppTheme.faint),
+                                  style: TextStyle(color: AppTheme.textMuted),
                                   textAlign: TextAlign.center,
                                 ),
                               ),
@@ -292,8 +292,8 @@ class _ClientRow extends StatelessWidget {
           Container(
             width: 40,
             height: 40,
-            decoration: BoxDecoration(color: AppTheme.accent100, borderRadius: BorderRadius.circular(12)),
-            child: const Icon(AppIcons.store, size: 19, color: AppTheme.accent700),
+            decoration: BoxDecoration(color: AppTheme.primary100, borderRadius: BorderRadius.circular(12)),
+            child: Icon(AppIcons.store, size: 19, color: AppTheme.primary700),
           ),
           const SizedBox(width: 14),
           Expanded(
@@ -305,13 +305,13 @@ class _ClientRow extends StatelessWidget {
                 client.hasMapsUrl
                     ? Text(
                         client.mapsUrl!,
-                        style: const TextStyle(fontSize: 12.5, color: AppTheme.faint),
+                        style: TextStyle(fontSize: 12.5, color: AppTheme.textMuted),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       )
-                    : const Text(
+                    : Text(
                         'No Google Maps link yet',
-                        style: TextStyle(fontSize: 12.5, color: AppTheme.danger, fontWeight: FontWeight.w600),
+                        style: TextStyle(fontSize: 12.5, color: AppTheme.error, fontWeight: FontWeight.w600),
                       ),
               ],
             ),
@@ -321,7 +321,7 @@ class _ClientRow extends StatelessWidget {
           IconButton(onPressed: onEdit, icon: const Icon(AppIcons.edit, size: 18), tooltip: 'Edit'),
           IconButton(
             onPressed: onDelete,
-            icon: const Icon(AppIcons.trash, size: 18, color: AppTheme.danger),
+            icon: Icon(AppIcons.trash, size: 18, color: AppTheme.error),
             tooltip: 'Remove',
           ),
         ],
@@ -426,7 +426,7 @@ class _ClientDialogState extends State<_ClientDialog> {
               ),
               if (_error != null) ...[
                 const SizedBox(height: 12),
-                Text(_error!, style: const TextStyle(color: AppTheme.danger, fontSize: 12.5)),
+                Text(_error!, style: TextStyle(color: AppTheme.error, fontSize: 12.5)),
               ],
             ],
           ),
@@ -437,7 +437,7 @@ class _ClientDialogState extends State<_ClientDialog> {
         FilledButton(
           onPressed: _saving ? null : _save,
           child: _saving
-              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.surface))
+              ? SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.onPrimary))
               : Text(widget.client == null ? 'Add client' : 'Save'),
         ),
       ],

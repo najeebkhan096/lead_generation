@@ -98,7 +98,7 @@ class _SalesmanStatsPageState extends State<SalesmanStatsPage> {
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 40),
       children: [
         if (_error != null) ...[
-          Text(_error!, style: const TextStyle(color: AppTheme.danger)),
+          Text(_error!, style: TextStyle(color: AppTheme.error)),
           const SizedBox(height: 12),
         ],
         SegmentedButton<StatsRange>(
@@ -115,9 +115,9 @@ class _SalesmanStatsPageState extends State<SalesmanStatsPage> {
         _SectionTitle(today ? 'Contacted today, by salesman' : 'Contacted in total, by salesman'),
         _Card(
           child: salesmen.isEmpty
-              ? const Padding(
+              ? Padding(
                   padding: EdgeInsets.symmetric(vertical: 24),
-                  child: Center(child: Text('No salesmen yet.', style: TextStyle(color: AppTheme.faint))),
+                  child: Center(child: Text('No salesmen yet.', style: TextStyle(color: AppTheme.textMuted))),
                 )
               : _BarChart(
                   counts: [for (final s in salesmen) _valueOf(s, _range)],
@@ -143,9 +143,9 @@ class _SalesmanStatsPageState extends State<SalesmanStatsPage> {
         const SizedBox(height: 20),
         _SectionTitle('Salesmen (${stats.salesmen.length})'),
         if (stats.salesmen.isEmpty)
-          const Padding(
+          Padding(
             padding: EdgeInsets.symmetric(vertical: 24),
-            child: Center(child: Text('No salesmen yet.', style: TextStyle(color: AppTheme.faint))),
+            child: Center(child: Text('No salesmen yet.', style: TextStyle(color: AppTheme.textMuted))),
           ),
         for (final s in salesmen)
           _SalesmanCard(
@@ -156,7 +156,7 @@ class _SalesmanStatsPageState extends State<SalesmanStatsPage> {
         const SizedBox(height: 8),
         Text(
           'Updated ${_updated(stats)} · business day ${dayLabel(stats.today)} (Asia/Qatar)',
-          style: const TextStyle(fontSize: 12, color: AppTheme.faint),
+          style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
         ),
       ],
     );
@@ -200,7 +200,7 @@ class _ErrorView extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(message, style: const TextStyle(color: AppTheme.danger), textAlign: TextAlign.center),
+            Text(message, style: TextStyle(color: AppTheme.error), textAlign: TextAlign.center),
             const SizedBox(height: 12),
             OutlinedButton.icon(
               onPressed: onRetry,
@@ -264,7 +264,7 @@ class _Tile extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: const TextStyle(fontSize: 12, color: AppTheme.faint, fontWeight: FontWeight.w600)),
+          Text(label, style: TextStyle(fontSize: 12, color: AppTheme.textMuted, fontWeight: FontWeight.w600)),
           const SizedBox(height: 6),
           Text(value, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
         ],
@@ -325,8 +325,8 @@ class _SalesmanCard extends StatelessWidget {
                   children: [
                     CircleAvatar(
                       radius: 20,
-                      backgroundColor: AppTheme.sage100,
-                      child: Text(initial, style: const TextStyle(fontWeight: FontWeight.w800, color: AppTheme.sage700)),
+                      backgroundColor: AppTheme.success100,
+                      child: Text(initial, style: TextStyle(fontWeight: FontWeight.w800, color: AppTheme.success700)),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
@@ -335,19 +335,19 @@ class _SalesmanCard extends StatelessWidget {
                         children: [
                           Text(stat.name, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
                           if (stat.email != null)
-                            Text(stat.email!, style: const TextStyle(fontSize: 12, color: AppTheme.faint), overflow: TextOverflow.ellipsis),
+                            Text(stat.email!, style: TextStyle(fontSize: 12, color: AppTheme.textMuted), overflow: TextOverflow.ellipsis),
                           Text(
                             stat.approved ? 'Approved · tap to see contacted leads' : 'Not approved · tap to see contacted leads',
                             style: TextStyle(
                               fontSize: 11.5,
                               fontWeight: FontWeight.w700,
-                              color: stat.approved ? AppTheme.sage700 : AppTheme.accent700,
+                              color: stat.approved ? AppTheme.success700 : AppTheme.primary700,
                             ),
                           ),
                         ],
                       ),
                     ),
-                    const Icon(AppIcons.chevronRight, size: 18, color: AppTheme.faint),
+                    Icon(AppIcons.chevronRight, size: 18, color: AppTheme.textMuted),
                   ],
                 ),
                 const SizedBox(height: 14),
@@ -388,7 +388,7 @@ class _Chip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: highlight ? AppTheme.accent100 : AppTheme.sage100,
+        color: highlight ? AppTheme.primary100 : AppTheme.success100,
         borderRadius: BorderRadius.circular(8),
       ),
       child: Text(
@@ -396,7 +396,7 @@ class _Chip extends StatelessWidget {
         style: TextStyle(
           fontSize: 12,
           fontWeight: FontWeight.w600,
-          color: highlight ? AppTheme.accent700 : AppTheme.sage700,
+          color: highlight ? AppTheme.primary700 : AppTheme.success700,
         ),
       ),
     );
@@ -487,14 +487,14 @@ class _BarChart extends StatelessWidget {
                                     ? Text(
                                         '${counts[i]}',
                                         textAlign: TextAlign.center,
-                                        style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: AppTheme.faint),
+                                        style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: AppTheme.textMuted),
                                       )
                                     : null,
                               ),
                               Container(
                                 height: heightFor(counts[i]),
                                 decoration: BoxDecoration(
-                                  color: cap != null && counts[i] >= cap ? AppTheme.accent700 : AppTheme.sage500,
+                                  color: cap != null && counts[i] >= cap ? AppTheme.primary700 : AppTheme.success500,
                                   borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
                                 ),
                               ),
@@ -510,7 +510,7 @@ class _BarChart extends StatelessWidget {
                   left: 0,
                   right: 0,
                   bottom: _labelRow + heightFor(cap),
-                  child: Container(height: 1.5, color: AppTheme.accent700.withValues(alpha: 0.6)),
+                  child: Container(height: 1.5, color: AppTheme.primary700.withValues(alpha: 0.6)),
                 ),
               for (final entry in labels.entries)
                 Positioned(
@@ -523,7 +523,7 @@ class _BarChart extends StatelessWidget {
                     textAlign: TextAlign.center,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 10, color: AppTheme.faint),
+                    style: TextStyle(fontSize: 10, color: AppTheme.textMuted),
                   ),
                 ),
             ],

@@ -2,18 +2,54 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../core/theme/app_theme.dart';
+import '../../domain/entities/excel_archive.dart';
+import '../../domain/entities/job.dart';
+import '../../domain/entities/job_filters.dart';
+import '../../domain/entities/job_stats.dart';
 import '../../domain/entities/lead.dart';
 import '../../domain/entities/lead_page.dart';
 import '../../domain/entities/multi_search_snapshot.dart';
+import '../../domain/entities/paged.dart';
+import '../../domain/repositories/jobs_repository.dart';
 import '../../domain/repositories/lead_repository.dart';
+import '../design_system/design_system.dart';
 import '../utils/date_format.dart';
+import 'business_details_page.dart';
 
 enum _LoadStatus { loading, success, failure }
 
-/// Landing screen: an at-a-glance read on the whole saved-lead database —
-/// totals, category mix, and what just came in — plus the one-tap way to
-/// start scanning for more.
+/// Everything the dashboard shows. Only [overview] is required; every other
+/// source is optional, so one slow or failing endpoint leaves its own card
+/// empty instead of taking the whole page down.
+class _DashboardData {
+  const _DashboardData({
+    required this.overview,
+    this.websiteLeads,
+    this.emailLeads,
+    this.emailCategories = const [],
+    this.jobStats,
+    this.recentJobs = const [],
+    this.archives = const [],
+  });
+
+  final DashboardOverview overview;
+  final int? websiteLeads;
+  final int? emailLeads;
+  final List<LeadCategory> emailCategories;
+  final JobStats? jobStats;
+  final List<Job> recentJobs;
+
+  /// Finished and partial scans, newest first.
+  final List<ExcelArchive> archives;
+
+  int get totalLeads => overview.reviewLeads + (websiteLeads ?? 0) + (emailLeads ?? 0);
+
+  int get businessesScanned => archives.fold(0, (sum, a) => sum + a.totalBusinessesProcessed);
+}
+
+/// Landing screen: the whole pipeline at a glance — lead totals by kind, how
+/// scans have performed, what came in lately, jobs and email availability —
+/// plus the one-tap way to start scanning for more.
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key});
 
@@ -23,7 +59,7 @@ class DashboardPage extends StatefulWidget {
 
 class _DashboardPageState extends State<DashboardPage> {
   _LoadStatus _status = _LoadStatus.loading;
-  DashboardOverview? _overview;
+  _DashboardData? _data;
   String? _error;
 
   @override
@@ -32,16 +68,59 @@ class _DashboardPageState extends State<DashboardPage> {
     _load();
   }
 
-  Future<void> _load() async {
-    setState(() => _status = _LoadStatus.loading);
+  /// Runs [call]; any failure becomes `null` (the section just shows "—").
+  Future<T?> _optional<T>(Future<T> Function() call) async {
     try {
-      // Server-computed numbers (a few hundred bytes) — the dashboard no
-      // longer downloads every lead just to count them.
-      final overview = await context.read<LeadRepository>().getDashboardOverview();
+      return await call();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  JobsRepository? _jobsRepository() {
+    try {
+      return context.read<JobsRepository>();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _load() async {
+    if (_data == null) setState(() => _status = _LoadStatus.loading);
+    final leads = context.read<LeadRepository>();
+    final jobs = _jobsRepository();
+    try {
+      // Server-computed numbers (a few hundred bytes) — the dashboard never
+      // downloads every lead just to count them.
+      final overviewFuture = leads.getDashboardOverview();
+      // It may fail while the other requests are still pending; the `await`
+      // below still throws it.
+      overviewFuture.ignore();
+      final others = await Future.wait<Object?>([
+        _optional(() => leads.getLeadsPage(LeadCollection.websiteLeads, limit: 1)),
+        _optional(() => leads.getLeadsPage(LeadCollection.emailLeads, limit: 1)),
+        _optional(() => leads.getLeadCategories(LeadCollection.emailLeads)),
+        _optional(() => leads.listExcelArchives()),
+        if (jobs != null) _optional(() => jobs.stats()) else Future<Object?>.value(),
+        if (jobs != null) _optional(() => jobs.jobs(const JobFilters(view: JobView.all), limit: 5)) else Future<Object?>.value(),
+      ]);
+      final overview = await overviewFuture;
       if (!mounted) return;
+
+      final archives = [...((others[3] as List<ExcelArchive>?) ?? const <ExcelArchive>[])]
+        ..sort((a, b) => (b.scannedAt ?? b.createdAt ?? DateTime(0)).compareTo(a.scannedAt ?? a.createdAt ?? DateTime(0)));
       setState(() {
-        _overview = overview;
+        _data = _DashboardData(
+          overview: overview,
+          websiteLeads: (others[0] as LeadPage?)?.total,
+          emailLeads: (others[1] as LeadPage?)?.total,
+          emailCategories: (others[2] as List<LeadCategory>?) ?? const [],
+          archives: archives,
+          jobStats: others[4] as JobStats?,
+          recentJobs: (others[5] as Paged<Job>?)?.items ?? const [],
+        );
         _status = _LoadStatus.success;
+        _error = null;
       });
     } catch (e) {
       if (!mounted) return;
@@ -54,87 +133,527 @@ class _DashboardPageState extends State<DashboardPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: SafeArea(
-        child: RefreshIndicator(
-          onRefresh: _load,
-          child: CustomScrollView(
-            slivers: [
-              SliverPadding(
-                padding: const EdgeInsets.fromLTRB(28, 28, 28, 40),
-                sliver: SliverList.list(
-                  children: [
-                    Center(
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 1080),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            _Header(onRefresh: _load),
-                            const SizedBox(height: 8),
-                            const _MultiScanBanner(),
-                            const SizedBox(height: 24),
-                            if (_status == _LoadStatus.loading)
-                              const Padding(
-                                padding: EdgeInsets.symmetric(vertical: 80),
-                                child: Center(child: CircularProgressIndicator()),
-                              )
-                            else if (_status == _LoadStatus.failure)
-                              _DashboardError(message: _error!, onRetry: _load)
-                            else
-                              if (_overview != null) _DashboardBody(overview: _overview!),
-                            if (_status != _LoadStatus.loading) ...[
-                              const SizedBox(height: 32),
-                              _DangerZoneCard(onCleared: _load),
-                            ],
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+    final loading = _status == _LoadStatus.loading;
+    final data = _data;
+    return AppPage(
+      title: 'Dashboard',
+      subtitle: 'Your lead pipeline at a glance.',
+      onRefresh: _load,
+      actions: [
+        AppButton.outlined(label: 'Refresh', icon: AppIcons.refresh, onPressed: loading ? null : _load),
+        AppButton.primary(label: 'New scan', icon: AppIcons.plus, onPressed: () => context.go('/scan')),
+      ],
+      children: [
+        const _ScanBanner(),
+        if (loading)
+          const _DashboardSkeleton()
+        else if (_status == _LoadStatus.failure && data == null)
+          _DashboardError(message: _error ?? 'Something went wrong.', onRetry: _load)
+        else if (data != null) ...[
+          if (data.overview.isEmpty && (data.websiteLeads ?? 0) == 0 && (data.emailLeads ?? 0) == 0)
+            const _EmptyDashboard()
+          else
+            _DashboardBody(data: data),
+        ],
+        if (!loading) _DangerZone(onCleared: _load),
+      ],
+    );
+  }
+}
+
+// ── Body ─────────────────────────────────────────────────────────────────
+
+class _DashboardBody extends StatelessWidget {
+  const _DashboardBody({required this.data});
+
+  final _DashboardData data;
+
+  @override
+  Widget build(BuildContext context) {
+    final o = data.overview;
+    String count(int? n) => n == null ? '—' : groupedNumber(n);
+    final jobs = data.jobStats;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        ResponsiveGrid(
+          minTileWidth: 190,
+          children: [
+            StatCard(
+              label: 'Total leads',
+              value: groupedNumber(data.totalLeads),
+              icon: AppIcons.layers,
+              hint: 'Across all lead lists',
+              onTap: () => context.go('/leads'),
+            ),
+            StatCard(
+              label: '1-star review leads',
+              value: groupedNumber(o.reviewLeads),
+              icon: AppIcons.thumbsDown,
+              tone: AppTone.error,
+              delta: o.addedThisWeek > 0 ? '+${groupedNumber(o.addedThisWeek)} this week' : null,
+              hint: o.whatsAppReady > 0 ? '${groupedNumber(o.whatsAppReady)} with WhatsApp' : 'Recent 1-star reviews',
+              onTap: () => context.go('/leads'),
+            ),
+            StatCard(
+              label: 'No-website leads',
+              value: count(data.websiteLeads),
+              icon: AppIcons.globe,
+              tone: AppTone.info,
+              hint: 'Listed without a website',
+              onTap: () => context.go('/website-leads'),
+            ),
+            StatCard(
+              label: 'Jobs found',
+              value: count(jobs?.total),
+              icon: AppIcons.briefcase,
+              tone: AppTone.warning,
+              hint: jobs == null ? null : '${groupedNumber(jobs.discoveredLast24h)} in the last 24h',
+              onTap: () => context.go('/jobs'),
+            ),
+            StatCard(
+              label: 'Emails available',
+              value: count(data.emailLeads),
+              icon: AppIcons.mail,
+              tone: AppTone.success,
+              hint: 'Published on their site',
+              onTap: () => context.go('/email-leads'),
+            ),
+            StatCard(
+              label: 'Businesses scanned',
+              value: data.archives.isEmpty ? '—' : groupedNumber(data.businessesScanned),
+              icon: AppIcons.store,
+              tone: AppTone.neutral,
+              hint: data.archives.isEmpty ? null : 'Across ${data.archives.length} scan${data.archives.length == 1 ? '' : 's'}',
+              onTap: () => context.go('/archive'),
+            ),
+          ],
+        ),
+        const SizedBox(height: AppSpace.xl),
+        _Split(left: _ScanPerformanceCard(archives: data.archives), right: _DistributionCard(data: data)),
+        const SizedBox(height: AppSpace.xl),
+        _Split(left: _RecentScansCard(archives: data.archives), right: _TopCategoriesCard(categories: o.topCategories)),
+        const SizedBox(height: AppSpace.xl),
+        ResponsiveGrid(
+          minTileWidth: 340,
+          spacing: AppSpace.xl,
+          children: [
+            _RecentLeadsCard(leads: o.recent),
+            _RecentJobsCard(jobs: data.recentJobs, available: data.jobStats != null),
+            _EmailAvailabilityCard(total: data.emailLeads, categories: data.emailCategories),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+/// Two cards side by side on a wide window (3 : 2), stacked on a narrow one.
+class _Split extends StatelessWidget {
+  const _Split({required this.left, required this.right});
+
+  final Widget left;
+  final Widget right;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, c) {
+        if (c.maxWidth < 900) {
+          return Column(children: [left, const SizedBox(height: AppSpace.xl), right]);
+        }
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(flex: 3, child: left),
+            const SizedBox(width: AppSpace.xl),
+            Expanded(flex: 2, child: right),
+          ],
+        );
+      },
+    );
+  }
+}
+
+// ── Cards ────────────────────────────────────────────────────────────────
+
+String _shortDate(DateTime? d) {
+  if (d == null) return '';
+  const m = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  final l = d.toLocal();
+  return '${m[l.month - 1]} ${l.day}';
+}
+
+class _ScanPerformanceCard extends StatelessWidget {
+  const _ScanPerformanceCard({required this.archives});
+
+  final List<ExcelArchive> archives;
+
+  @override
+  Widget build(BuildContext context) {
+    // The eight most recent scans, oldest first.
+    final recent = archives.take(8).toList().reversed.toList();
+    final leads = archives.fold<int>(0, (s, a) => s + a.totalLeads);
+    final businesses = archives.fold<int>(0, (s, a) => s + a.totalBusinessesProcessed);
+    final yieldPct = businesses == 0 ? null : leads * 100 / businesses;
+
+    return SectionCard(
+      title: 'Scan performance',
+      subtitle: recent.isEmpty ? null : 'Leads found by each of the last ${recent.length} scan${recent.length == 1 ? '' : 's'}',
+      trailing: yieldPct == null ? null : AppBadge('${yieldPct.toStringAsFixed(1)}% of businesses became leads', tone: AppTone.primary, dense: true),
+      child: recent.isEmpty || leads == 0
+          ? const EmptyState(icon: AppIcons.barChart, title: 'No scans yet', message: 'Run a scan and its results will chart here.', compact: true)
+          : AppBarChart(
+              bars: [
+                for (final a in recent)
+                  ChartBar(
+                    label: _shortDate(a.scannedAt ?? a.createdAt),
+                    value: a.totalLeads.toDouble(),
+                    tooltip: '${a.categories.take(2).join(', ')}${a.categories.length > 2 ? '…' : ''}\n'
+                        '${groupedNumber(a.totalLeads)} leads from ${groupedNumber(a.totalBusinessesProcessed)} businesses',
+                  ),
+              ],
+            ),
+    );
+  }
+}
+
+class _DistributionCard extends StatelessWidget {
+  const _DistributionCard({required this.data});
+
+  final _DashboardData data;
+
+  @override
+  Widget build(BuildContext context) {
+    final segments = [
+      ShareSegment(label: '1-star reviews', value: data.overview.reviewLeads, tone: AppTone.primary),
+      if (data.websiteLeads != null) ShareSegment(label: 'No website', value: data.websiteLeads!, tone: AppTone.info),
+      if (data.emailLeads != null) ShareSegment(label: 'Email leads', value: data.emailLeads!, tone: AppTone.success),
+    ];
+    return SectionCard(
+      title: 'Lead distribution',
+      subtitle: 'How your ${groupedNumber(data.totalLeads)} leads divide',
+      child: ShareBar(segments: segments),
+    );
+  }
+}
+
+class _RecentScansCard extends StatelessWidget {
+  const _RecentScansCard({required this.archives});
+
+  final List<ExcelArchive> archives;
+
+  @override
+  Widget build(BuildContext context) {
+    final shown = archives.take(5).toList();
+    return SectionCard(
+      title: 'Recent scanning activity',
+      trailing: AppButton.text(label: 'All scans', size: AppButtonSize.sm, trailingIcon: AppIcons.chevronRight, onPressed: () => context.go('/archive')),
+      padding: EdgeInsets.zero,
+      child: shown.isEmpty
+          ? const EmptyState(icon: AppIcons.inbox, title: 'No scans yet', message: 'Finished and in-progress scans show up here.', compact: true)
+          : Column(
+              children: [
+                for (var i = 0; i < shown.length; i++) ...[
+                  if (i > 0) Divider(height: 1, color: AppTheme.divider),
+                  _ScanRow(archive: shown[i]),
+                ],
+              ],
+            ),
+    );
+  }
+}
+
+class _ScanRow extends StatelessWidget {
+  const _ScanRow({required this.archive});
+
+  final ExcelArchive archive;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    final complete = archive.status == 'complete';
+    final title = archive.categories.isEmpty ? archive.fileName : archive.categories.take(2).join(', ') + (archive.categories.length > 2 ? ' +${archive.categories.length - 2}' : '');
+    return InkWell(
+      onTap: () => context.go('/archive'),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: AppSpace.lg, vertical: AppSpace.md),
+        child: Row(
+          children: [
+            IconTile(complete ? AppIcons.checkCircle : AppIcons.clock, tone: complete ? AppTone.success : AppTone.warning, size: 34),
+            const SizedBox(width: AppSpace.md),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: text.titleSmall),
+                  const SizedBox(height: 2),
+                  Text(
+                    '${formatDate(archive.scannedAt ?? archive.createdAt) ?? 'Date unknown'} · ${groupedNumber(archive.totalBusinessesProcessed)} businesses',
+                    style: text.bodySmall,
+                  ),
+                ],
               ),
-            ],
-          ),
+            ),
+            const SizedBox(width: AppSpace.md),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text('${groupedNumber(archive.totalLeads)} leads', style: AppText.cell.copyWith(fontWeight: FontWeight.w600)),
+                const SizedBox(height: 3),
+                AppBadge(complete ? 'Complete' : 'Partial', tone: complete ? AppTone.success : AppTone.warning, dense: true, dot: true),
+              ],
+            ),
+          ],
         ),
       ),
     );
   }
 }
 
-class _Header extends StatelessWidget {
-  const _Header({required this.onRefresh});
+class _TopCategoriesCard extends StatelessWidget {
+  const _TopCategoriesCard({required this.categories});
 
-  final VoidCallback onRefresh;
+  final List<LeadCategory> categories;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Dashboard', style: Theme.of(context).textTheme.displaySmall),
-              const SizedBox(height: 6),
-              Text(
-                'Your saved-lead database at a glance.',
-                style: Theme.of(context).textTheme.bodyLarge,
+    final max = categories.fold<int>(1, (m, c) => c.count > m ? c.count : m);
+    return SectionCard(
+      title: 'Top categories',
+      subtitle: '1-star review leads by category',
+      child: categories.isEmpty
+          ? const EmptyState(icon: AppIcons.tag, title: 'No categories yet', compact: true)
+          : Column(
+              children: [
+                for (final c in categories) ...[
+                  RankedBar(label: c.name, count: c.count, fraction: c.count / max),
+                  if (c != categories.last) const SizedBox(height: AppSpace.md + 2),
+                ],
+              ],
+            ),
+    );
+  }
+}
+
+class _RecentLeadsCard extends StatelessWidget {
+  const _RecentLeadsCard({required this.leads});
+
+  final List<Lead> leads;
+
+  @override
+  Widget build(BuildContext context) {
+    return SectionCard(
+      title: 'Recent leads',
+      trailing: AppButton.text(label: 'View all', size: AppButtonSize.sm, onPressed: () => context.go('/leads')),
+      padding: EdgeInsets.zero,
+      child: leads.isEmpty
+          ? const EmptyState(icon: AppIcons.leads, title: 'Nothing recent', compact: true)
+          : Column(
+              children: [
+                for (var i = 0; i < leads.length; i++) ...[
+                  if (i > 0) Divider(height: 1, color: AppTheme.divider),
+                  _RecentLeadRow(lead: leads[i]),
+                ],
+              ],
+            ),
+    );
+  }
+}
+
+class _RecentLeadRow extends StatelessWidget {
+  const _RecentLeadRow({required this.lead});
+
+  final Lead lead;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    final letter = lead.business.trim().isEmpty ? '?' : lead.business.trim()[0].toUpperCase();
+    return InkWell(
+      onTap: () => context.push('/leads/details', extra: LeadDetailsArgs(lead: lead)),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: AppSpace.lg, vertical: AppSpace.md),
+        child: Row(
+          children: [
+            Container(
+              width: 34,
+              height: 34,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(color: AppTheme.primary100, borderRadius: BorderRadius.circular(AppTheme.radius)),
+              child: Text(letter, style: TextStyle(fontWeight: FontWeight.w700, color: AppTheme.primary700, fontSize: 14)),
+            ),
+            const SizedBox(width: AppSpace.md),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(lead.business, maxLines: 1, overflow: TextOverflow.ellipsis, style: text.titleSmall),
+                  const SizedBox(height: 2),
+                  Text(
+                    [if (lead.category.isNotEmpty) lead.category, if (lead.location.isNotEmpty) lead.location].join(' · '),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: text.bodySmall,
+                  ),
+                ],
               ),
+            ),
+            if (lead.rating != null) ...[
+              const SizedBox(width: AppSpace.sm),
+              Icon(AppIcons.star, size: 13, color: AppTheme.warning),
+              const SizedBox(width: 3),
+              Text('${lead.rating}', style: AppText.cell.copyWith(fontWeight: FontWeight.w600)),
             ],
-          ),
+          ],
         ),
-        IconButton(
-          tooltip: 'Refresh',
-          onPressed: onRefresh,
-          icon: const Icon(AppIcons.refresh),
-          style: IconButton.styleFrom(
-            backgroundColor: AppTheme.surface,
-            padding: const EdgeInsets.all(12),
-          ),
-        ),
-      ],
+      ),
+    );
+  }
+}
+
+class _RecentJobsCard extends StatelessWidget {
+  const _RecentJobsCard({required this.jobs, required this.available});
+
+  final List<Job> jobs;
+  final bool available;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    return SectionCard(
+      title: 'Recent jobs',
+      trailing: AppButton.text(label: 'Jobs Finder', size: AppButtonSize.sm, onPressed: () => context.go('/jobs')),
+      padding: EdgeInsets.zero,
+      child: jobs.isEmpty
+          ? EmptyState(
+              icon: AppIcons.briefcase,
+              title: available ? 'No jobs yet' : 'Jobs unavailable',
+              message: available ? 'Set up a search in Jobs Finder to start collecting openings.' : 'The jobs service did not respond.',
+              compact: true,
+            )
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (var i = 0; i < jobs.length; i++) ...[
+                  if (i > 0) Divider(height: 1, color: AppTheme.divider),
+                  InkWell(
+                    onTap: () => context.push('/jobs/${jobs[i].id}'),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: AppSpace.lg, vertical: AppSpace.md),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(jobs[i].title, maxLines: 1, overflow: TextOverflow.ellipsis, style: text.titleSmall),
+                          const SizedBox(height: 2),
+                          Text(
+                            [jobs[i].companyName, if (jobs[i].locationText != null) jobs[i].locationText!].join(' · '),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: text.bodySmall,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+    );
+  }
+}
+
+class _EmailAvailabilityCard extends StatelessWidget {
+  const _EmailAvailabilityCard({required this.total, required this.categories});
+
+  final int? total;
+  final List<LeadCategory> categories;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    final top = categories.take(4).toList();
+    final max = top.fold<int>(1, (m, c) => c.count > m ? c.count : m);
+    return SectionCard(
+      title: 'Email availability',
+      trailing: AppButton.text(label: 'View', size: AppButtonSize.sm, onPressed: () => context.go('/email-leads')),
+      child: total == null
+          ? const EmptyState(icon: AppIcons.mail, title: 'Email leads unavailable', compact: true)
+          : total == 0
+              ? const EmptyState(icon: AppIcons.mail, title: 'No emails found yet', message: 'Businesses whose website publishes an email land here.', compact: true)
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(groupedNumber(total!), style: AppText.stat),
+                    const SizedBox(height: 4),
+                    Text('businesses with a published email', style: text.bodySmall),
+                    if (top.isNotEmpty) ...[
+                      const SizedBox(height: AppSpace.lg),
+                      Text('BY CATEGORY', style: AppText.columnHeader),
+                      const SizedBox(height: AppSpace.md),
+                      for (final c in top) ...[
+                        RankedBar(label: c.name, count: c.count, fraction: c.count / max, tone: AppTone.success),
+                        if (c != top.last) const SizedBox(height: AppSpace.md),
+                      ],
+                    ],
+                  ],
+                ),
+    );
+  }
+}
+
+// ── States ───────────────────────────────────────────────────────────────
+
+class _DashboardSkeleton extends StatelessWidget {
+  const _DashboardSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return SkeletonScope(
+      child: Column(
+        children: [
+          ResponsiveGrid(minTileWidth: 190, children: [for (var i = 0; i < 6; i++) const SkeletonCard()]),
+          const SizedBox(height: AppSpace.xl),
+          const _Split(left: SkeletonCard(height: 280), right: SkeletonCard(height: 280)),
+        ],
+      ),
+    );
+  }
+}
+
+class _EmptyDashboard extends StatelessWidget {
+  const _EmptyDashboard();
+
+  @override
+  Widget build(BuildContext context) {
+    return AppCard(
+      child: EmptyState(
+        icon: AppIcons.store,
+        title: 'No leads saved yet',
+        message: 'Run your first scan to see your dashboard fill in.',
+        action: AppButton.primary(label: 'Start a scan', icon: AppIcons.search, onPressed: () => context.go('/scan')),
+      ),
+    );
+  }
+}
+
+class _DashboardError extends StatelessWidget {
+  const _DashboardError({required this.message, required this.onRetry});
+
+  final String message;
+  final Future<void> Function() onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return AppCard(
+      child: EmptyState(
+        icon: AppIcons.alert,
+        tone: AppTone.error,
+        title: 'Could not load your dashboard',
+        message: message,
+        action: AppButton.outlined(label: 'Retry', icon: AppIcons.refresh, onPressed: onRetry),
+      ),
     );
   }
 }
@@ -143,14 +662,14 @@ class _Header extends StatelessWidget {
 /// background — otherwise there's no way back to [MultiScanPage] once
 /// you've navigated away from it except starting a brand new search
 /// (which the backend rejects while one is already running).
-class _MultiScanBanner extends StatefulWidget {
-  const _MultiScanBanner();
+class _ScanBanner extends StatefulWidget {
+  const _ScanBanner();
 
   @override
-  State<_MultiScanBanner> createState() => _MultiScanBannerState();
+  State<_ScanBanner> createState() => _ScanBannerState();
 }
 
-class _MultiScanBannerState extends State<_MultiScanBanner> {
+class _ScanBannerState extends State<_ScanBanner> {
   MultiSearchSnapshot? _snapshot;
 
   @override
@@ -176,105 +695,27 @@ class _MultiScanBannerState extends State<_MultiScanBanner> {
 
     final running = snap.status == 'running';
     final overall = snap.overall;
-    final text = running
+    final message = running
         ? 'Multi-category scan in progress — ${overall?.completed ?? 0}/${overall?.totalCategories ?? 0} categories done, ${overall?.totalLeads ?? 0} leads so far.'
         : 'Multi-category scan finished — ${snap.finalStats?.totalLeads ?? overall?.totalLeads ?? 0} leads collected.';
 
-    return Padding(
-      padding: const EdgeInsets.only(top: 16),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-        decoration: BoxDecoration(
-          color: running ? AppTheme.accent100 : AppTheme.sage100,
-          borderRadius: BorderRadius.circular(AppTheme.radius),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                color: running ? AppTheme.accent200 : AppTheme.sage200,
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                running ? AppIcons.zap : AppIcons.checkCircle,
-                size: 18,
-                color: running ? AppTheme.accent700 : AppTheme.sage700,
-              ),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Text(
-                text,
-                style: TextStyle(
-                  color: running ? AppTheme.accent800 : AppTheme.sage800,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-            TextButton(
-              onPressed: () => context.push('/multi-scan'),
-              child: Text(running ? 'View progress' : 'View results'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _DashboardBody extends StatelessWidget {
-  const _DashboardBody({required this.overview});
-
-  final DashboardOverview overview;
-
-  @override
-  Widget build(BuildContext context) {
-    if (overview.isEmpty) {
-      return const _EmptyDashboard();
-    }
-
-    final stats = _Stats.from(overview);
-    final categories = [for (final c in overview.topCategories) MapEntry(c.name, c.count)];
-    final recent = overview.recent;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _StatGrid(stats: stats),
-        const SizedBox(height: 32),
-        LayoutBuilder(
-          builder: (context, constraints) {
-            final stacked = constraints.maxWidth < 760;
-            final breakdown = _CategoryBreakdownCard(categories: categories);
-            final recentCard = _RecentLeadsCard(leads: recent);
-            if (stacked) {
-              return Column(
-                children: [breakdown, const SizedBox(height: 20), recentCard],
-              );
-            }
-            // Not IntrinsicHeight: both cards contain their own
-            // LayoutBuilder (the category bars), which explicitly can't
-            // answer intrinsic-dimension queries. Top-aligned instead —
-            // the cards' natural heights read fine independently.
-            return Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(flex: 3, child: breakdown),
-                const SizedBox(width: 20),
-                Expanded(flex: 2, child: recentCard),
-              ],
-            );
-          },
+    return AppAlert(
+      tone: running ? AppTone.primary : AppTone.success,
+      icon: running ? AppIcons.zap : AppIcons.checkCircle,
+      message: message,
+      actions: [
+        AppButton.outlined(
+          label: running ? 'View progress' : 'View results',
+          size: AppButtonSize.sm,
+          onPressed: () => context.push('/multi-scan'),
         ),
       ],
     );
   }
 }
 
-/// Precomputed dashboard metrics, kept in one place so the numbers shown
-/// in the stat grid are guaranteed consistent with each other.
+// ── Danger zone ──────────────────────────────────────────────────────────
+
 const _clearConfirmPhrase = 'DELETE ALL DATA';
 
 /// A single irreversible action, visually set apart so it can't be tapped
@@ -282,23 +723,20 @@ const _clearConfirmPhrase = 'DELETE ALL DATA';
 /// behind typing the exact confirm phrase, not just an OK/Cancel dialog,
 /// since a stray double-tap on a plain confirm button is exactly the kind
 /// of accident this needs to survive.
-class _DangerZoneCard extends StatefulWidget {
-  const _DangerZoneCard({required this.onCleared});
+class _DangerZone extends StatefulWidget {
+  const _DangerZone({required this.onCleared});
 
   final VoidCallback onCleared;
 
   @override
-  State<_DangerZoneCard> createState() => _DangerZoneCardState();
+  State<_DangerZone> createState() => _DangerZoneState();
 }
 
-class _DangerZoneCardState extends State<_DangerZoneCard> {
+class _DangerZoneState extends State<_DangerZone> {
   bool _busy = false;
 
   Future<void> _confirmAndClear() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => _ClearAllDataDialog(),
-    );
+    final confirmed = await showAppDialog<bool>(context, builder: (ctx) => const _ClearAllDataDialog());
     if (confirmed != true || !mounted) return;
 
     setState(() => _busy = true);
@@ -319,56 +757,45 @@ class _DangerZoneCardState extends State<_DangerZoneCard> {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(22),
-      decoration: BoxDecoration(
-        color: AppTheme.surface,
-        borderRadius: BorderRadius.circular(AppTheme.radiusCard),
-        border: Border.all(color: AppTheme.accent200),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: const BoxDecoration(color: AppTheme.accent100, shape: BoxShape.circle),
-            child: const Icon(AppIcons.alert, size: 19, color: AppTheme.accent700),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Danger zone', style: Theme.of(context).textTheme.titleMedium),
-                const SizedBox(height: 4),
-                Text(
-                  'Permanently deletes every lead and search record from the database. '
-                  'User accounts are not affected. This cannot be undone.',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 14),
-          OutlinedButton(
-            onPressed: _busy ? null : _confirmAndClear,
-            style: OutlinedButton.styleFrom(foregroundColor: AppTheme.danger),
-            child: _busy
-                ? const SizedBox(
-                    height: 16,
-                    width: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2.2),
-                  )
-                : const Text('Clear all data'),
-          ),
-        ],
+    final text = Theme.of(context).textTheme;
+    return AppCard(
+      borderColor: AppTheme.error200,
+      child: LayoutBuilder(
+        builder: (context, c) {
+          final button = AppButton.destructive(label: 'Clear all data', icon: AppIcons.trash, loading: _busy, onPressed: _confirmAndClear);
+          final copy = Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Danger zone', style: text.titleMedium?.copyWith(color: AppTheme.error700)),
+              const SizedBox(height: 4),
+              Text(
+                'Permanently deletes every lead and search record from the database. '
+                'User accounts are not affected. This cannot be undone.',
+                style: text.bodySmall,
+              ),
+            ],
+          );
+          if (c.maxWidth < 560) {
+            return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [copy, const SizedBox(height: AppSpace.md), button]);
+          }
+          return Row(
+            children: [
+              const IconTile(AppIcons.alert, tone: AppTone.error),
+              const SizedBox(width: AppSpace.md + 2),
+              Expanded(child: copy),
+              const SizedBox(width: AppSpace.lg),
+              button,
+            ],
+          );
+        },
       ),
     );
   }
 }
 
 class _ClearAllDataDialog extends StatefulWidget {
+  const _ClearAllDataDialog();
+
   @override
   State<_ClearAllDataDialog> createState() => _ClearAllDataDialogState();
 }
@@ -385,501 +812,30 @@ class _ClearAllDataDialogState extends State<_ClearAllDataDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Clear all data?'),
+    return AppDialog(
+      title: 'Clear all data?',
+      message: 'This permanently deletes every saved lead and search record. There is no undo. Type the phrase below to confirm.',
+      icon: AppIcons.trash,
+      tone: AppTone.error,
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'This permanently deletes every saved lead and search record. '
-            'There is no undo. Type the phrase below to confirm.',
-          ),
-          const SizedBox(height: 16),
-          Text(
-            _clearConfirmPhrase,
-            style: const TextStyle(fontWeight: FontWeight.w800, letterSpacing: 0.5),
-          ),
-          const SizedBox(height: 10),
-          TextField(
+          Text(_clearConfirmPhrase, style: AppText.cell.copyWith(fontWeight: FontWeight.w700, letterSpacing: 0.5)),
+          const SizedBox(height: AppSpace.sm + 2),
+          AppTextField(
             controller: _controller,
             autofocus: true,
-            decoration: const InputDecoration(hintText: 'Type here'),
+            hint: 'Type here',
             onChanged: (v) => setState(() => _match = v.trim() == _clearConfirmPhrase),
             onSubmitted: (_) => _match ? Navigator.pop(context, true) : null,
           ),
         ],
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-        FilledButton(
-          onPressed: _match ? () => Navigator.pop(context, true) : null,
-          style: FilledButton.styleFrom(backgroundColor: AppTheme.danger),
-          child: const Text('Delete everything'),
-        ),
+        AppButton.outlined(label: 'Cancel', onPressed: () => Navigator.pop(context, false)),
+        AppButton.destructive(label: 'Delete everything', onPressed: _match ? () => Navigator.pop(context, true) : null),
       ],
-    );
-  }
-}
-
-class _Stats {
-  const _Stats({
-    required this.total,
-    required this.whatsAppReady,
-    required this.categories,
-    required this.markets,
-    required this.avgRating,
-    required this.addedThisWeek,
-  });
-
-  final int total;
-  final int whatsAppReady;
-  final int categories;
-  final int markets;
-  final double? avgRating;
-  final int addedThisWeek;
-
-  factory _Stats.from(DashboardOverview o) => _Stats(
-        total: o.total,
-        whatsAppReady: o.whatsAppReady,
-        categories: o.categories,
-        markets: o.markets,
-        avgRating: o.avgRating,
-        addedThisWeek: o.addedThisWeek,
-      );
-}
-
-class _StatGrid extends StatelessWidget {
-  const _StatGrid({required this.stats});
-
-  final _Stats stats;
-
-  @override
-  Widget build(BuildContext context) {
-    final waPercent = stats.total == 0
-        ? 0
-        : (stats.whatsAppReady / stats.total * 100).round();
-
-    final cards = [
-      _StatCard(
-        icon: AppIcons.store,
-        label: 'Total leads',
-        value: '${stats.total}',
-        tint: AppTheme.accent100,
-        iconColor: AppTheme.accent700,
-      ),
-      _StatCard(
-        icon: AppIcons.chat,
-        label: 'WhatsApp-ready',
-        value: '$waPercent%',
-        sublabel: '${stats.whatsAppReady} businesses',
-        tint: AppTheme.sage100,
-        iconColor: AppTheme.sage700,
-      ),
-      _StatCard(
-        icon: AppIcons.tag,
-        label: 'Categories',
-        value: '${stats.categories}',
-        tint: AppTheme.accent100,
-        iconColor: AppTheme.accent700,
-      ),
-      _StatCard(
-        icon: AppIcons.mapPinned,
-        label: 'Markets covered',
-        value: '${stats.markets}',
-        tint: AppTheme.sage100,
-        iconColor: AppTheme.sage700,
-      ),
-      _StatCard(
-        icon: AppIcons.star,
-        label: 'Avg. rating',
-        value: stats.avgRating == null ? '—' : stats.avgRating!.toStringAsFixed(1),
-        tint: AppTheme.accent100,
-        iconColor: AppTheme.accent700,
-      ),
-      _StatCard(
-        icon: AppIcons.trendingUp,
-        label: 'Added this week',
-        value: '${stats.addedThisWeek}',
-        tint: AppTheme.sage100,
-        iconColor: AppTheme.sage700,
-      ),
-    ];
-
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final columns = constraints.maxWidth >= 980
-            ? 6
-            : constraints.maxWidth >= 700
-                ? 3
-                : constraints.maxWidth >= 460
-                    ? 2
-                    : 1;
-        return GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: cards.length,
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: columns,
-            mainAxisSpacing: 14,
-            crossAxisSpacing: 14,
-            mainAxisExtent: 128,
-          ),
-          itemBuilder: (context, index) => cards[index],
-        );
-      },
-    );
-  }
-}
-
-class _StatCard extends StatelessWidget {
-  const _StatCard({
-    required this.icon,
-    required this.label,
-    required this.value,
-    required this.tint,
-    required this.iconColor,
-    this.sublabel,
-  });
-
-  final IconData icon;
-  final String label;
-  final String value;
-  final String? sublabel;
-  final Color tint;
-  final Color iconColor;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: AppTheme.surface,
-        borderRadius: BorderRadius.circular(AppTheme.radiusCard),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(color: tint, shape: BoxShape.circle),
-            child: Icon(icon, size: 17, color: iconColor),
-          ),
-          const Spacer(),
-          Text(
-            value,
-            style: const TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.w800,
-              color: AppTheme.ink,
-              height: 1.0,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            sublabel ?? label,
-            style: const TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: AppTheme.faint,
-            ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _CategoryBreakdownCard extends StatelessWidget {
-  const _CategoryBreakdownCard({required this.categories});
-
-  final List<MapEntry<String, int>> categories;
-
-  @override
-  Widget build(BuildContext context) {
-    final maxCount = categories.isEmpty
-        ? 1
-        : categories.map((e) => e.value).reduce((a, b) => a > b ? a : b);
-
-    return Container(
-      padding: const EdgeInsets.all(22),
-      decoration: BoxDecoration(
-        color: AppTheme.surface,
-        borderRadius: BorderRadius.circular(AppTheme.radiusCard),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(AppIcons.barChart, size: 18, color: AppTheme.accent700),
-              const SizedBox(width: 10),
-              Text('Top categories', style: Theme.of(context).textTheme.titleMedium),
-            ],
-          ),
-          const SizedBox(height: 20),
-          if (categories.isEmpty)
-            Text('No categories yet.', style: Theme.of(context).textTheme.bodyMedium)
-          else
-            for (final entry in categories)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 14),
-                child: _CategoryBar(
-                  label: entry.key,
-                  count: entry.value,
-                  fraction: entry.value / maxCount,
-                ),
-              ),
-        ],
-      ),
-    );
-  }
-}
-
-class _CategoryBar extends StatelessWidget {
-  const _CategoryBar({
-    required this.label,
-    required this.count,
-    required this.fraction,
-  });
-
-  final String label;
-  final int count;
-  final double fraction;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                label,
-                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13.5),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            const SizedBox(width: 8),
-            Text(
-              '$count',
-              style: const TextStyle(
-                fontWeight: FontWeight.w800,
-                fontSize: 13.5,
-                color: AppTheme.accent700,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 6),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(AppTheme.radiusPill),
-          child: Stack(
-            children: [
-              Container(height: 8, color: AppTheme.neutral100),
-              TweenAnimationBuilder<double>(
-                tween: Tween(begin: 0, end: fraction.clamp(0.04, 1.0)),
-                duration: const Duration(milliseconds: 400),
-                curve: Curves.easeOutCubic,
-                builder: (context, value, child) => FractionallySizedBox(
-                  widthFactor: value,
-                  alignment: Alignment.centerLeft,
-                  child: child,
-                ),
-                child: Container(
-                  height: 8,
-                  decoration: const BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [AppTheme.accent400, AppTheme.accent600],
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _RecentLeadsCard extends StatelessWidget {
-  const _RecentLeadsCard({required this.leads});
-
-  final List<Lead> leads;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(22),
-      decoration: BoxDecoration(
-        color: AppTheme.surface,
-        borderRadius: BorderRadius.circular(AppTheme.radiusCard),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(AppIcons.clock, size: 18, color: AppTheme.sage700),
-              const SizedBox(width: 10),
-              Text('Recently added', style: Theme.of(context).textTheme.titleMedium),
-            ],
-          ),
-          const SizedBox(height: 16),
-          if (leads.isEmpty)
-            Text('Nothing recent.', style: Theme.of(context).textTheme.bodyMedium)
-          else
-            for (final lead in leads) _RecentLeadRow(lead: lead),
-        ],
-      ),
-    );
-  }
-}
-
-class _RecentLeadRow extends StatelessWidget {
-  const _RecentLeadRow({required this.lead});
-
-  final Lead lead;
-
-  @override
-  Widget build(BuildContext context) {
-    final letter = lead.business.trim().isEmpty ? '?' : lead.business.trim()[0].toUpperCase();
-    final warm = lead.business.hashCode.isEven;
-    final date = formatDate(lead.savedAt);
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 14),
-      child: Row(
-        children: [
-          Container(
-            width: 38,
-            height: 38,
-            decoration: BoxDecoration(
-              color: warm ? AppTheme.accent100 : AppTheme.sage100,
-              shape: BoxShape.circle,
-            ),
-            alignment: Alignment.center,
-            child: Text(
-              letter,
-              style: TextStyle(
-                fontWeight: FontWeight.w800,
-                color: warm ? AppTheme.accent700 : AppTheme.sage700,
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  lead.business,
-                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                Text(
-                  lead.category,
-                  style: const TextStyle(fontSize: 12, color: AppTheme.faint),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-            ),
-          ),
-          if (date != null)
-            Text(date, style: const TextStyle(fontSize: 11, color: AppTheme.faint)),
-        ],
-      ),
-    );
-  }
-}
-
-class _EmptyDashboard extends StatelessWidget {
-  const _EmptyDashboard();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: 64, horizontal: 32),
-      decoration: BoxDecoration(
-        color: AppTheme.surface,
-        borderRadius: BorderRadius.circular(AppTheme.radiusCard),
-      ),
-      child: Column(
-        children: [
-          Container(
-            width: 88,
-            height: 88,
-            decoration: const BoxDecoration(color: AppTheme.accent100, shape: BoxShape.circle),
-            child: const Icon(AppIcons.store, size: 36, color: AppTheme.accent700),
-          ),
-          const SizedBox(height: 20),
-          Text('No leads saved yet', style: Theme.of(context).textTheme.headlineSmall),
-          const SizedBox(height: 8),
-          Text(
-            'Run your first Excel scan to see your dashboard fill in.',
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.bodyLarge,
-          ),
-          const SizedBox(height: 24),
-          ElevatedButton.icon(
-            onPressed: () => context.go('/scan'),
-            icon: const Icon(AppIcons.download, size: 19),
-            label: const Text('Start Excel scan'),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _DashboardError extends StatelessWidget {
-  const _DashboardError({required this.message, required this.onRetry});
-
-  final String message;
-  final Future<void> Function() onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: 48, horizontal: 32),
-      decoration: BoxDecoration(
-        color: AppTheme.surface,
-        borderRadius: BorderRadius.circular(AppTheme.radiusCard),
-      ),
-      child: Column(
-        children: [
-          Container(
-            width: 72,
-            height: 72,
-            decoration: const BoxDecoration(color: AppTheme.accent100, shape: BoxShape.circle),
-            child: const Icon(AppIcons.alert, size: 30, color: AppTheme.accent700),
-          ),
-          const SizedBox(height: 18),
-          Text('Could not load your dashboard', style: Theme.of(context).textTheme.headlineSmall),
-          const SizedBox(height: 8),
-          Text(
-            message,
-            textAlign: TextAlign.center,
-            style: const TextStyle(color: AppTheme.danger),
-          ),
-          const SizedBox(height: 18),
-          OutlinedButton.icon(
-            onPressed: onRetry,
-            icon: const Icon(AppIcons.refresh, size: 18),
-            label: const Text('Retry'),
-          ),
-        ],
-      ),
     );
   }
 }

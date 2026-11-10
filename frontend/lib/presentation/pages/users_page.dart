@@ -165,7 +165,7 @@ class _UsersPageState extends State<UsersPage> {
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Text(_error!, style: const TextStyle(color: AppTheme.danger), textAlign: TextAlign.center),
+                              Text(_error!, style: TextStyle(color: AppTheme.error), textAlign: TextAlign.center),
                               const SizedBox(height: 12),
                               OutlinedButton.icon(
                                 onPressed: _load,
@@ -183,19 +183,19 @@ class _UsersPageState extends State<UsersPage> {
                             pending == 0
                                 ? '${_users.length} user${_users.length == 1 ? '' : 's'} · all approved'
                                 : '${_users.length} user${_users.length == 1 ? '' : 's'} · $pending waiting for approval',
-                            style: const TextStyle(fontSize: 12.5, color: AppTheme.faint, fontWeight: FontWeight.w700),
+                            style: TextStyle(fontSize: 12.5, color: AppTheme.textMuted, fontWeight: FontWeight.w700),
                           ),
                           const SizedBox(height: 6),
-                          const Text(
+                          Text(
                             'Manage user accounts, approval status, and roles (Admin vs Salesman).',
-                            style: TextStyle(fontSize: 12.5, color: AppTheme.faint),
+                            style: TextStyle(fontSize: 12.5, color: AppTheme.textMuted),
                           ),
                           const SizedBox(height: 16),
                           if (_users.isEmpty)
-                            const Padding(
+                            Padding(
                               padding: EdgeInsets.symmetric(vertical: 40),
                               child: Center(
-                                child: Text('No mobile users yet. They appear after someone signs into the app.', style: TextStyle(color: AppTheme.faint)),
+                                child: Text('No mobile users yet. They appear after someone signs into the app.', style: TextStyle(color: AppTheme.textMuted)),
                               ),
                             )
                           else
@@ -242,7 +242,7 @@ class _UserCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppTheme.surface,
         borderRadius: BorderRadius.circular(AppTheme.radius),
-        border: Border.all(color: user.approved ? AppTheme.sage100 : AppTheme.neutral200),
+        border: Border.all(color: user.approved ? AppTheme.success100 : AppTheme.neutral200),
       ),
       child: Row(
         children: [
@@ -262,7 +262,7 @@ class _UserCard extends StatelessWidget {
                   const SizedBox(height: 2),
                   Text(
                     user.email!,
-                    style: const TextStyle(fontSize: 12, color: AppTheme.faint),
+                    style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -275,7 +275,7 @@ class _UserCard extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 11.5,
                         fontWeight: FontWeight.w700,
-                        color: user.approved ? AppTheme.sage700 : AppTheme.accent700,
+                        color: user.approved ? AppTheme.success700 : AppTheme.primary700,
                       ),
                     ),
                   ],

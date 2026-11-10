@@ -41,11 +41,11 @@ String pkr(double value) => 'PKR ${_formatAmount(value)}';
     case LeadStatus.newLead:
       return (AppTheme.neutral600, AppTheme.neutral100, AppIcons.sparkles);
     case LeadStatus.inProgress:
-      return (AppTheme.accent700, AppTheme.accent100, AppIcons.zap);
+      return (AppTheme.primary700, AppTheme.primary100, AppIcons.zap);
     case LeadStatus.payment:
-      return (AppTheme.accent700, AppTheme.accent100, AppIcons.clock);
+      return (AppTheme.primary700, AppTheme.primary100, AppIcons.clock);
     case LeadStatus.completed:
-      return (AppTheme.sage800, AppTheme.sage100, AppIcons.shieldCheck);
+      return (AppTheme.success800, AppTheme.success100, AppIcons.shieldCheck);
     case LeadStatus.cancelled:
       return (AppTheme.neutral600, AppTheme.neutral100, AppIcons.close);
   }
@@ -57,17 +57,17 @@ String pkr(double value) => 'PKR ${_formatAmount(value)}';
       return (AppTheme.neutral600, AppTheme.neutral100);
     case ClientPaymentStatus.paid:
     case ClientPaymentStatus.received:
-      return (AppTheme.sage700, AppTheme.sage100);
+      return (AppTheme.success700, AppTheme.success100);
     case ClientPaymentStatus.stuck:
-      return (AppTheme.danger, AppTheme.accent100);
+      return (AppTheme.error, AppTheme.primary100);
     case ClientPaymentStatus.inProcess:
-      return (AppTheme.accent700, AppTheme.accent100);
+      return (AppTheme.primary700, AppTheme.primary100);
   }
 }
 
 (Color, Color) employeePaymentStyle(EmployeePaymentStatus status) {
   return status == EmployeePaymentStatus.paid
-      ? (AppTheme.sage700, AppTheme.sage100)
+      ? (AppTheme.success700, AppTheme.success100)
       : (AppTheme.neutral600, AppTheme.neutral100);
 }
 
@@ -173,8 +173,8 @@ class _SalesPageState extends State<SalesPage> with SingleTickerProviderStateMix
             child: DropdownButtonHideUnderline(
               child: DropdownButton<String>(
                 value: _filterSalesmanId,
-                icon: const Icon(AppIcons.chevronDown, size: 16, color: AppTheme.subtle),
-                style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: AppTheme.ink),
+                icon: Icon(AppIcons.chevronDown, size: 16, color: AppTheme.textSecondary),
+                style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: AppTheme.textPrimary),
                 items: [
                   const DropdownMenuItem(value: _allSalesmen, child: Text(_allSalesmen)),
                   for (final s in _salesmen) DropdownMenuItem(value: s.id, child: Text(s.name)),
@@ -330,7 +330,7 @@ class _ClientsTabState extends State<_ClientsTab> with AutomaticKeepAliveClientM
     if (_error != null) {
       return Center(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Text(_error!, style: const TextStyle(color: AppTheme.danger)),
+          Text(_error!, style: TextStyle(color: AppTheme.error)),
           const SizedBox(height: 12),
           OutlinedButton(onPressed: _load, child: const Text('Retry')),
         ]),
@@ -382,7 +382,7 @@ class _ClientsTabState extends State<_ClientsTab> with AutomaticKeepAliveClientM
                             '${c.dealCount} ${c.dealCount == 1 ? 'sale' : 'sales'}'
                             '${c.mapsUrl == null ? ' · opens a Maps search' : ''}',
                           ),
-                          trailing: const Icon(AppIcons.mapPin, size: 20, color: AppTheme.accent700),
+                          trailing: Icon(AppIcons.mapPin, size: 20, color: AppTheme.primary700),
                         ),
                       );
                     },
@@ -482,7 +482,7 @@ class _SalesListTabState extends State<_SalesListTab> with AutomaticKeepAliveCli
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete', style: TextStyle(color: AppTheme.danger)),
+            child: Text('Delete', style: TextStyle(color: AppTheme.error)),
           ),
         ],
       ),
@@ -508,7 +508,7 @@ class _SalesListTabState extends State<_SalesListTab> with AutomaticKeepAliveCli
         child: _loading
             ? const Center(child: CircularProgressIndicator())
             : _error != null
-                ? Center(child: Text(_error!, style: const TextStyle(color: AppTheme.danger)))
+                ? Center(child: Text(_error!, style: TextStyle(color: AppTheme.error)))
                 : ListView(
                     padding: const EdgeInsets.fromLTRB(20, 16, 20, 40),
                     children: [
@@ -517,7 +517,7 @@ class _SalesListTabState extends State<_SalesListTab> with AutomaticKeepAliveCli
                           Expanded(
                             child: Text(
                               '${_sales.length} ${widget.ongoing ? 'ongoing' : 'completed'} sale${_sales.length == 1 ? '' : 's'}',
-                              style: const TextStyle(fontSize: 12.5, color: AppTheme.faint, fontWeight: FontWeight.w700),
+                              style: TextStyle(fontSize: 12.5, color: AppTheme.textMuted, fontWeight: FontWeight.w700),
                             ),
                           ),
                           FilledButton.icon(
@@ -554,7 +554,7 @@ class _EmptyState extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 40),
-      child: Center(child: Text(message, style: const TextStyle(fontSize: 13, color: AppTheme.faint))),
+      child: Center(child: Text(message, style: TextStyle(fontSize: 13, color: AppTheme.textMuted))),
     );
   }
 }
@@ -584,7 +584,7 @@ class _SaleCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppTheme.surface,
         borderRadius: BorderRadius.circular(AppTheme.radiusCard),
-        border: Border.all(color: newReviews.isNotEmpty ? AppTheme.accent300 : AppTheme.neutral200),
+        border: Border.all(color: newReviews.isNotEmpty ? AppTheme.primary300 : AppTheme.neutral200),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -600,12 +600,12 @@ class _SaleCard extends StatelessWidget {
                     const SizedBox(height: 4),
                     Row(
                       children: [
-                        const Icon(AppIcons.users, size: 12, color: AppTheme.faint),
+                        Icon(AppIcons.users, size: 12, color: AppTheme.textMuted),
                         const SizedBox(width: 4),
                         Flexible(
                           child: Text(
                             sale.salesmanName ?? 'Unassigned',
-                            style: const TextStyle(fontSize: 12.5, color: AppTheme.faint, fontWeight: FontWeight.w600),
+                            style: TextStyle(fontSize: 12.5, color: AppTheme.textMuted, fontWeight: FontWeight.w600),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -614,7 +614,7 @@ class _SaleCard extends StatelessWidget {
                           const SizedBox(width: 10),
                           InkWell(
                             onTap: () => launchUrl(Uri.parse(sale.reviewLink!)),
-                            child: const Icon(AppIcons.externalLink, size: 13, color: AppTheme.faint),
+                            child: Icon(AppIcons.externalLink, size: 13, color: AppTheme.textMuted),
                           ),
                         ],
                       ],
@@ -627,14 +627,14 @@ class _SaleCard extends StatelessWidget {
               if (onEdit != null)
                 IconButton(
                   onPressed: onEdit,
-                  icon: const Icon(AppIcons.edit, size: 17, color: AppTheme.faint),
+                  icon: Icon(AppIcons.edit, size: 17, color: AppTheme.textMuted),
                   tooltip: 'Edit',
                   visualDensity: VisualDensity.compact,
                 ),
               if (onDelete != null)
                 IconButton(
                   onPressed: onDelete,
-                  icon: const Icon(AppIcons.trash, size: 17, color: AppTheme.faint),
+                  icon: Icon(AppIcons.trash, size: 17, color: AppTheme.textMuted),
                   tooltip: 'Delete',
                   visualDensity: VisualDensity.compact,
                 ),
@@ -668,7 +668,7 @@ class _SaleCard extends StatelessWidget {
             const SizedBox(height: 12),
             Text(
               '${newReviews.length} new 1★ review${newReviews.length == 1 ? '' : 's'} in the last 30 days',
-              style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: AppTheme.accent700),
+              style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: AppTheme.primary700),
             ),
             const SizedBox(height: 8),
             for (final review in newReviews) _SaleReviewTile(review: review),
@@ -693,8 +693,8 @@ class _MoneyLine extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text('$label  ', style: const TextStyle(fontSize: 12.5, color: AppTheme.faint)),
-        Text(amount, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800, color: AppTheme.ink)),
+        Text('$label  ', style: TextStyle(fontSize: 12.5, color: AppTheme.textMuted)),
+        Text(amount, style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800, color: AppTheme.textPrimary)),
         const SizedBox(width: 8),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -743,7 +743,7 @@ class _SaleReviewTile extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(AppIcons.star, size: 15, color: AppTheme.accent700),
+          Icon(AppIcons.star, size: 15, color: AppTheme.primary700),
           const SizedBox(width: 8),
           Expanded(
             child: Column(
@@ -754,20 +754,20 @@ class _SaleReviewTile extends StatelessWidget {
                     Expanded(
                       child: Text(
                         '${review.reviewer} · ${review.stars ?? '?'}★ · ${review.date}',
-                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.subtle),
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.textSecondary),
                       ),
                     ),
                     if (review.link != null)
                       InkWell(
                         onTap: () => launchUrl(Uri.parse(review.link!)),
-                        child: const Padding(
+                        child: Padding(
                           padding: EdgeInsets.symmetric(horizontal: 4),
                           child: Text(
                             'Open',
                             style: TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.w700,
-                              color: AppTheme.accent700,
+                              color: AppTheme.primary700,
                               decoration: TextDecoration.underline,
                             ),
                           ),
@@ -812,7 +812,7 @@ class _TeamTab extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(error!, style: const TextStyle(color: AppTheme.danger), textAlign: TextAlign.center),
+              Text(error!, style: TextStyle(color: AppTheme.error), textAlign: TextAlign.center),
               const SizedBox(height: 12),
               OutlinedButton.icon(onPressed: onRetry, icon: const Icon(AppIcons.refresh, size: 18), label: const Text('Retry')),
             ],
@@ -878,12 +878,12 @@ class _SalesmanCard extends StatelessWidget {
                       Text(salesman.name, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14), maxLines: 1, overflow: TextOverflow.ellipsis),
                       if (salesman.email != null && salesman.email!.isNotEmpty) ...[
                         const SizedBox(height: 2),
-                        Text(salesman.email!, style: const TextStyle(fontSize: 12, color: AppTheme.faint), maxLines: 1, overflow: TextOverflow.ellipsis),
+                        Text(salesman.email!, style: TextStyle(fontSize: 12, color: AppTheme.textMuted), maxLines: 1, overflow: TextOverflow.ellipsis),
                       ],
                     ],
                   ),
                 ),
-                const Icon(AppIcons.chevronRight, size: 16, color: AppTheme.faint),
+                Icon(AppIcons.chevronRight, size: 16, color: AppTheme.textMuted),
               ],
             ),
           ),
@@ -968,7 +968,7 @@ class _SalesmanDetailPageState extends State<_SalesmanDetailPage> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text(_error!, style: const TextStyle(color: AppTheme.danger), textAlign: TextAlign.center),
+                      Text(_error!, style: TextStyle(color: AppTheme.error), textAlign: TextAlign.center),
                       const SizedBox(height: 12),
                       OutlinedButton.icon(onPressed: _load, icon: const Icon(AppIcons.refresh, size: 18), label: const Text('Retry')),
                     ],
@@ -987,8 +987,8 @@ class _SalesmanDetailPageState extends State<_SalesmanDetailPage> {
                                 label: 'Still owed',
                                 value: pkr(owed),
                                 icon: AppIcons.alert,
-                                color: AppTheme.danger,
-                                background: AppTheme.accent100,
+                                color: AppTheme.error,
+                                background: AppTheme.primary100,
                               ),
                             ),
                             const SizedBox(width: 12),
@@ -997,8 +997,8 @@ class _SalesmanDetailPageState extends State<_SalesmanDetailPage> {
                                 label: 'Already paid',
                                 value: pkr(paid),
                                 icon: AppIcons.checkCircle,
-                                color: AppTheme.sage700,
-                                background: AppTheme.sage100,
+                                color: AppTheme.success700,
+                                background: AppTheme.success100,
                               ),
                             ),
                           ],
@@ -1231,7 +1231,7 @@ class _SaleFormDialogState extends State<_SaleFormDialog> {
                     color: AppTheme.surface,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
-                      side: const BorderSide(color: AppTheme.neutral200),
+                      side: BorderSide(color: AppTheme.neutral200),
                     ),
                     clipBehavior: Clip.antiAlias,
                     child: ConstrainedBox(
@@ -1259,9 +1259,9 @@ class _SaleFormDialogState extends State<_SaleFormDialog> {
                 ),
               ] else if (_matchedClient != null) ...[
                 const SizedBox(height: 8),
-                const Text(
+                Text(
                   'Existing client, Google Maps link saved',
-                  style: TextStyle(fontSize: 12, color: AppTheme.faint),
+                  style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
                 ),
               ],
               const SizedBox(height: 12),
@@ -1330,7 +1330,7 @@ class _SaleFormDialogState extends State<_SaleFormDialog> {
               ],
               if (_error != null) ...[
                 const SizedBox(height: 12),
-                Text(_error!, style: const TextStyle(color: AppTheme.danger, fontSize: 12.5)),
+                Text(_error!, style: TextStyle(color: AppTheme.error, fontSize: 12.5)),
               ],
             ],
           ),
@@ -1341,7 +1341,7 @@ class _SaleFormDialogState extends State<_SaleFormDialog> {
         FilledButton(
           onPressed: _saving ? null : _submit,
           child: _saving
-              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.surface))
+              ? SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.onPrimary))
               : Text(widget.sale == null ? 'Create' : 'Save'),
         ),
       ],

@@ -8,6 +8,9 @@ class ApiConstants {
     defaultValue: 'http://localhost:3001',
   );
 
+  /// Jobs Finder API root; every endpoint hangs off it (see the backend's jobsRoutes.js).
+  static const String jobs = '/api/jobs';
+
   static const String mapsSessionStatus = '/api/maps-session/status';
   static const String mapsSessionLogin = '/api/maps-session/login';
   static const String stateScan = '/api/state-scan';

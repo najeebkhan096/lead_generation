@@ -5,7 +5,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../../core/theme/app_theme.dart';
+import '../design_system/design_system.dart';
 import '../../domain/entities/state_city_scan_snapshot.dart';
 import '../../domain/repositories/lead_repository.dart';
 import '../utils/duration_format.dart';
@@ -85,23 +85,15 @@ class _StateScanPageState extends State<StateScanPage> {
   }
 
   Future<void> _confirmCancel() async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Cancel scan?'),
-        content: const Text(
-          'The current city will finish, then the scan stops. Every state already completed stays saved — nothing already scanned is lost.',
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Keep running')),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Cancel scan', style: TextStyle(color: AppTheme.danger)),
-          ),
-        ],
-      ),
+    final confirm = await showConfirmDialog(
+      context,
+      title: 'Stop scan?',
+      message: 'The current city will finish, then the scan stops. Every state already completed stays saved — nothing already scanned is lost.',
+      confirmLabel: 'Stop scan',
+      cancelLabel: 'Keep running',
+      destructive: true,
     );
-    if (confirm == true) await _runControl(_repo.cancelStateScan);
+    if (confirm) await _runControl(_repo.cancelStateScan);
   }
 
   @override
@@ -109,47 +101,58 @@ class _StateScanPageState extends State<StateScanPage> {
     final snap = _snapshot;
     final isDone = snap?.status == 'done';
     final isPaused = snap?.paused ?? false;
+    final gutter = AppSpace.pageGutter(MediaQuery.sizeOf(context).width);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Scan Progress'),
-        actions: [
-          if (snap != null && !isDone) ...[
-            IconButton(
-              tooltip: isPaused ? 'Resume scan' : 'Pause scan',
-              icon: Icon(isPaused ? AppIcons.checkCircle : Icons.pause_circle_outline),
-              onPressed: () => _runControl(isPaused ? _repo.resumeStateScan : _repo.pauseStateScan),
-            ),
-            IconButton(tooltip: 'Cancel scan', icon: const Icon(AppIcons.close), onPressed: _confirmCancel),
-          ],
-          IconButton(tooltip: 'Refresh', icon: const Icon(AppIcons.refresh), onPressed: _poll),
-          const SizedBox(width: 8),
-        ],
-      ),
-      body: SafeArea(
-        child: _loading
-            ? const Center(child: CircularProgressIndicator())
-            : (snap == null && _error != null)
-                ? _ErrorState(message: _error!, onRetry: _poll)
-                : snap == null || !snap.hasJob
-                    ? const _NoJobState()
-                    : Column(
-                        children: [
-                          if (_error != null) _ReconnectBanner(message: _error!),
-                          Expanded(
-                            child: _DashboardBody(
-                              snapshot: snap,
-                              selectedCategory: _selectedCategory ?? snap.categories.first.category,
-                              onSelectCategory: (c) => setState(() => _selectedCategory = c),
-                              expandedStates: _expandedStates,
-                              onToggleState: (state) => setState(() {
-                                _expandedStates.contains(state) ? _expandedStates.remove(state) : _expandedStates.add(state);
-                              }),
+      backgroundColor: Colors.transparent,
+      body: _loading
+          ? const LoadingView(label: 'Loading scan status…')
+          : (snap == null && _error != null)
+              ? _ErrorState(message: _error!, onRetry: _poll)
+              : snap == null || !snap.hasJob
+                  ? const _NoJobState()
+                  : Column(
+                      children: [
+                        Padding(
+                          padding: EdgeInsets.fromLTRB(gutter, gutter, gutter, 0),
+                          child: Center(
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: AppSpace.pageMaxWidth),
+                              child: PageHeader(
+                                title: snap.isNoWebsite ? 'No-website scan progress' : '1-star scan progress',
+                                subtitle: isDone
+                                    ? 'This scan has finished.'
+                                    : (isPaused ? 'Paused — resume to carry on.' : 'Live, state by state and city by city.'),
+                                onBack: () => context.go('/scan'),
+                                actions: [
+                                  if (!isDone)
+                                    AppButton.outlined(
+                                      label: isPaused ? 'Resume' : 'Pause',
+                                      icon: isPaused ? AppIcons.play : AppIcons.pause,
+                                      onPressed: () => _runControl(isPaused ? _repo.resumeStateScan : _repo.pauseStateScan),
+                                    ),
+                                  if (!isDone)
+                                    AppButton.destructive(label: 'Stop', icon: AppIcons.stop, onPressed: _confirmCancel),
+                                  AppButton.outlined(label: 'Refresh', icon: AppIcons.refresh, onPressed: _poll),
+                                ],
+                              ),
                             ),
                           ),
-                        ],
-                      ),
-      ),
+                        ),
+                        if (_error != null) _ReconnectBanner(message: _error!),
+                        Expanded(
+                          child: _DashboardBody(
+                            snapshot: snap,
+                            selectedCategory: _selectedCategory ?? snap.categories.first.category,
+                            onSelectCategory: (c) => setState(() => _selectedCategory = c),
+                            expandedStates: _expandedStates,
+                            onToggleState: (state) => setState(() {
+                              _expandedStates.contains(state) ? _expandedStates.remove(state) : _expandedStates.add(state);
+                            }),
+                          ),
+                        ),
+                      ],
+                    ),
     );
   }
 }
@@ -159,29 +162,11 @@ class _NoJobState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 88,
-              height: 88,
-              decoration: const BoxDecoration(color: AppTheme.accent100, shape: BoxShape.circle),
-              child: const Icon(AppIcons.mapPinned, size: 36, color: AppTheme.accent700),
-            ),
-            const SizedBox(height: 20),
-            Text('No scan running', style: Theme.of(context).textTheme.headlineSmall),
-            const SizedBox(height: 8),
-            Text(
-              'Start a scan from the Excel Scan page to see live state-by-state, city-by-city progress here.',
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodyLarge,
-            ),
-          ],
-        ),
-      ),
+    return EmptyState(
+      icon: AppIcons.mapPinned,
+      title: 'No scan running',
+      message: 'Start a scan from the Scan page to see live state-by-state, city-by-city progress here.',
+      action: AppButton.primary(label: 'New scan', icon: AppIcons.plus, onPressed: () => context.go('/scan')),
     );
   }
 }
@@ -194,27 +179,12 @@ class _ErrorState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 72,
-              height: 72,
-              decoration: const BoxDecoration(color: AppTheme.accent100, shape: BoxShape.circle),
-              child: const Icon(AppIcons.alert, size: 30, color: AppTheme.accent700),
-            ),
-            const SizedBox(height: 18),
-            Text('Could not load scan status', style: Theme.of(context).textTheme.headlineSmall),
-            const SizedBox(height: 8),
-            Text(message, textAlign: TextAlign.center, style: const TextStyle(color: AppTheme.danger)),
-            const SizedBox(height: 18),
-            OutlinedButton.icon(onPressed: onRetry, icon: const Icon(AppIcons.refresh, size: 18), label: const Text('Retry')),
-          ],
-        ),
-      ),
+    return EmptyState(
+      icon: AppIcons.alert,
+      tone: AppTone.error,
+      title: 'Could not load scan status',
+      message: message,
+      action: AppButton.outlined(label: 'Retry', icon: AppIcons.refresh, onPressed: onRetry),
     );
   }
 }
@@ -226,24 +196,10 @@ class _ReconnectBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-      color: AppTheme.accent100,
-      child: Row(
-        children: [
-          const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.accent700)),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              'Reconnecting — showing last known progress. ($message)',
-              style: const TextStyle(fontSize: 12, color: AppTheme.accent700, fontWeight: FontWeight.w600),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-        ],
-      ),
+    final gutter = AppSpace.pageGutter(MediaQuery.sizeOf(context).width);
+    return Padding(
+      padding: EdgeInsets.fromLTRB(gutter, AppSpace.md, gutter, 0),
+      child: AppAlert(tone: AppTone.warning, icon: AppIcons.refresh, message: 'Reconnecting — showing last known progress. ($message)'),
     );
   }
 }
@@ -276,12 +232,12 @@ class _DashboardBody extends StatelessWidget {
     return CustomScrollView(
       slivers: [
         SliverPadding(
-          padding: const EdgeInsets.fromLTRB(24, 20, 24, 40),
+          padding: EdgeInsets.fromLTRB(AppSpace.pageGutter(MediaQuery.sizeOf(context).width), AppSpace.xl, AppSpace.pageGutter(MediaQuery.sizeOf(context).width), AppSpace.xxxl),
           sliver: SliverList.list(
             children: [
               Center(
                 child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 1080),
+                  constraints: const BoxConstraints(maxWidth: AppSpace.pageMaxWidth),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -303,7 +259,10 @@ class _DashboardBody extends StatelessWidget {
                         ),
                       ],
                       const SizedBox(height: 24),
-                      _CategoryArchiveCard(category: cat),
+                      if (snapshot.isNoWebsite)
+                        _NoWebsiteResultsCard(category: cat)
+                      else
+                        _CategoryArchiveCard(category: cat),
                       const SizedBox(height: 24),
                       _StateListCard(
                         category: cat,
@@ -336,29 +295,14 @@ class _GoogleCheckBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final retry = info.retryAt;
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFFF4E0),
-        borderRadius: BorderRadius.circular(AppTheme.radiusCard),
-        border: Border.all(color: const Color(0xFFE0A030).withValues(alpha: 0.5)),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Icon(AppIcons.clock, size: 20, color: Color(0xFFB36B00)),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              'Paused: Google is showing its "unusual traffic" check for this network (since ${_clock(info.since)}). '
-              'The scan is waiting instead of pushing through it, and nothing is lost: the city it was on will be redone. '
-              '${retry != null ? 'It looks again at ${_clock(retry)}' : 'It looks again soon'}'
-              '${info.checks > 0 ? ' (checked ${info.checks}×)' : ''} and continues by itself once Google serves results again.',
-              style: const TextStyle(fontSize: 13, height: 1.4, color: AppTheme.neutral700),
-            ),
-          ),
-        ],
-      ),
+    return AppAlert(
+      tone: AppTone.warning,
+      icon: AppIcons.clock,
+      title: 'Paused by Google',
+      message: 'Google is showing its "unusual traffic" check for this network (since ${_clock(info.since)}). '
+          'The scan is waiting instead of pushing through it, and nothing is lost: the city it was on will be redone. '
+          '${retry != null ? 'It looks again at ${_clock(retry)}' : 'It looks again soon'}'
+          '${info.checks > 0 ? ' (checked ${info.checks}×)' : ''} and continues by itself once Google serves results again.',
     );
   }
 }
@@ -368,28 +312,12 @@ class _StoppedForSignInBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFDE8E8),
-        borderRadius: BorderRadius.circular(AppTheme.radiusCard),
-        border: Border.all(color: AppTheme.danger.withValues(alpha: 0.3)),
-      ),
-      child: const Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(AppIcons.alert, size: 20, color: AppTheme.danger),
-          SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              'The scan stopped: Google asked to sign in, so the saved session has expired. '
-              'Nothing was missed silently. The city it was on was left out of the results. '
-              'Sign in again on the Excel Scan page, then open the Archive and Resume this scan.',
-              style: TextStyle(fontSize: 13, height: 1.4, color: AppTheme.neutral700),
-            ),
-          ),
-        ],
-      ),
+    return const AppAlert(
+      tone: AppTone.error,
+      title: 'The scan stopped',
+      message: 'Google asked to sign in, so the saved session has expired. '
+          'Nothing was missed silently. The city it was on was left out of the results. '
+          'Sign in again on the Scan page, then open the Archive and Resume this scan.',
     );
   }
 }
@@ -414,38 +342,30 @@ class _OverallCard extends StatelessWidget {
     final percent = citiesTotal > 0 ? (citiesDone / citiesTotal * 100).round() : 0;
     final categoriesDone = snapshot.categories.where((c) => c.status == 'done').length;
 
-    return Container(
-      padding: const EdgeInsets.all(22),
-      decoration: BoxDecoration(color: AppTheme.surface, borderRadius: BorderRadius.circular(AppTheme.radiusCard)),
+    return AppCard(
+      padding: const EdgeInsets.all(AppSpace.xl - 4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
               Text('Overall progress', style: Theme.of(context).textTheme.titleMedium),
-              const SizedBox(width: 10),
+              const SizedBox(width: AppSpace.md),
               if (snapshot.status == 'running' && !snapshot.paused)
-                _Chip(
-                  label: snapshot.currentCategory != null ? 'Scanning "${snapshot.currentCategory}"' : 'Running',
-                  color: AppTheme.sage700,
-                  background: AppTheme.sage100,
-                )
+                AppBadge(snapshot.currentCategory != null ? 'Scanning "${snapshot.currentCategory}"' : 'Running', tone: AppTone.primary, dot: true)
               else if (snapshot.paused)
-                const _Chip(label: 'Paused', color: AppTheme.accent700, background: AppTheme.accent100)
+                const AppBadge('Paused', tone: AppTone.warning, dot: true)
               else
-                const _Chip(label: 'Done', color: AppTheme.sage700, background: AppTheme.sage100),
+                const AppBadge('Done', tone: AppTone.success, icon: AppIcons.check),
               const Spacer(),
-              Text('$percent%', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18, color: AppTheme.accent700)),
+              Text('$percent%', style: AppText.stat.copyWith(fontSize: 22)),
             ],
           ),
-          const SizedBox(height: 12),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(AppTheme.radiusPill),
-            child: LinearProgressIndicator(value: citiesTotal > 0 ? citiesDone / citiesTotal : 0, minHeight: 10),
-          ),
-          const SizedBox(height: 6),
+          const SizedBox(height: AppSpace.md + 2),
+          AppProgressBar(value: citiesTotal > 0 ? citiesDone / citiesTotal : 0, height: 8, tone: snapshot.paused ? AppTone.warning : (snapshot.status == 'done' ? AppTone.success : AppTone.primary)),
+          const SizedBox(height: 8),
           Text('Elapsed ${_formatDuration(elapsedMs)}', style: Theme.of(context).textTheme.bodySmall),
-          const SizedBox(height: 6),
+          const SizedBox(height: 4),
           Text(
             [
               if (snapshot.coverage != null && snapshot.coverage != 'custom') 'Coverage: ${snapshot.coverage}',
@@ -456,35 +376,18 @@ class _OverallCard extends StatelessWidget {
             ].join(' · '),
             style: Theme.of(context).textTheme.bodySmall,
           ),
-          const SizedBox(height: 20),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final columns = constraints.maxWidth >= 900
-                  ? 6
-                  : constraints.maxWidth >= 620
-                      ? 3
-                      : 2;
-              final tiles = [
-                _StatTile('Categories', '$categoriesDone/${snapshot.categories.length}', AppIcons.tag),
-                _StatTile('States done', '$statesDone/$statesTotal', AppIcons.mapPinned),
-                _StatTile('Cities done', '$citiesDone/$citiesTotal', AppIcons.mapPin),
-                _StatTile('Businesses scanned', '$businesses', AppIcons.search),
-                _StatTile('Review leads found', '$leads', AppIcons.trendingUp),
-                _StatTile('Not fully read', '$needsRecheck', AppIcons.alert),
-              ];
-              return GridView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: tiles.length,
-                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: columns,
-                  mainAxisSpacing: 12,
-                  crossAxisSpacing: 12,
-                  mainAxisExtent: 92,
-                ),
-                itemBuilder: (context, i) => tiles[i],
-              );
-            },
+          const SizedBox(height: AppSpace.xl - 4),
+          ResponsiveGrid(
+            minTileWidth: 150,
+            spacing: AppSpace.md,
+            children: [
+              _StatTile('Categories', '$categoriesDone/${snapshot.categories.length}', AppIcons.tag),
+              _StatTile('States done', '$statesDone/$statesTotal', AppIcons.mapPinned),
+              _StatTile('Cities done', '$citiesDone/$citiesTotal', AppIcons.mapPin),
+              _StatTile('Businesses scanned', '$businesses', AppIcons.search),
+              _StatTile(snapshot.isNoWebsite ? 'No-website leads found' : 'Review leads found', '$leads', AppIcons.trendingUp),
+              _StatTile(snapshot.isNoWebsite ? 'Listings not opened' : 'Not fully read', '$needsRecheck', AppIcons.alert),
+            ],
           ),
         ],
       ),
@@ -502,32 +405,42 @@ class _CategorySelector extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 40,
+      height: 38,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         itemCount: categories.length,
-        separatorBuilder: (_, _) => const SizedBox(width: 8),
+        separatorBuilder: (_, _) => const SizedBox(width: AppSpace.sm),
         itemBuilder: (context, i) {
           final cat = categories[i];
           final isSelected = cat.category == selected;
-          final (icon, color) = switch (cat.status) {
-            'done' => (AppIcons.checkCircle, AppTheme.sage700),
-            'running' => (AppIcons.zap, AppTheme.accent700),
-            _ => (AppIcons.clock, AppTheme.faint),
+          final (icon, tone) = switch (cat.status) {
+            'done' => (AppIcons.checkCircle, AppTone.success),
+            'running' => (AppIcons.zap, AppTone.primary),
+            _ => (AppIcons.clock, AppTone.neutral),
           };
-          return ChoiceChip(
-            label: Text('${cat.category} · ${cat.statesDone}/${cat.statesTotal}'),
-            avatar: Icon(icon, size: 14, color: isSelected ? AppTheme.surface : color),
-            selected: isSelected,
-            onSelected: (_) => onSelect(cat.category),
-            selectedColor: AppTheme.accent500,
-            labelStyle: TextStyle(
-              fontSize: 12.5,
-              fontWeight: FontWeight.w700,
-              color: isSelected ? AppTheme.surface : AppTheme.ink,
+          return InkWell(
+            borderRadius: BorderRadius.circular(AppTheme.radius),
+            onTap: () => onSelect(cat.category),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 140),
+              padding: const EdgeInsets.symmetric(horizontal: AppSpace.md + 2),
+              decoration: BoxDecoration(
+                color: isSelected ? AppTheme.primary100 : AppTheme.surface,
+                borderRadius: BorderRadius.circular(AppTheme.radius),
+                border: Border.all(color: isSelected ? AppTheme.primary : AppTheme.border),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(icon, size: 14, color: isSelected ? AppTheme.primary700 : tone.onSurface),
+                  const SizedBox(width: 8),
+                  Text(
+                    '${cat.category} · ${cat.statesDone}/${cat.statesTotal}',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: isSelected ? AppTheme.primary800 : AppTheme.textPrimary),
+                  ),
+                ],
+              ),
             ),
-            backgroundColor: AppTheme.neutral100,
-            side: BorderSide.none,
           );
         },
       ),
@@ -545,34 +458,72 @@ class _StatTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(color: AppTheme.neutral100, borderRadius: BorderRadius.circular(AppTheme.radius)),
+      height: 84,
+      padding: const EdgeInsets.all(AppSpace.md + 2),
+      decoration: BoxDecoration(
+        color: AppTheme.isDark ? AppTheme.neutral100 : AppTheme.background,
+        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+        border: Border.all(color: AppTheme.border),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 15, color: AppTheme.subtle),
+          Icon(icon, size: 15, color: AppTheme.textMuted),
           const Spacer(),
-          Text(value, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17, color: AppTheme.ink)),
-          Text(label, style: const TextStyle(fontSize: 11, color: AppTheme.faint), maxLines: 1, overflow: TextOverflow.ellipsis),
+          Text(value, style: AppText.stat.copyWith(fontSize: 18)),
+          Text(label, style: Theme.of(context).textTheme.bodySmall, maxLines: 1, overflow: TextOverflow.ellipsis),
         ],
       ),
     );
   }
 }
 
-class _Chip extends StatelessWidget {
-  const _Chip({required this.label, required this.color, required this.background});
+/// A no-website scan has no workbook: its leads go straight to the No Website Leads list.
+class _NoWebsiteResultsCard extends StatelessWidget {
+  const _NoWebsiteResultsCard({required this.category});
 
-  final String label;
-  final Color color;
-  final Color background;
+  final CategoryStateProgress category;
 
   @override
   Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(color: background, borderRadius: BorderRadius.circular(AppTheme.radiusPill)),
-      child: Text(label, style: TextStyle(color: color, fontWeight: FontWeight.w700, fontSize: 11.5), maxLines: 1, overflow: TextOverflow.ellipsis),
+      padding: const EdgeInsets.all(AppSpace.lg + 4),
+      decoration: BoxDecoration(
+        color: AppTone.info.surface,
+        borderRadius: BorderRadius.circular(AppTheme.radiusCard),
+        border: Border.all(color: AppTone.info.border),
+      ),
+      child: Wrap(
+        spacing: AppSpace.lg,
+        runSpacing: AppSpace.md,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const IconTile(AppIcons.globe, tone: AppTone.info),
+              const SizedBox(width: AppSpace.md + 2),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 560),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('"${category.category}" — ${category.leadsCollected} no-website lead${category.leadsCollected == 1 ? '' : 's'} so far',
+                        style: text.titleMedium?.copyWith(color: AppTone.info.onSurface)),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Saved to No Website Leads as each city finishes. A business is saved only when its Maps listing is confirmed to have no website.',
+                      style: TextStyle(fontSize: 12.5, color: AppTone.info.onSurface),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          AppButton.primary(label: 'View leads', icon: AppIcons.globe, onPressed: () => context.go('/website-leads')),
+        ],
+      ),
     );
   }
 }
@@ -593,50 +544,52 @@ class _CategoryArchiveCard extends StatelessWidget {
     final isSettled = archive.status == 'done' || archive.status == 'partial';
 
     if (isSettled && result != null) {
+      final tone = isPartial ? AppTone.warning : AppTone.success;
       return Container(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(AppSpace.lg + 4),
         decoration: BoxDecoration(
-          color: isPartial ? AppTheme.accent100 : AppTheme.sage100,
+          color: tone.surface,
           borderRadius: BorderRadius.circular(AppTheme.radiusCard),
+          border: Border.all(color: tone.border),
         ),
-        child: Row(
+        child: Wrap(
+          spacing: AppSpace.lg,
+          runSpacing: AppSpace.md,
+          crossAxisAlignment: WrapCrossAlignment.center,
           children: [
-            Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(color: isPartial ? AppTheme.accent500 : AppTheme.sage500, shape: BoxShape.circle),
-              child: Icon(isPartial ? AppIcons.clock : AppIcons.checkCircle, color: AppTheme.surface, size: 19),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    isPartial ? '"${category.category}" — progress saved so far' : '"${category.category}" — archive ready',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(color: isPartial ? AppTheme.accent800 : AppTheme.sage800),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconTile(isPartial ? AppIcons.clock : AppIcons.checkCircle, tone: tone),
+                const SizedBox(width: AppSpace.md + 2),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 560),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        isPartial ? '"${category.category}" — progress saved so far' : '"${category.category}" — archive ready',
+                        style: Theme.of(context).textTheme.titleMedium?.copyWith(color: tone.onSurface),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '${result.fileName} · ${result.totalLeads} leads · updates after every state',
+                        style: TextStyle(fontSize: 12.5, color: tone.onSurface),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 2),
-                  Text(
-                    '${result.fileName} · ${result.totalLeads} leads · updates after every state',
-                    style: TextStyle(fontSize: 12.5, color: isPartial ? AppTheme.accent700 : AppTheme.sage700),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
-            const SizedBox(width: 12),
-            OutlinedButton.icon(
-              onPressed: () => launchUrl(Uri.parse(result.downloadUrl)),
-              icon: const Icon(AppIcons.download, size: 16),
-              label: const Text('Download'),
-            ),
-            const SizedBox(width: 8),
-            FilledButton.icon(
-              onPressed: () => context.go('/archive'),
-              icon: const Icon(AppIcons.inbox, size: 16),
-              label: const Text('View Archive'),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                AppButton.outlined(label: 'Download', icon: AppIcons.download, onPressed: () => launchUrl(Uri.parse(result.downloadUrl))),
+                const SizedBox(width: AppSpace.sm),
+                AppButton.primary(label: 'View archive', icon: AppIcons.inbox, onPressed: () => context.go('/archive')),
+              ],
             ),
           ],
         ),
@@ -644,34 +597,23 @@ class _CategoryArchiveCard extends StatelessWidget {
     }
 
     if (archive.status == 'failed') {
-      return Container(
-        padding: const EdgeInsets.all(18),
-        decoration: BoxDecoration(color: AppTheme.accent100, borderRadius: BorderRadius.circular(AppTheme.radiusCard)),
-        child: Row(
-          children: [
-            const Icon(AppIcons.alert, color: AppTheme.accent700, size: 20),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                '"${category.category}" archive upload failed: ${archive.error ?? 'unknown error'}',
-                style: const TextStyle(color: AppTheme.accent700, fontWeight: FontWeight.w600, fontSize: 13),
-              ),
-            ),
-          ],
-        ),
+      return AppAlert(
+        tone: AppTone.error,
+        message: '"${category.category}" archive upload failed: ${archive.error ?? 'unknown error'}',
       );
     }
 
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(color: AppTheme.neutral100, borderRadius: BorderRadius.circular(AppTheme.radiusCard)),
+    return AppCard(
+      padding: const EdgeInsets.all(AppSpace.lg),
       child: Row(
         children: [
           const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2.2)),
-          const SizedBox(width: 14),
-          Text(
-            'Saved progress for "${category.category}" will appear here once the first state finishes.',
-            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: AppTheme.subtle),
+          const SizedBox(width: AppSpace.md + 2),
+          Expanded(
+            child: Text(
+              'Saved progress for "${category.category}" will appear here once the first state finishes.',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
           ),
         ],
       ),
@@ -694,7 +636,7 @@ class _StateListCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(color: AppTheme.surface, borderRadius: BorderRadius.circular(AppTheme.radiusCard)),
+      decoration: AppTheme.cardDecoration(),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -702,13 +644,13 @@ class _StateListCard extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 4),
             child: Row(
               children: [
-                const Icon(AppIcons.mapPinned, size: 16, color: AppTheme.accent700),
+                Icon(AppIcons.mapPinned, size: 16, color: AppTheme.primary700),
                 const SizedBox(width: 8),
                 Text('States — "${category.category}"', style: Theme.of(context).textTheme.titleMedium),
                 const Spacer(),
                 Text(
                   '${category.statesDone}/${category.statesTotal} done',
-                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.faint),
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.textMuted),
                 ),
               ],
             ),
@@ -729,11 +671,11 @@ class _StateListCard extends StatelessWidget {
 (Color, Color, IconData, String) _stateStyle(String status) {
   switch (status) {
     case 'running':
-      return (AppTheme.accent700, AppTheme.accent100, AppIcons.zap, 'Scanning');
+      return (AppTheme.primary700, AppTheme.primary100, AppIcons.zap, 'Scanning');
     case 'done':
-      return (AppTheme.sage700, AppTheme.sage100, AppIcons.checkCircle, 'Done');
+      return (AppTheme.success700, AppTheme.success100, AppIcons.checkCircle, 'Done');
     default:
-      return (AppTheme.faint, AppTheme.neutral100, AppIcons.clock, 'Waiting');
+      return (AppTheme.textMuted, AppTheme.neutral100, AppIcons.clock, 'Waiting');
   }
 }
 
@@ -774,7 +716,7 @@ class _StateRow extends StatelessWidget {
                           state.inProgress.isNotEmpty
                               ? '$label · ${state.citiesDone}/${state.citiesTotal} cities · ${state.inProgress.length} active now · ${state.leadsCollected} leads'
                               : '$label · ${state.citiesDone}/${state.citiesTotal} cities · ${state.leadsCollected} leads${state.incompleteBusinesses + state.skippedListings > 0 ? ' · ${state.incompleteBusinesses + state.skippedListings} not fully read' : ''}',
-                          style: const TextStyle(fontSize: 11.5, color: AppTheme.faint),
+                          style: TextStyle(fontSize: 11.5, color: AppTheme.textMuted),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -783,7 +725,7 @@ class _StateRow extends StatelessWidget {
                   ),
                   Text('$percent%', style: TextStyle(fontWeight: FontWeight.w800, color: color, fontSize: 13)),
                   const SizedBox(width: 8),
-                  Icon(expanded ? Icons.expand_less_rounded : Icons.expand_more_rounded, color: AppTheme.faint, size: 20),
+                  Icon(expanded ? Icons.expand_less_rounded : Icons.expand_more_rounded, color: AppTheme.textMuted, size: 20),
                 ],
               ),
             ),
@@ -810,14 +752,14 @@ class _StateRow extends StatelessWidget {
                     title: 'Covered',
                     cities: state.covered,
                     icon: AppIcons.checkCircle,
-                    color: AppTheme.sage700,
-                    background: AppTheme.sage100,
+                    color: AppTheme.success700,
+                    background: AppTheme.success100,
                   );
                   final pending = _CityColumn(
                     title: 'Pending',
                     cities: state.pending,
                     icon: AppIcons.clock,
-                    color: AppTheme.subtle,
+                    color: AppTheme.textSecondary,
                     background: AppTheme.neutral100,
                   );
                   final children = <Widget>[covered, pending];
@@ -826,8 +768,8 @@ class _StateRow extends StatelessWidget {
                       title: 'Failed',
                       cities: state.failed,
                       icon: AppIcons.alert,
-                      color: AppTheme.danger,
-                      background: AppTheme.accent100,
+                      color: AppTheme.error,
+                      background: AppTheme.primary100,
                     ));
                   }
                   if (stacked) {
@@ -872,15 +814,15 @@ class _ScanningNowCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(color: AppTheme.accent100, borderRadius: BorderRadius.circular(AppTheme.radius)),
+      decoration: BoxDecoration(color: AppTheme.primary100, borderRadius: BorderRadius.circular(AppTheme.radius)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const Icon(AppIcons.zap, size: 13, color: AppTheme.accent700),
+              Icon(AppIcons.zap, size: 13, color: AppTheme.primary700),
               const SizedBox(width: 6),
-              Text('Scanning now (${cities.length})', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: AppTheme.accent700)),
+              Text('Scanning now (${cities.length})', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: AppTheme.primary700)),
             ],
           ),
           const SizedBox(height: 8),
@@ -889,19 +831,19 @@ class _ScanningNowCard extends StatelessWidget {
               padding: const EdgeInsets.only(bottom: 4),
               child: Row(
                 children: [
-                  const SizedBox(
+                  SizedBox(
                     width: 11,
                     height: 11,
-                    child: CircularProgressIndicator(strokeWidth: 1.8, color: AppTheme.accent700),
+                    child: CircularProgressIndicator(strokeWidth: 1.8, color: AppTheme.primary700),
                   ),
                   const SizedBox(width: 8),
-                  Text(c.city, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.ink)),
+                  Text(c.city, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.textPrimary)),
                   if (c.message.isNotEmpty) ...[
-                    const Text(' — ', style: TextStyle(fontSize: 11.5, color: AppTheme.faint)),
+                    Text(' — ', style: TextStyle(fontSize: 11.5, color: AppTheme.textMuted)),
                     Expanded(
                       child: Text(
                         c.message,
-                        style: const TextStyle(fontSize: 11.5, color: AppTheme.accent700),
+                        style: TextStyle(fontSize: 11.5, color: AppTheme.primary700),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -951,7 +893,7 @@ class _CityColumn extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           if (cities.isEmpty)
-            const Text('None', style: TextStyle(fontSize: 11.5, color: AppTheme.faint))
+            Text('None', style: TextStyle(fontSize: 11.5, color: AppTheme.textMuted))
           else
             Container(
               constraints: const BoxConstraints(maxHeight: 180),
@@ -970,7 +912,7 @@ class _CityColumn extends StatelessWidget {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(color: AppTheme.neutral200, borderRadius: BorderRadius.circular(AppTheme.radiusPill)),
-                        child: Text('+$overflow more', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppTheme.faint)),
+                        child: Text('+$overflow more', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppTheme.textMuted)),
                       ),
                   ],
                 ),

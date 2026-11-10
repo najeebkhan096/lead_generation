@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../../core/theme/app_theme.dart';
+import '../design_system/design_system.dart';
 import '../../domain/entities/lead.dart';
 import '../utils/date_format.dart';
 
@@ -38,7 +38,7 @@ class WebsiteLeadCard extends StatelessWidget {
       onTap: onTap,
       onDelete: onDelete,
       deleting: deleting,
-      badge: const _Badge(icon: AppIcons.globe, label: 'No website', color: AppTheme.accent100, foreground: AppTheme.accent800),
+      badge: const _Badge(icon: AppIcons.globe, label: 'No website', tone: AppTone.info),
       rows: [
         if (lead.rating != null)
           _Row(icon: AppIcons.star, text: '${lead.rating}${lead.totalReviews == null ? '' : ' · ${lead.totalReviews} reviews'}'),
@@ -83,8 +83,7 @@ class EmailLeadCard extends StatelessWidget {
       badge: _Badge(
         icon: AppIcons.mail,
         label: lead.emailStatus == 'found' || lead.emailStatus == null ? 'Email found' : lead.emailStatus!.replaceAll('_', ' '),
-        color: AppTheme.sage100,
-        foreground: AppTheme.sage700,
+        tone: AppTone.success,
       ),
       rows: [
         for (final e in addresses.take(2))
@@ -97,7 +96,7 @@ class EmailLeadCard extends StatelessWidget {
               visualDensity: VisualDensity.compact,
               padding: EdgeInsets.zero,
               constraints: const BoxConstraints.tightFor(width: 26, height: 26),
-              icon: const Icon(AppIcons.copy, size: 14, color: AppTheme.subtle),
+              icon: Icon(AppIcons.copy, size: 14, color: AppTheme.textSecondary),
               onPressed: () async {
                 await Clipboard.setData(ClipboardData(text: e.address));
                 if (context.mounted) {
@@ -139,84 +138,48 @@ class _SiteLeadCardBase extends StatelessWidget {
   Widget build(BuildContext context) {
     final addedOn = formatDate(lead.savedAt);
     final letter = lead.business.trim().isEmpty ? '?' : lead.business.trim()[0].toUpperCase();
-    final warm = lead.business.hashCode.isEven;
 
-    return Material(
-      color: AppTheme.surface,
-      borderRadius: BorderRadius.circular(AppTheme.radiusCard),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(AppTheme.radiusCard),
-        child: Padding(
-          padding: const EdgeInsets.all(18),
-          child: Column(
+    return AppCard(
+      onTap: onTap,
+      padding: const EdgeInsets.all(AppSpace.lg),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      color: warm ? AppTheme.accent100 : AppTheme.sage100,
-                      shape: BoxShape.circle,
-                    ),
-                    alignment: Alignment.center,
-                    child: Text(
-                      letter,
-                      style: TextStyle(
-                        fontWeight: FontWeight.w800,
-                        fontSize: 17,
-                        color: warm ? AppTheme.accent700 : AppTheme.sage700,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          lead.business,
-                          style: Theme.of(context).textTheme.titleSmall?.copyWith(fontSize: 15),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        const SizedBox(height: 4),
-                        if (lead.category.isNotEmpty) _CategoryChip(category: lead.category),
-                      ],
-                    ),
-                  ),
-                  if (onDelete != null)
-                    SizedBox(
-                      width: 30,
-                      height: 30,
-                      child: deleting
-                          ? const Padding(padding: EdgeInsets.all(7), child: CircularProgressIndicator(strokeWidth: 2))
-                          : IconButton(
-                              tooltip: 'Delete',
-                              onPressed: onDelete,
-                              icon: const Icon(AppIcons.trash, size: 16, color: AppTheme.subtle),
-                              padding: EdgeInsets.zero,
-                              visualDensity: VisualDensity.compact,
-                            ),
-                    ),
-                ],
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(color: AppTheme.primary100, borderRadius: BorderRadius.circular(AppTheme.radiusMd)),
+                alignment: Alignment.center,
+                child: Text(letter, style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16, color: AppTheme.primary700)),
               ),
-              const SizedBox(height: 14),
-              ...rows,
-              const Spacer(),
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  Expanded(child: Align(alignment: Alignment.centerLeft, child: badge)),
-                  if (addedOn != null) Text(addedOn, style: const TextStyle(fontSize: 11, color: AppTheme.faint)),
-                ],
+              const SizedBox(width: AppSpace.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(lead.business, style: Theme.of(context).textTheme.titleSmall, maxLines: 1, overflow: TextOverflow.ellipsis),
+                    const SizedBox(height: 4),
+                    if (lead.category.isNotEmpty) AppBadge(lead.category, tone: AppTone.primary, dense: true),
+                  ],
+                ),
               ),
+              if (onDelete != null) AppIconButton(icon: AppIcons.trash, tooltip: 'Delete', size: 30, loading: deleting, onPressed: onDelete),
             ],
           ),
-        ),
+          const SizedBox(height: AppSpace.md + 2),
+          ...rows,
+          const Spacer(),
+          const SizedBox(height: AppSpace.sm + 2),
+          Row(
+            children: [
+              Expanded(child: Align(alignment: Alignment.centerLeft, child: badge)),
+              if (addedOn != null) Text(addedOn, style: Theme.of(context).textTheme.bodySmall),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -237,7 +200,7 @@ class _Row extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Icon(icon, size: 13, color: AppTheme.faint),
+          Icon(icon, size: 13, color: AppTheme.textMuted),
           const SizedBox(width: 7),
           Expanded(
             child: Text(
@@ -246,8 +209,8 @@ class _Row extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 fontSize: 12.5,
-                color: strong ? AppTheme.ink : AppTheme.subtle,
-                fontWeight: strong ? FontWeight.w700 : FontWeight.w400,
+                color: strong ? AppTheme.textPrimary : AppTheme.textSecondary,
+                fontWeight: strong ? FontWeight.w600 : FontWeight.w400,
               ),
             ),
           ),
@@ -258,47 +221,14 @@ class _Row extends StatelessWidget {
   }
 }
 
+/// A card's status badge, in one of the design system's tones.
 class _Badge extends StatelessWidget {
-  const _Badge({required this.icon, required this.label, required this.color, required this.foreground});
+  const _Badge({required this.icon, required this.label, required this.tone});
 
   final IconData icon;
   final String label;
-  final Color color;
-  final Color foreground;
+  final AppTone tone;
 
   @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(AppTheme.radiusPill)),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 12, color: foreground),
-          const SizedBox(width: 4),
-          Text(label, style: TextStyle(color: foreground, fontWeight: FontWeight.w700, fontSize: 11)),
-        ],
-      ),
-    );
-  }
-}
-
-class _CategoryChip extends StatelessWidget {
-  const _CategoryChip({required this.category});
-
-  final String category;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
-      decoration: BoxDecoration(color: AppTheme.accent100, borderRadius: BorderRadius.circular(AppTheme.radiusPill)),
-      child: Text(
-        category,
-        style: const TextStyle(color: AppTheme.accent800, fontWeight: FontWeight.w700, fontSize: 11),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-      ),
-    );
-  }
+  Widget build(BuildContext context) => AppBadge(label, tone: tone, icon: icon, dense: true);
 }

@@ -5,6 +5,7 @@ import '../../core/theme/app_theme.dart';
 import '../../domain/entities/lead_page.dart';
 import '../widgets/site_lead_card.dart';
 import 'lead_list_page.dart';
+import '../widgets/lead_table.dart';
 
 /// Email leads — businesses whose website publishes a business email address:
 /// the `emailLeads` collection, filled by the scan. Each card shows the
@@ -18,12 +19,14 @@ class EmailLeadsPage extends StatelessWidget {
     return LeadListPage(
       config: LeadListConfig(
         collection: LeadCollection.emailLeads,
-        title: 'Email leads',
+        title: 'Email Leads',
         subtitleEmpty: 'Business emails found on websites land here.',
         emptyTitle: 'No email leads yet',
         emptyBody: 'Run a scan — the website of every business it reads is checked for a published business email, '
             'and the ones found are saved here.',
         emptyIcon: AppIcons.mail,
+        tableKind: LeadTableKind.email,
+        rowAction: const LeadRowAction(icon: AppIcons.externalLink, tooltip: 'Open source page'),
         searchHint: 'Search by name, email, phone or category',
         cardExtent: 324,
         cardBuilder: (context, lead, {required onTap, required onDelete, required deleting}) =>

@@ -191,8 +191,8 @@ class _WatchlistPageState extends State<WatchlistPage> {
             child: DropdownButtonHideUnderline(
               child: DropdownButton<String>(
                 value: _dateRange,
-                icon: const Icon(AppIcons.chevronDown, size: 16, color: AppTheme.subtle),
-                style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: AppTheme.ink),
+                icon: Icon(AppIcons.chevronDown, size: 16, color: AppTheme.textSecondary),
+                style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: AppTheme.textPrimary),
                 items: _dateRanges.entries
                     .map((e) => DropdownMenuItem(value: e.key, child: Text(e.value)))
                     .toList(),
@@ -251,7 +251,7 @@ class _WatchlistPageState extends State<WatchlistPage> {
                       ),
                       if (_error != null) ...[
                         const SizedBox(height: 16),
-                        Text(_error!, style: const TextStyle(color: AppTheme.danger)),
+                        Text(_error!, style: TextStyle(color: AppTheme.error)),
                       ],
                       const SizedBox(height: 24),
                       if (_entries.isEmpty)
@@ -262,11 +262,11 @@ class _WatchlistPageState extends State<WatchlistPage> {
                               Container(
                                 width: 72,
                                 height: 72,
-                                decoration: const BoxDecoration(
-                                  color: AppTheme.accent100,
+                                decoration: BoxDecoration(
+                                  color: AppTheme.primary100,
                                   shape: BoxShape.circle,
                                 ),
-                                child: const Icon(AppIcons.eye, size: 30, color: AppTheme.accent700),
+                                child: Icon(AppIcons.eye, size: 30, color: AppTheme.primary700),
                               ),
                               const SizedBox(height: 16),
                               Text(
@@ -349,7 +349,7 @@ class _AddForm extends StatelessWidget {
           const SizedBox(height: 12),
           DropdownButtonFormField<String?>(
             initialValue: selectedSalesmanId,
-            icon: const Icon(AppIcons.chevronDown, size: 18, color: AppTheme.accent),
+            icon: Icon(AppIcons.chevronDown, size: 18, color: AppTheme.primary),
             decoration: InputDecoration(
               labelText: 'Assign to salesman (optional)',
               prefixIcon: const Icon(AppIcons.users, size: 18),
@@ -369,10 +369,10 @@ class _AddForm extends StatelessWidget {
             child: FilledButton.icon(
               onPressed: adding ? null : onAdd,
               icon: adding
-                  ? const SizedBox(
+                  ? SizedBox(
                       width: 16,
                       height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.surface),
+                      child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.onPrimary),
                     )
                   : const Icon(AppIcons.plus, size: 18),
               label: Text(adding ? 'Adding…' : 'Add to Watchlist'),
@@ -408,7 +408,7 @@ class _WatchlistCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppTheme.surface,
         borderRadius: BorderRadius.circular(AppTheme.radius),
-        border: Border.all(color: hasNew ? AppTheme.accent300 : AppTheme.neutral200),
+        border: Border.all(color: hasNew ? AppTheme.primary300 : AppTheme.neutral200),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -429,8 +429,8 @@ class _WatchlistCard extends StatelessWidget {
                       onTap: () => launchUrl(Uri.parse(entry.url)),
                       child: Text(
                         entry.url,
-                        style: const TextStyle(
-                          color: AppTheme.faint,
+                        style: TextStyle(
+                          color: AppTheme.textMuted,
                           fontSize: 12,
                           decoration: TextDecoration.underline,
                         ),
@@ -443,7 +443,7 @@ class _WatchlistCard extends StatelessWidget {
               ),
               IconButton(
                 onPressed: onDelete,
-                icon: const Icon(AppIcons.trash, size: 18, color: AppTheme.faint),
+                icon: Icon(AppIcons.trash, size: 18, color: AppTheme.textMuted),
               ),
             ],
           ),
@@ -462,8 +462,8 @@ class _WatchlistCard extends StatelessWidget {
                 child: _Chip(
                   icon: AppIcons.users,
                   label: entry.assignedToName ?? 'Unassigned',
-                  color: entry.assignedToName != null ? AppTheme.sage700 : AppTheme.subtle,
-                  background: entry.assignedToName != null ? AppTheme.sage100 : AppTheme.neutral100,
+                  color: entry.assignedToName != null ? AppTheme.success700 : AppTheme.textSecondary,
+                  background: entry.assignedToName != null ? AppTheme.success100 : AppTheme.neutral100,
                 ),
               ),
               _Chip(icon: AppIcons.clock, label: _timeAgo(entry.lastScannedAt)),
@@ -473,21 +473,21 @@ class _WatchlistCard extends StatelessWidget {
                 _Chip(
                   icon: AppIcons.messageWarning,
                   label: '${entry.lastNewReviewCount} new review${entry.lastNewReviewCount == 1 ? '' : 's'}',
-                  color: AppTheme.accent700,
-                  background: AppTheme.accent100,
+                  color: AppTheme.primary700,
+                  background: AppTheme.primary100,
                 ),
               if (entry.lastError != null)
                 _Chip(
                   icon: AppIcons.alert,
                   label: entry.lastError!,
-                  color: AppTheme.danger,
-                  background: AppTheme.accent100,
+                  color: AppTheme.error,
+                  background: AppTheme.primary100,
                 ),
             ],
           ),
           if (result != null && result!.newReviews.isNotEmpty) ...[
             const SizedBox(height: 12),
-            const Divider(height: 1, color: AppTheme.neutral200),
+            Divider(height: 1, color: AppTheme.neutral200),
             const SizedBox(height: 12),
             for (final review in result!.newReviews) _ReviewTile(review: review),
           ],
@@ -512,7 +512,7 @@ class _ReviewTile extends StatelessWidget {
           Icon(
             AppIcons.star,
             size: 15,
-            color: (review.stars ?? 0) <= 2 ? AppTheme.accent700 : AppTheme.sage600,
+            color: (review.stars ?? 0) <= 2 ? AppTheme.primary700 : AppTheme.success600,
           ),
           const SizedBox(width: 8),
           Expanded(
@@ -524,20 +524,20 @@ class _ReviewTile extends StatelessWidget {
                     Expanded(
                       child: Text(
                         '${review.reviewer} · ${review.stars ?? '?'}★ · ${review.date}',
-                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.subtle),
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.textSecondary),
                       ),
                     ),
                     if (review.link != null)
                       InkWell(
                         onTap: () => launchUrl(Uri.parse(review.link!)),
-                        child: const Padding(
+                        child: Padding(
                           padding: EdgeInsets.symmetric(horizontal: 4),
                           child: Text(
                             'Open Review',
                             style: TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.w700,
-                              color: AppTheme.accent700,
+                              color: AppTheme.primary700,
                               decoration: TextDecoration.underline,
                             ),
                           ),
@@ -562,17 +562,19 @@ class _Chip extends StatelessWidget {
   const _Chip({
     required this.icon,
     required this.label,
-    this.color = AppTheme.subtle,
-    this.background = AppTheme.neutral100,
+    this.color,
+    this.background,
   });
 
   final IconData icon;
   final String label;
-  final Color color;
-  final Color background;
+  final Color? color;
+  final Color? background;
 
   @override
   Widget build(BuildContext context) {
+    final color = this.color ?? AppTheme.textSecondary;
+    final background = this.background ?? AppTheme.neutral100;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(

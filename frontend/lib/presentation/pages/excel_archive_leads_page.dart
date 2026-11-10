@@ -453,12 +453,12 @@ class _ExcelArchiveLeadsPageState extends State<ExcelArchiveLeadsPage> with Lazy
                     ? Padding(
                         padding: const EdgeInsets.all(24),
                         child: Center(
-                          child: Text(_error!, style: const TextStyle(color: AppTheme.danger)),
+                          child: Text(_error!, style: TextStyle(color: AppTheme.error)),
                         ),
                       )
                     : _leads.isEmpty
-                        ? const Center(
-                            child: Text('This archive has no businesses.', style: TextStyle(color: AppTheme.faint)),
+                        ? Center(
+                            child: Text('This archive has no businesses.', style: TextStyle(color: AppTheme.textMuted)),
                           )
                         : ListView(
                             controller: revealController,
@@ -468,19 +468,19 @@ class _ExcelArchiveLeadsPageState extends State<ExcelArchiveLeadsPage> with Lazy
                                 '${_leads.length} businesses · ${widget.archive.fileName}',
                                 style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                                       fontWeight: FontWeight.w700,
-                                      color: AppTheme.ink,
+                                      color: AppTheme.textPrimary,
                                     ),
                               ),
                               const SizedBox(height: 4),
-                              const Text(
+                              Text(
                                 'Extracted from the Excel archive — not saved to Firestore.',
-                                style: TextStyle(fontSize: 12, color: AppTheme.faint),
+                                style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
                               ),
                               if (_categories.length > 2) ...[
                                 const SizedBox(height: 16),
                                 DropdownButtonFormField<String>(
                                   initialValue: _category,
-                                  icon: const Icon(AppIcons.chevronDown, size: 18, color: AppTheme.accent),
+                                  icon: Icon(AppIcons.chevronDown, size: 18, color: AppTheme.primary),
                                   decoration: const InputDecoration(labelText: 'Category'),
                                   items: _categories
                                       .map((c) => DropdownMenuItem(value: c, child: Text(c)))
@@ -533,11 +533,11 @@ class _ExcelArchiveLeadsPageState extends State<ExcelArchiveLeadsPage> with Lazy
                                 const SizedBox(height: 20),
                                 Row(
                                   children: [
-                                    const Icon(AppIcons.shieldCheck, size: 16, color: AppTheme.sage700),
+                                    Icon(AppIcons.shieldCheck, size: 16, color: AppTheme.success700),
                                     const SizedBox(width: 8),
                                     Text(
                                       'WhatsApp Verified (${validatedHere.length})',
-                                      style: Theme.of(context).textTheme.titleMedium?.copyWith(color: AppTheme.sage800),
+                                      style: Theme.of(context).textTheme.titleMedium?.copyWith(color: AppTheme.success800),
                                     ),
                                   ],
                                 ),
@@ -547,7 +547,7 @@ class _ExcelArchiveLeadsPageState extends State<ExcelArchiveLeadsPage> with Lazy
                               const SizedBox(height: 20),
                               Text(
                                 'All businesses · ${filtered.length} of ${_leads.length} shown',
-                                style: const TextStyle(fontSize: 12, color: AppTheme.faint, fontWeight: FontWeight.w700),
+                                style: TextStyle(fontSize: 12, color: AppTheme.textMuted, fontWeight: FontWeight.w700),
                               ),
                               const SizedBox(height: 10),
                               // Only a window of cards is built; it grows as you scroll.
@@ -602,7 +602,7 @@ class _ValidationCard extends StatelessWidget {
                         : (snap.errorCount > 0
                             ? 'Validating "$category" — ${snap.checked}/${snap.total} checked · ${snap.validCount} verified · ${snap.errorCount} errors'
                             : 'Validating "$category" — ${snap.checked}/${snap.total} checked · ${snap.validCount} verified'),
-                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: AppTheme.subtle),
+                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: AppTheme.textSecondary),
                   ),
                 ),
                 TextButton(onPressed: onCancel, child: const Text('Cancel')),
@@ -617,7 +617,7 @@ class _ValidationCard extends StatelessWidget {
               const SizedBox(height: 8),
               Text(
                 snap.stoppedReason!,
-                style: const TextStyle(fontSize: 12, color: AppTheme.accent700),
+                style: TextStyle(fontSize: 12, color: AppTheme.primary700),
               ),
             ],
           ],
@@ -633,8 +633,8 @@ class _ValidationCard extends StatelessWidget {
           Container(
             width: 36,
             height: 36,
-            decoration: const BoxDecoration(color: AppTheme.sage100, shape: BoxShape.circle),
-            child: const Icon(AppIcons.chat, size: 17, color: AppTheme.sage700),
+            decoration: BoxDecoration(color: AppTheme.success100, shape: BoxShape.circle),
+            child: Icon(AppIcons.chat, size: 17, color: AppTheme.success700),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -643,7 +643,7 @@ class _ValidationCard extends StatelessWidget {
               children: [
                 Text(
                   category == _allCategories ? 'Select a category to validate' : 'Validate WhatsApp for "$category"',
-                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: AppTheme.ink),
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: AppTheme.textPrimary),
                 ),
                 const SizedBox(height: 2),
                 Text(
@@ -652,7 +652,7 @@ class _ValidationCard extends StatelessWidget {
                       : validatedCount > 0
                           ? '$validatedCount already verified in this category · re-run to refresh'
                           : 'Checks each business\'s number against your linked WhatsApp session.',
-                  style: const TextStyle(fontSize: 11.5, color: AppTheme.faint),
+                  style: TextStyle(fontSize: 11.5, color: AppTheme.textMuted),
                 ),
               ],
             ),
@@ -682,7 +682,7 @@ class _VerifiedLeadTile extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.only(bottom: 4),
       decoration: BoxDecoration(
-        border: Border.all(color: AppTheme.sage300),
+        border: Border.all(color: AppTheme.success300),
         borderRadius: BorderRadius.circular(AppTheme.radiusCard + 3),
       ),
       padding: const EdgeInsets.fromLTRB(4, 4, 4, 0),
@@ -694,11 +694,11 @@ class _VerifiedLeadTile extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(AppIcons.checkCircle, size: 13, color: AppTheme.sage700),
+                Icon(AppIcons.checkCircle, size: 13, color: AppTheme.success700),
                 const SizedBox(width: 5),
-                const Text(
+                Text(
                   'WhatsApp Verified',
-                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: AppTheme.sage700),
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: AppTheme.success700),
                 ),
               ],
             ),

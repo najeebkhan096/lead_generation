@@ -124,13 +124,13 @@ class _GoogleSessionCardState extends State<GoogleSessionCard> {
     final blocking = googleSessionBlocksScan(s);
 
     final Color tint = signedIn || inUse
-        ? AppTheme.sage100
+        ? AppTheme.success100
         : waiting
-            ? AppTheme.accent100
+            ? AppTheme.primary100
             : blocking
-                ? const Color(0xFFFDE8E8)
+                ? AppTheme.error100
                 : AppTheme.neutral100;
-    final Color ink = signedIn || inUse ? AppTheme.sage700 : blocking ? AppTheme.danger : AppTheme.neutral700;
+    final Color ink = signedIn || inUse ? AppTheme.success700 : blocking ? AppTheme.error700 : AppTheme.neutral700;
     final IconData icon = signedIn || inUse ? AppIcons.shieldCheck : waiting ? AppIcons.clock : AppIcons.alert;
 
     final String title;
@@ -191,10 +191,10 @@ class _GoogleSessionCardState extends State<GoogleSessionCard> {
                   children: [
                     Text(title, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: ink)),
                     const SizedBox(height: 4),
-                    Text(body, style: const TextStyle(fontSize: 12.5, height: 1.4, color: AppTheme.neutral700)),
+                    Text(body, style: TextStyle(fontSize: 12.5, height: 1.4, color: AppTheme.neutral700)),
                     if (_error != null && _status != null) ...[
                       const SizedBox(height: 6),
-                      Text(_error!, style: const TextStyle(fontSize: 12, color: AppTheme.danger)),
+                      Text(_error!, style: TextStyle(fontSize: 12, color: AppTheme.error)),
                     ],
                   ],
                 ),

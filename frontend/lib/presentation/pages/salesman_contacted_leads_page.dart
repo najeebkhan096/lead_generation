@@ -176,7 +176,7 @@ class _SalesmanContactedLeadsPageState
             children: [
               Text(
                 _error!,
-                style: const TextStyle(color: AppTheme.danger),
+                style: TextStyle(color: AppTheme.error),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 12),
@@ -228,20 +228,20 @@ class _SalesmanContactedLeadsPageState
         ],
         Text(
           summary,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 12.5,
-            color: AppTheme.faint,
+            color: AppTheme.textMuted,
             fontWeight: FontWeight.w700,
           ),
         ),
         const SizedBox(height: 12),
         if (searching && leads.isEmpty)
-          const Padding(
+          Padding(
             padding: EdgeInsets.symmetric(vertical: 32),
             child: Center(
               child: Text(
                 'No contacted leads match that search.',
-                style: TextStyle(color: AppTheme.faint),
+                style: TextStyle(color: AppTheme.textMuted),
               ),
             ),
           ),
@@ -270,7 +270,7 @@ class _BusinessName extends StatelessWidget {
       style: TextStyle(
         fontWeight: FontWeight.w700,
         fontSize: 15,
-        color: url == null || url.isEmpty ? null : AppTheme.accent700,
+        color: url == null || url.isEmpty ? null : AppTheme.primary700,
         decoration: url == null || url.isEmpty
             ? null
             : TextDecoration.underline,
@@ -285,7 +285,7 @@ class _BusinessName extends StatelessWidget {
         children: [
           Flexible(child: name),
           const SizedBox(width: 6),
-          const Icon(AppIcons.mapPin, size: 14, color: AppTheme.accent700),
+          Icon(AppIcons.mapPin, size: 14, color: AppTheme.primary700),
         ],
       ),
     );
@@ -332,9 +332,9 @@ class _LeadCard extends StatelessWidget {
                     if (details.isNotEmpty)
                       Text(
                         details,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 12,
-                          color: AppTheme.faint,
+                          color: AppTheme.textMuted,
                         ),
                       ),
                   ],
@@ -370,14 +370,14 @@ class _LeadCard extends StatelessWidget {
               if (lead.contactedAt != null)
                 Text(
                   'Contacted ${dateTimeLabel(lead.contactedAt!)}',
-                  style: const TextStyle(fontSize: 12.5, color: AppTheme.faint),
+                  style: TextStyle(fontSize: 12.5, color: AppTheme.textMuted),
                 ),
               if (lead.rating != null)
                 Text(
                   lead.totalReviews == null
                       ? '★ ${lead.rating!.toStringAsFixed(1)}'
                       : '★ ${lead.rating!.toStringAsFixed(1)} · ${lead.totalReviews} reviews',
-                  style: const TextStyle(fontSize: 12.5, color: AppTheme.faint),
+                  style: TextStyle(fontSize: 12.5, color: AppTheme.textMuted),
                 ),
             ],
           ),

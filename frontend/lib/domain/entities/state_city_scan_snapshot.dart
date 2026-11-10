@@ -253,6 +253,7 @@ class StateCityScanSnapshot extends Equatable {
     this.waChecked = 0,
     this.stoppedReason,
     this.blocked,
+    this.mode = 'reviews',
     this.coverage,
     this.pacePerMinute,
     this.paceMax,
@@ -282,6 +283,11 @@ class StateCityScanSnapshot extends Equatable {
 
   /// Non-null while Google's check has the scan paused.
   final ScanBlockInfo? blocked;
+
+  /// `reviews` (the 1-star scan) or `no_website` (businesses whose Maps listing has no website).
+  final String mode;
+
+  bool get isNoWebsite => mode == 'no_website';
 
   /// standard | extended | maximum, and the current page pace (it finds its own level).
   final String? coverage;
@@ -313,6 +319,7 @@ class StateCityScanSnapshot extends Equatable {
       waChecked: (json['waChecked'] as num?)?.toInt() ?? 0,
       stoppedReason: json['stoppedReason'] as String?,
       blocked: json['blocked'] is Map<String, dynamic> ? ScanBlockInfo.fromJson(json['blocked'] as Map<String, dynamic>) : null,
+      mode: (json['mode'] as String?) == 'no_website' ? 'no_website' : 'reviews',
       coverage: json['coverage'] as String?,
       pacePerMinute: ((json['pace'] as Map<String, dynamic>?)?['perMinute'] as num?)?.toDouble(),
       paceMax: ((json['pace'] as Map<String, dynamic>?)?['max'] as num?)?.toDouble(),
@@ -326,5 +333,5 @@ class StateCityScanSnapshot extends Equatable {
   }
 
   @override
-  List<Object?> get props => [active, status, concurrency, currentCategory, paused, categories, activity];
+  List<Object?> get props => [active, status, concurrency, currentCategory, paused, mode, categories, activity];
 }

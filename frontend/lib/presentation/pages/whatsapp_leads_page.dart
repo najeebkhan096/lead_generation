@@ -5,6 +5,7 @@ import '../../core/theme/app_theme.dart';
 import '../../domain/entities/lead_page.dart';
 import '../widgets/saved_business_card.dart';
 import 'lead_list_page.dart';
+import '../widgets/lead_table.dart';
 
 /// Every business whose phone number a real WhatsApp check confirmed — the
 /// `whatsappLeads` collection. Validating a review lead copies it here; this is the list to work from. Tapping a card opens the
@@ -17,12 +18,14 @@ class WhatsAppLeadsPage extends StatelessWidget {
     return LeadListPage(
       config: LeadListConfig(
         collection: LeadCollection.whatsappLeads,
-        title: 'WhatsApp leads',
+        title: 'WhatsApp Verified Leads',
         subtitleEmpty: 'Businesses with a confirmed WhatsApp number will land here.',
         emptyTitle: 'No WhatsApp leads yet',
         emptyBody: 'Open Leads (or an Excel Archive) and tap WhatsApp to check numbers — '
             'the ones that are on WhatsApp are saved here.',
         emptyIcon: AppIcons.chat,
+        tableKind: LeadTableKind.whatsapp,
+        rowAction: const LeadRowAction(icon: AppIcons.chat, tooltip: 'Open WhatsApp'),
         searchHint: 'Search by name, phone or address',
         cardBuilder: (context, lead, {required onTap, required onDelete, required deleting}) =>
             SavedBusinessCard(lead: lead, onTap: onTap, onDelete: onDelete, deleting: deleting),

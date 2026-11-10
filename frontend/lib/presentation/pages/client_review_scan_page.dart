@@ -73,7 +73,7 @@ class _ClientReviewScanPageState extends State<ClientReviewScanPage> {
 
   Widget _body() {
     if (_scanning) {
-      return const Center(
+      return Center(
         child: Padding(
           padding: EdgeInsets.all(32),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -84,7 +84,7 @@ class _ClientReviewScanPageState extends State<ClientReviewScanPage> {
             Text(
               'Looking for 1★ reviews from the last $scanWindowDays days. Each business is loaded one by one, so this can take several minutes. Keep this page open.',
               textAlign: TextAlign.center,
-              style: TextStyle(color: AppTheme.subtle, fontSize: 12.5),
+              style: TextStyle(color: AppTheme.textSecondary, fontSize: 12.5),
             ),
           ]),
         ),
@@ -95,7 +95,7 @@ class _ClientReviewScanPageState extends State<ClientReviewScanPage> {
         child: Padding(
           padding: const EdgeInsets.all(32),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
-            Text(_error!, textAlign: TextAlign.center, style: const TextStyle(color: AppTheme.danger)),
+            Text(_error!, textAlign: TextAlign.center, style: TextStyle(color: AppTheme.error)),
             const SizedBox(height: 16),
             OutlinedButton.icon(onPressed: _scan, icon: const Icon(AppIcons.refresh, size: 18), label: const Text('Try again')),
           ]),
@@ -131,7 +131,7 @@ class ScanResultsView extends StatelessWidget {
         const SizedBox(height: 4),
         Text(
           '${results.length} clients checked · $clean clean · ${notScanned.length} not scanned',
-          style: const TextStyle(color: AppTheme.subtle, fontSize: 12.5),
+          style: TextStyle(color: AppTheme.textSecondary, fontSize: 12.5),
         ),
         const SizedBox(height: 16),
         for (final r in flagged) _FlaggedClientCard(result: r),
@@ -175,7 +175,7 @@ class _FlaggedClientCard extends StatelessWidget {
               child: Text(r.name ?? 'Unnamed business', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
             ),
             if (r.rating != null) ...[
-              const Icon(AppIcons.star, size: 14, color: AppTheme.accent700),
+              Icon(AppIcons.star, size: 14, color: AppTheme.primary700),
               const SizedBox(width: 3),
               Text(r.rating!.toStringAsFixed(1), style: const TextStyle(fontWeight: FontWeight.w700)),
             ],
@@ -183,7 +183,7 @@ class _FlaggedClientCard extends StatelessWidget {
               IconButton(
                 tooltip: 'Open business page',
                 onPressed: () => launchUrl(Uri.parse(r.url), mode: LaunchMode.externalApplication),
-                icon: const Icon(AppIcons.mapPin, size: 18, color: AppTheme.accent700),
+                icon: Icon(AppIcons.mapPin, size: 18, color: AppTheme.primary700),
               ),
           ]),
           const SizedBox(height: 4),
@@ -208,13 +208,13 @@ class _ReviewRow extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 8),
         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Icon(AppIcons.star, size: 15, color: AppTheme.accent700),
+          Icon(AppIcons.star, size: 15, color: AppTheme.primary700),
           const SizedBox(width: 8),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(
                 '${review.reviewer} · ${review.stars ?? 1}★ · ${review.date}',
-                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.subtle),
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.textSecondary),
               ),
               if (review.text.isNotEmpty) ...[
                 const SizedBox(height: 2),
@@ -222,12 +222,12 @@ class _ReviewRow extends StatelessWidget {
               ],
               if (link != null) ...[
                 const SizedBox(height: 4),
-                const Text(
+                Text(
                   'Open review',
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
-                    color: AppTheme.accent700,
+                    color: AppTheme.primary700,
                     decoration: TextDecoration.underline,
                   ),
                 ),

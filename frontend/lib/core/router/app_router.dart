@@ -7,6 +7,8 @@ import '../../presentation/pages/dashboard_page.dart';
 import '../../presentation/pages/email_leads_page.dart';
 import '../../presentation/pages/website_leads_page.dart';
 import '../../presentation/pages/excel_archive_page.dart';
+import '../../presentation/pages/jobs/job_details_page.dart';
+import '../../presentation/pages/jobs/jobs_hub_page.dart';
 import '../../presentation/pages/excel_scan_page.dart';
 import '../../presentation/pages/multi_scan_page.dart';
 import '../../presentation/pages/clients_page.dart';
@@ -34,6 +36,9 @@ import '../../presentation/widgets/admin_shell.dart';
 ///  * `/leads`    saved leads: 1-star review leads
 ///  * `/verified` the output: WhatsApp-verified leads
 ///  * `/more`     WhatsApp connection, sales, watchlist, users
+///  * `/jobs`     Jobs Finder: its own section (overview, search, scans, jobs,
+///                tracker, sources), independent of the lead flow above;
+///                `/jobs/:id` is one job in full
 ///
 /// These are [StatefulShellRoute] branches — [AdminShell] wraps them with
 /// the persistent sidebar/bottom-nav and each branch keeps its own state
@@ -73,7 +78,7 @@ final GoRouter appRouter = GoRouter(
           routes: [
             GoRoute(
               path: '/scan',
-              builder: (context, state) => const ExcelScanPage(),
+              builder: (context, state) => ExcelScanPage(type: state.uri.queryParameters['type']),
             ),
           ],
         ),
@@ -144,70 +149,97 @@ final GoRouter appRouter = GoRouter(
             ),
           ],
         ),
+        // Jobs Finder — in the nav (see AdminShell.jobsBranch).
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: '/jobs',
+              builder: (context, state) =>
+                  JobsHubPage(tab: state.uri.queryParameters['tab']),
+            ),
+          ],
+        ),
       ],
     ),
-    GoRoute(
-      path: '/scan-progress',
-      builder: (context, state) => const StateScanPage(),
-    ),
-    GoRoute(
-      path: '/watchlist',
-      builder: (context, state) => const WatchlistPage(),
-    ),
-    GoRoute(path: '/users', builder: (context, state) => const UsersPage()),
-    GoRoute(
-      path: '/salesman-stats',
-      builder: (context, state) => const SalesmanStatsPage(),
-    ),
-    GoRoute(
-      path: '/salesman-stats/:userId',
-      builder: (context, state) => SalesmanContactedLeadsPage(
-        userId: state.pathParameters['userId']!,
-        salesmanName: state.uri.queryParameters['name'] ?? 'Salesman',
-      ),
-    ),
-    GoRoute(
-      path: '/app-update',
-      builder: (context, state) => const AppUpdatePage(),
-    ),
-    GoRoute(path: '/clients', builder: (context, state) => const ClientsPage()),
-    GoRoute(
-      path: '/twilio-test',
-      builder: (context, state) => const TwilioTestLeadsPage(),
-    ),
-    // The lead comes via `extra`; a refreshed tab (no extra) goes back to the list.
-    GoRoute(
-      path: '/twilio-test/chat',
-      builder: (context, state) {
-        final extra = state.extra;
-        if (extra is TwilioTestLead) return TwilioTestChatPage(lead: extra);
-        return const TwilioTestLeadsPage();
-      },
-    ),
-    GoRoute(
-      path: '/whatsapp-verified',
-      builder: (context, state) => const WhatsAppValidatedArchivePage(),
-    ),
-    // Legacy/dormant multi-country scan dashboard — still reachable from
-    // the handful of old archives that predate the state/city scan engine.
-    GoRoute(
-      path: '/multi-scan',
-      builder: (context, state) => const MultiScanPage(),
-    ),
-    // Carries its [Lead] via `extra` rather than fetching by id — an
-    // internal admin tool's detail drill-down, not something meant to be
-    // cold-loaded from a bare URL. Falls back to the Leads list if opened
-    // without it (e.g. a stale/shared link).
-    GoRoute(
-      path: '/leads/details',
-      builder: (context, state) {
-        final extra = state.extra;
-        if (extra is LeadDetailsArgs) {
-          return BusinessDetailsPage(lead: extra.lead);
-        }
-        if (extra is Lead) return BusinessDetailsPage(lead: extra);
-        return const SavedBusinessesPage();
-      },
+    // Everything else is a plain route, but still inside the frame so the
+    // sidebar never disappears.
+    ShellRoute(
+      builder: (context, state, child) =>
+          PlainShell(location: state.uri.toString(), child: child),
+      routes: [
+        // One job in full; the id is in the path so a link to a job opens cold.
+        GoRoute(
+          path: '/jobs/:id',
+          builder: (context, state) =>
+              JobDetailsPage(jobId: state.pathParameters['id']!),
+        ),
+        GoRoute(
+          path: '/scan-progress',
+          builder: (context, state) => const StateScanPage(),
+        ),
+        GoRoute(
+          path: '/watchlist',
+          builder: (context, state) => const WatchlistPage(),
+        ),
+        GoRoute(path: '/users', builder: (context, state) => const UsersPage()),
+        GoRoute(
+          path: '/salesman-stats',
+          builder: (context, state) => const SalesmanStatsPage(),
+        ),
+        GoRoute(
+          path: '/salesman-stats/:userId',
+          builder: (context, state) => SalesmanContactedLeadsPage(
+            userId: state.pathParameters['userId']!,
+            salesmanName: state.uri.queryParameters['name'] ?? 'Salesman',
+          ),
+        ),
+        GoRoute(
+          path: '/app-update',
+          builder: (context, state) => const AppUpdatePage(),
+        ),
+        GoRoute(
+          path: '/clients',
+          builder: (context, state) => const ClientsPage(),
+        ),
+        GoRoute(
+          path: '/twilio-test',
+          builder: (context, state) => const TwilioTestLeadsPage(),
+        ),
+        // The lead comes via `extra`; a refreshed tab (no extra) goes back to the list.
+        GoRoute(
+          path: '/twilio-test/chat',
+          builder: (context, state) {
+            final extra = state.extra;
+            if (extra is TwilioTestLead) return TwilioTestChatPage(lead: extra);
+            return const TwilioTestLeadsPage();
+          },
+        ),
+        GoRoute(
+          path: '/whatsapp-verified',
+          builder: (context, state) => const WhatsAppValidatedArchivePage(),
+        ),
+        // Legacy/dormant multi-country scan dashboard — still reachable from
+        // the handful of old archives that predate the state/city scan engine.
+        GoRoute(
+          path: '/multi-scan',
+          builder: (context, state) => const MultiScanPage(),
+        ),
+        // Carries its [Lead] via `extra` rather than fetching by id — an
+        // internal admin tool's detail drill-down, not something meant to be
+        // cold-loaded from a bare URL. Falls back to the Leads list if opened
+        // without it (e.g. a stale/shared link).
+        GoRoute(
+          path: '/leads/details',
+          builder: (context, state) {
+            final extra = state.extra;
+            if (extra is LeadDetailsArgs) {
+              return BusinessDetailsPage(lead: extra.lead);
+            }
+            if (extra is Lead) return BusinessDetailsPage(lead: extra);
+            return const SavedBusinessesPage();
+          },
+        ),
+      ],
     ),
   ],
 );

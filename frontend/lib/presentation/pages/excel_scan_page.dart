@@ -3,11 +3,12 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/constants/business_categories.dart';
-import '../../core/theme/app_theme.dart';
 import '../../domain/entities/coverage_option.dart';
 import '../../domain/entities/maps_session_status.dart';
 import '../../domain/repositories/lead_repository.dart';
+import '../design_system/design_system.dart';
 import '../widgets/google_session_card.dart';
+import '../widgets/scan_layout.dart';
 import '../../domain/entities/state_city_scan_snapshot.dart';
 
 /// Configures and starts a scan — for each category (one at a time),
@@ -19,7 +20,10 @@ import '../../domain/entities/state_city_scan_snapshot.dart';
 /// state-by-state, city-by-city progress view, and the Excel Archive page
 /// for browsing everything saved this way.
 class ExcelScanPage extends StatefulWidget {
-  const ExcelScanPage({super.key});
+  const ExcelScanPage({super.key, this.type});
+
+  /// Preselects the scan type: `no-website`, anything else = 1-star reviews.
+  final String? type;
 
   @override
   State<ExcelScanPage> createState() => _ExcelScanPageState();
@@ -28,6 +32,9 @@ class ExcelScanPage extends StatefulWidget {
 class _ExcelScanPageState extends State<ExcelScanPage> {
   final _categoryController = TextEditingController();
   final List<String> _targetServices = [];
+
+  /// What this scan looks for: 1-star reviews (needs a time range) or businesses with no website.
+  late bool _noWebsite = widget.type == 'no-website';
 
   String _dateRange = '30';
   int _concurrency = 10;
@@ -78,6 +85,13 @@ class _ExcelScanPageState extends State<ExcelScanPage> {
   }
 
   @override
+  void didUpdateWidget(ExcelScanPage old) {
+    super.didUpdateWidget(old);
+    // The sidebar's two scan entries open this same page with a different type.
+    if (old.type != widget.type && !_starting) setState(() => _noWebsite = widget.type == 'no-website');
+  }
+
+  @override
   void dispose() {
     _categoryController.dispose();
     super.dispose();
@@ -106,7 +120,7 @@ class _ExcelScanPageState extends State<ExcelScanPage> {
       return;
     }
 
-    if (googleSessionBlocksScan(_session)) {
+    if (!_noWebsite && googleSessionBlocksScan(_session)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Sign in to Google first (the card above). Without it, 1-star reviews would be missed.')),
       );
@@ -120,6 +134,7 @@ class _ExcelScanPageState extends State<ExcelScanPage> {
             concurrency: _concurrency,
             dateRange: _dateRange,
             coverage: _coverage,
+            mode: _noWebsite ? 'no_website' : 'reviews',
           );
       if (!mounted) return;
       context.pushReplacement('/scan-progress');
@@ -140,280 +155,268 @@ class _ExcelScanPageState extends State<ExcelScanPage> {
     }
   }
 
+  String get _dateLabel => _dateRanges[_dateRange] ?? '$_dateRange days';
+
+  String get _coverageLabel => switch (_coverage) {
+        'standard' => 'Standard',
+        'maximum' => 'Maximum',
+        _ => 'Extended',
+      };
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Excel Scan')),
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 560),
+    // Only the 1-star scan reads reviews, so only it needs Google signed in.
+    final blocked = !_noWebsite && googleSessionBlocksScan(_session);
+    return AppPage(
+      title: 'New scan',
+      subtitle: _noWebsite
+          ? 'Find businesses with no website on Google Maps in every US state.'
+          : 'Find businesses with recent 1-star reviews in every US state.',
+      children: [
+        if (_existingJob != null)
+          AppAlert(
+            tone: AppTone.primary,
+            icon: AppIcons.zap,
+            message: 'A scan is already running'
+                '${_existingJob!.currentCategory != null ? ' ("${_existingJob!.currentCategory}")' : ''}.',
+            actions: [
+              AppButton.primary(label: 'View live progress', size: AppButtonSize.sm, onPressed: () => context.push('/scan-progress')),
+            ],
+          ),
+        if (!_noWebsite)
+          GoogleSessionCard(
+            onStatus: (s) {
+              if (mounted) setState(() => _session = s);
+            },
+          ),
+        ScanLayout(
+          sections: [
+            SectionCard(
+              title: 'What are you looking for?',
+              subtitle: 'Each scan type finds a different kind of lead',
+              child: _ScanTypePicker(noWebsite: _noWebsite, enabled: !_starting, onChanged: (v) => setState(() => _noWebsite = v)),
+            ),
+            SectionCard(
+              title: 'Target',
+              subtitle: 'Where to look and which businesses to look for',
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Text(
-                    'Scans every US state one at a time — within the active state, cities '
-                    'are scraped in parallel across your worker pool. Only 1-star reviews '
-                    'inside the date window are collected, and every business is read '
-                    'completely: reviews are sorted and read back to the start of the '
-                    'window, so none are skipped. Each category becomes one Excel workbook '
-                    '(one sheet per state), stamped with the scan date and saved as each '
-                    'state finishes. After a month, Re-scan it from the Archive.',
-                    style: Theme.of(context).textTheme.bodyLarge,
-                  ),
-                  const SizedBox(height: 20),
-                  GoogleSessionCard(
-                    onStatus: (s) {
-                      if (mounted) setState(() => _session = s);
-                    },
-                  ),
-                  const SizedBox(height: 24),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                    decoration: BoxDecoration(
-                      color: AppTheme.sage100,
-                      borderRadius: BorderRadius.circular(AppTheme.radius),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(AppIcons.download, color: AppTheme.sage700, size: 19),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            'Excel-only mode — businesses will not appear in the Leads page or WhatsApp checker.',
-                            style: const TextStyle(color: AppTheme.sage700, fontWeight: FontWeight.w700, fontSize: 13.5),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  if (_existingJob != null) ...[
-                    const SizedBox(height: 12),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  FieldShell(
+                    label: 'Country',
+                    child: Container(
+                      height: 40,
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
                       decoration: BoxDecoration(
-                        color: AppTheme.accent100,
+                        color: AppTheme.neutral100,
                         borderRadius: BorderRadius.circular(AppTheme.radius),
+                        border: Border.all(color: AppTheme.border),
                       ),
                       child: Row(
                         children: [
-                          const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.accent700),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              'A scan is already running'
-                              '${_existingJob!.currentCategory != null ? ' ("${_existingJob!.currentCategory}")' : ''}.',
-                              style: const TextStyle(color: AppTheme.accent700, fontWeight: FontWeight.w700, fontSize: 13.5),
-                            ),
-                          ),
+                          Icon(AppIcons.globe, size: 16, color: AppTheme.textMuted),
                           const SizedBox(width: 8),
-                          FilledButton(
-                            onPressed: () => context.push('/scan-progress'),
-                            style: FilledButton.styleFrom(backgroundColor: AppTheme.accent700),
-                            child: const Text('View live progress'),
-                          ),
+                          Text('United States', style: AppText.cell.copyWith(fontWeight: FontWeight.w600)),
+                          const Spacer(),
+                          Text('All 50 states + D.C.', style: Theme.of(context).textTheme.bodySmall),
                         ],
                       ),
                     ),
-                  ],
-                  const SizedBox(height: 24),
-                  Text('Country', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontSize: 14.5)),
-                  const SizedBox(height: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                    decoration: BoxDecoration(
-                      color: AppTheme.neutral100,
-                      borderRadius: BorderRadius.circular(AppTheme.radius),
-                      border: Border.all(color: AppTheme.neutral200),
-                    ),
-                    child: const Row(
+                  ),
+                  const SizedBox(height: AppSpace.lg),
+                  FieldShell(
+                    label: 'Business categories',
+                    helper: _noWebsite ? 'Each category is scanned one at a time.' : 'Each category is scanned one at a time and saved as its own Excel workbook.',
+                    child: _categoryField(),
+                  ),
+                  if (_targetServices.isNotEmpty) ...[
+                    const SizedBox(height: AppSpace.md),
+                    Wrap(
+                      spacing: AppSpace.sm,
+                      runSpacing: AppSpace.sm,
                       children: [
-                        Icon(AppIcons.globe, size: 18, color: AppTheme.subtle),
-                        SizedBox(width: 10),
-                        Text('United States', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: AppTheme.ink)),
-                        Spacer(),
-                        Text('All 50 states + D.C.', style: TextStyle(fontSize: 12, color: AppTheme.faint)),
+                        for (final s in _targetServices)
+                          InputChip(
+                            label: Text(s),
+                            deleteIcon: const Icon(AppIcons.close, size: 14),
+                            onDeleted: _starting ? null : () => _removeService(s),
+                          ),
                       ],
                     ),
-                  ),
-                  const SizedBox(height: 24),
-                  Text('Business categories', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontSize: 14.5)),
-                  const SizedBox(height: 8),
-                  Autocomplete<String>(
-                    optionsBuilder: (textEditingValue) {
-                      if (textEditingValue.text.isEmpty) return const Iterable<String>.empty();
-                      return BusinessCategories.top100
-                          .where((o) => o.toLowerCase().contains(textEditingValue.text.toLowerCase()));
-                    },
-                    onSelected: _addService,
-                    fieldViewBuilder: (context, controller, focusNode, onFieldSubmitted) {
-                      return Row(
-                        children: [
-                          Expanded(
-                            child: TextFormField(
-                              controller: controller,
-                              focusNode: focusNode,
-                              decoration: const InputDecoration(
-                                hintText: 'Select or type a category…',
-                                prefixIcon: Icon(AppIcons.search, size: 19),
-                                isDense: true,
-                              ),
-                              enabled: !_starting,
-                              onFieldSubmitted: (v) {
-                                _addService(v);
-                                controller.clear();
-                              },
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          IconButton.filled(
-                            onPressed: _starting
-                                ? null
-                                : () {
-                                    _addService(controller.text);
-                                    controller.clear();
-                                  },
-                            icon: const Icon(AppIcons.plus, size: 19),
-                            style: IconButton.styleFrom(
-                              backgroundColor: AppTheme.accent,
-                              foregroundColor: AppTheme.surface,
-                              shape: const CircleBorder(),
-                              padding: const EdgeInsets.all(14),
-                            ),
-                          ),
-                        ],
-                      );
-                    },
-                    optionsViewBuilder: (context, onSelected, options) {
-                      return Align(
-                        alignment: Alignment.topLeft,
-                        child: Material(
-                          elevation: 4.0,
-                          borderRadius: BorderRadius.circular(AppTheme.radius),
-                          color: AppTheme.surface,
-                          child: Container(
-                            width: 512,
-                            constraints: const BoxConstraints(maxHeight: 260),
-                            child: ListView.builder(
-                              padding: const EdgeInsets.symmetric(vertical: 6),
-                              shrinkWrap: true,
-                              itemCount: options.length,
-                              itemBuilder: (context, index) {
-                                final option = options.elementAt(index);
-                                return InkWell(
-                                  onTap: () => onSelected(option),
-                                  child: Padding(
-                                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 13),
-                                    child: Text(option),
-                                  ),
-                                );
-                              },
-                            ),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  if (_targetServices.isNotEmpty) ...[
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: _targetServices
-                          .map((s) => Chip(
-                                label: Text(s),
-                                deleteIcon: const Icon(AppIcons.close, size: 14),
-                                onDeleted: _starting ? null : () => _removeService(s),
-                              ))
-                          .toList(),
-                    ),
-                    const SizedBox(height: 16),
                   ],
-                  Text('Coverage', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontSize: 14.5)),
-                  const SizedBox(height: 8),
-                  _CoveragePicker(
-                    options: _coverageOptions,
-                    selected: _coverage,
-                    enabled: !_starting,
-                    onSelected: (tier) => setState(() => _coverage = tier),
-                  ),
-                  const SizedBox(height: 20),
-                  Text('Date range', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontSize: 14.5)),
-                  const SizedBox(height: 8),
-                  DropdownButtonFormField<String>(
-                    initialValue: _dateRange,
-                    icon: const Icon(AppIcons.chevronDown, size: 18, color: AppTheme.accent),
-                    items: _dateRanges.entries
-                        .map((e) => DropdownMenuItem(value: e.key, child: Text(e.value)))
-                        .toList(),
-                    onChanged: _starting
-                        ? null
-                        : (v) {
-                            if (v != null) setState(() => _dateRange = v);
-                          },
-                  ),
-                  const SizedBox(height: 20),
-                  Text('Parallel workers', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontSize: 14.5)),
-                  const SizedBox(height: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                    decoration: BoxDecoration(color: AppTheme.surface, borderRadius: BorderRadius.circular(AppTheme.radius)),
+                ],
+              ),
+            ),
+            SectionCard(
+              title: 'Coverage',
+              subtitle: 'How many places each state is searched',
+              child: _CoveragePicker(
+                options: _coverageOptions,
+                selected: _coverage,
+                enabled: !_starting,
+                onSelected: (tier) => setState(() => _coverage = tier),
+              ),
+            ),
+            SectionCard(
+              title: 'Options',
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (!_noWebsite) ...[
+                    AppDropdown<String>(
+                      label: 'Date range',
+                      helper: 'Only 1-star reviews inside this window are collected.',
+                      leadingIcon: AppIcons.calendar,
+                      value: _dateRange,
+                      options: [for (final e in _dateRanges.entries) AppOption(e.key, e.value)],
+                      onChanged: _starting ? null : (v) => setState(() => _dateRange = v),
+                    ),
+                    const SizedBox(height: AppSpace.lg),
+                  ],
+                  FieldShell(
+                    label: 'Parallel workers',
+                    helper: 'How fast pages are opened is set by a shared pace that tunes itself to what Google tolerates, '
+                        'so more workers cannot out-run it. 10 keeps it fully fed.',
                     child: Row(
                       children: [
-                        const Icon(AppIcons.users, size: 18, color: AppTheme.accent700),
-                        const SizedBox(width: 10),
+                        Icon(AppIcons.users, size: 16, color: AppTheme.textMuted),
                         Expanded(
                           child: Slider(
                             value: _concurrency.toDouble(),
                             min: 1,
                             max: 10,
                             divisions: 9,
-                            activeColor: AppTheme.accent500,
                             label: '$_concurrency workers',
                             onChanged: _starting ? null : (v) => setState(() => _concurrency = v.round()),
                           ),
                         ),
-                        SizedBox(
-                          width: 64,
-                          child: Text(
-                            '$_concurrency workers',
-                            textAlign: TextAlign.end,
-                            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: AppTheme.ink),
-                          ),
-                        ),
+                        SizedBox(width: 84, child: Text('$_concurrency workers', textAlign: TextAlign.end, style: AppText.cell.copyWith(fontWeight: FontWeight.w600))),
                       ],
                     ),
-                  ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'How fast pages are opened is set by a shared pace that tunes itself to what Google tolerates '
-                    '(it speeds up while things are healthy and backs off at the first sign of trouble). '
-                    'Workers only keep that pace fed, so more of them cannot out-run it. 10 keeps it fully fed.',
-                    style: TextStyle(fontSize: 12, height: 1.4, color: AppTheme.faint),
-                  ),
-                  const SizedBox(height: 24),
-                  ElevatedButton(
-                    onPressed: _starting || googleSessionBlocksScan(_session) ? null : _submit,
-                    child: _starting
-                        ? const SizedBox(
-                            height: 22,
-                            width: 22,
-                            child: CircularProgressIndicator(strokeWidth: 2.4, color: AppTheme.surface),
-                          )
-                        : Text(googleSessionBlocksScan(_session) ? 'Sign in to Google to start' : 'Start Excel scan'),
                   ),
                 ],
               ),
             ),
+          ],
+          summary: SectionCard(
+            title: 'Summary',
+            padding: const EdgeInsets.all(AppSpace.lg),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                SummaryRow(icon: AppIcons.search, label: 'Looking for', value: _noWebsite ? 'No website' : '1-star reviews'),
+                const SummaryRow(icon: AppIcons.globe, label: 'Country', value: 'United States'),
+                SummaryRow(
+                  icon: AppIcons.tag,
+                  label: 'Categories',
+                  value: _targetServices.isEmpty ? 'None yet' : (_targetServices.length <= 2 ? _targetServices.join(', ') : '${_targetServices.length} selected'),
+                ),
+                SummaryRow(icon: AppIcons.mapPin, label: 'Coverage', value: _coverageLabel),
+                if (!_noWebsite) SummaryRow(icon: AppIcons.calendar, label: 'Date range', value: _dateLabel),
+                SummaryRow(icon: AppIcons.users, label: 'Workers', value: '$_concurrency'),
+                const SizedBox(height: AppSpace.md),
+                AppAlert(
+                  tone: AppTone.success,
+                  icon: _noWebsite ? AppIcons.globe : AppIcons.download,
+                  message: _noWebsite
+                      ? 'Saved to No Website Leads. A business is saved only when its Maps listing is confirmed to have no website; no reviews are read.'
+                      : 'Excel-only mode — businesses will not appear in the Leads page or WhatsApp checker.',
+                ),
+                const SizedBox(height: AppSpace.lg),
+                AppButton.primary(
+                  label: blocked ? 'Sign in to Google to start' : (_noWebsite ? 'Start no-website scan' : 'Start 1-star scan'),
+                  icon: blocked ? null : AppIcons.play,
+                  loading: _starting,
+                  fullWidth: true,
+                  onPressed: _starting || blocked ? null : _submit,
+                ),
+                const SizedBox(height: AppSpace.sm),
+                Text(
+                  _noWebsite
+                      ? 'Scans every state one at a time; within a state, cities are read in parallel. Re-running it only adds new businesses.'
+                      : 'Scans every state one at a time; within a state, cities are read in parallel. Re-scan from the Archive after a month.',
+                  style: Theme.of(context).textTheme.bodySmall,
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
           ),
         ),
-      ),
+      ],
+    );
+  }
+
+  Widget _categoryField() {
+    return Autocomplete<String>(
+      optionsBuilder: (textEditingValue) {
+        if (textEditingValue.text.isEmpty) return const Iterable<String>.empty();
+        return BusinessCategories.top100.where((o) => o.toLowerCase().contains(textEditingValue.text.toLowerCase()));
+      },
+      onSelected: _addService,
+      fieldViewBuilder: (context, controller, focusNode, onFieldSubmitted) {
+        return Row(
+          children: [
+            Expanded(
+              child: SizedBox(
+                height: 40,
+                child: TextFormField(
+                  controller: controller,
+                  focusNode: focusNode,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppTheme.textPrimary),
+                  decoration: const InputDecoration(hintText: 'Select or type a category…', prefixIcon: Icon(AppIcons.search, size: 17)),
+                  enabled: !_starting,
+                  onFieldSubmitted: (v) {
+                    _addService(v);
+                    controller.clear();
+                  },
+                ),
+              ),
+            ),
+            const SizedBox(width: AppSpace.sm),
+            AppButton.outlined(
+              label: 'Add',
+              icon: AppIcons.plus,
+              onPressed: _starting
+                  ? null
+                  : () {
+                      _addService(controller.text);
+                      controller.clear();
+                    },
+            ),
+          ],
+        );
+      },
+      optionsViewBuilder: (context, onSelected, options) {
+        return Align(
+          alignment: Alignment.topLeft,
+          child: Material(
+            elevation: 8,
+            color: AppTheme.surfaceElevated,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+              side: BorderSide(color: AppTheme.border),
+            ),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 260, maxWidth: 480),
+              child: ListView.builder(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                shrinkWrap: true,
+                itemCount: options.length,
+                itemBuilder: (context, index) {
+                  final option = options.elementAt(index);
+                  return InkWell(
+                    onTap: () => onSelected(option),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      child: Text(option, style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppTheme.textPrimary)),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }
@@ -451,41 +454,48 @@ class _CoveragePicker extends StatelessWidget {
             CoverageOption(tier: 'extended', label: 'Extended', searches: 0, businesses: 0, hours: 0),
             CoverageOption(tier: 'maximum', label: 'Maximum', searches: 0, businesses: 0, hours: 0),
           ];
+    final text = Theme.of(context).textTheme;
     return Column(
       children: [
         for (final o in tiers)
           Padding(
-            padding: const EdgeInsets.only(bottom: 8),
+            padding: EdgeInsets.only(bottom: o == tiers.last ? 0 : AppSpace.sm + 2),
             child: InkWell(
-              borderRadius: BorderRadius.circular(AppTheme.radius),
+              borderRadius: BorderRadius.circular(AppTheme.radiusMd),
               onTap: enabled ? () => onSelected(o.tier) : null,
-              child: Container(
-                padding: const EdgeInsets.all(14),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 140),
+                padding: const EdgeInsets.all(AppSpace.md + 2),
                 decoration: BoxDecoration(
-                  color: o.tier == selected ? AppTheme.accent100 : AppTheme.surface,
-                  borderRadius: BorderRadius.circular(AppTheme.radius),
-                  border: Border.all(color: o.tier == selected ? AppTheme.accent500 : AppTheme.neutral200, width: o.tier == selected ? 1.6 : 1),
+                  color: o.tier == selected ? AppTheme.primary100 : AppTheme.surface,
+                  borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+                  border: Border.all(color: o.tier == selected ? AppTheme.primary500 : AppTheme.border, width: o.tier == selected ? 1.6 : 1),
                 ),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(o.tier == selected ? AppIcons.shieldCheck : AppIcons.mapPin, size: 18, color: AppTheme.accent700),
-                    const SizedBox(width: 12),
+                    Padding(
+                      padding: const EdgeInsets.only(top: 1),
+                      child: Icon(o.tier == selected ? AppIcons.checkCircle : AppIcons.mapPin, size: 18, color: o.tier == selected ? AppTheme.primary : AppTheme.textMuted),
+                    ),
+                    const SizedBox(width: AppSpace.md),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            o.tier == 'extended' ? '${o.label} (recommended)' : o.label,
-                            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
+                          Row(
+                            children: [
+                              Text(o.label, style: text.titleSmall),
+                              if (o.tier == 'extended') ...[const SizedBox(width: 8), const AppBadge('Recommended', tone: AppTone.primary, dense: true)],
+                            ],
                           ),
                           const SizedBox(height: 2),
-                          Text(_blurb[o.tier] ?? '', style: const TextStyle(fontSize: 12.5, height: 1.35, color: AppTheme.neutral700)),
+                          Text(_blurb[o.tier] ?? '', style: text.bodyMedium),
                           if (o.searches > 0 && o.hours > 0) ...[
-                            const SizedBox(height: 4),
+                            const SizedBox(height: 6),
                             Text(
                               '${o.searches} searches · ~${o.businesses} businesses to read · ${_duration(o.hours)}',
-                              style: const TextStyle(fontSize: 12, color: AppTheme.faint, fontWeight: FontWeight.w600),
+                              style: text.bodySmall?.copyWith(fontWeight: FontWeight.w600),
                             ),
                           ],
                         ],
@@ -497,6 +507,87 @@ class _CoveragePicker extends StatelessWidget {
             ),
           ),
       ],
+    );
+  }
+}
+
+/// The first choice on the page: which kind of lead this scan finds.
+class _ScanTypePicker extends StatelessWidget {
+  const _ScanTypePicker({required this.noWebsite, required this.enabled, required this.onChanged});
+
+  final bool noWebsite;
+  final bool enabled;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    Widget option({
+      required bool selected,
+      required IconData icon,
+      required String title,
+      required String body,
+      required List<String> facts,
+      required VoidCallback onTap,
+    }) {
+      return InkWell(
+        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+        onTap: enabled ? onTap : null,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 140),
+          padding: const EdgeInsets.all(AppSpace.lg),
+          decoration: BoxDecoration(
+            color: selected ? AppTheme.primary100 : AppTheme.surface,
+            borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+            border: Border.all(color: selected ? AppTheme.primary500 : AppTheme.border, width: selected ? 1.6 : 1),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  IconTile(icon, tone: selected ? AppTone.primary : AppTone.neutral, size: 34),
+                  const SizedBox(width: AppSpace.md),
+                  Expanded(child: Text(title, style: text.titleMedium)),
+                  Icon(selected ? AppIcons.checkCircle : AppIcons.chevronRight, size: 18, color: selected ? AppTheme.primary : AppTheme.textMuted),
+                ],
+              ),
+              const SizedBox(height: AppSpace.sm + 2),
+              Text(body, style: text.bodyMedium),
+              const SizedBox(height: AppSpace.md),
+              Wrap(spacing: 6, runSpacing: 6, children: [for (final f in facts) AppBadge(f, tone: selected ? AppTone.primary : AppTone.neutral, dense: true)]),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return LayoutBuilder(
+      builder: (context, c) {
+        final reviews = option(
+          selected: !noWebsite,
+          icon: AppIcons.thumbsDown,
+          title: '1-star reviews',
+          body: 'Businesses that received a recent 1-star review — people unhappy enough to want a better option.',
+          facts: const ['Needs a time range', 'Google sign-in required', 'Saved as an Excel archive'],
+          onTap: () => onChanged(false),
+        );
+        final website = option(
+          selected: noWebsite,
+          icon: AppIcons.globe,
+          title: 'No website',
+          body: 'Businesses whose Google Maps listing has no website — they need one.',
+          facts: const ['No time range', 'No Google sign-in', 'Saved to No Website Leads'],
+          onTap: () => onChanged(true),
+        );
+        if (c.maxWidth < 560) {
+          return Column(children: [reviews, const SizedBox(height: AppSpace.md), website]);
+        }
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [Expanded(child: reviews), const SizedBox(width: AppSpace.md), Expanded(child: website)],
+        );
+      },
     );
   }
 }

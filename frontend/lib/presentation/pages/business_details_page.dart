@@ -90,7 +90,7 @@ class _BusinessDetailsPageState extends State<BusinessDetailsPage> {
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete', style: TextStyle(color: AppTheme.danger)),
+            child: Text('Delete', style: TextStyle(color: AppTheme.error)),
           ),
         ],
       ),
@@ -154,7 +154,7 @@ class _BusinessDetailsPageState extends State<BusinessDetailsPage> {
                       width: 56,
                       height: 56,
                       decoration: BoxDecoration(
-                        color: warm ? AppTheme.accent100 : AppTheme.sage100,
+                        color: warm ? AppTheme.primary100 : AppTheme.success100,
                         shape: BoxShape.circle,
                       ),
                       alignment: Alignment.center,
@@ -163,7 +163,7 @@ class _BusinessDetailsPageState extends State<BusinessDetailsPage> {
                         style: TextStyle(
                           fontSize: 22,
                           fontWeight: FontWeight.w800,
-                          color: warm ? AppTheme.accent700 : AppTheme.sage700,
+                          color: warm ? AppTheme.primary700 : AppTheme.success700,
                         ),
                       ),
                     ),
@@ -177,13 +177,13 @@ class _BusinessDetailsPageState extends State<BusinessDetailsPage> {
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                             decoration: BoxDecoration(
-                              color: AppTheme.accent100,
+                              color: AppTheme.primary100,
                               borderRadius: BorderRadius.circular(AppTheme.radiusPill),
                             ),
                             child: Text(
                               lead.category,
-                              style: const TextStyle(
-                                color: AppTheme.accent800,
+                              style: TextStyle(
+                                color: AppTheme.primary800,
                                 fontWeight: FontWeight.w700,
                                 fontSize: 12,
                               ),
@@ -202,13 +202,13 @@ class _BusinessDetailsPageState extends State<BusinessDetailsPage> {
                         ),
                         child: Row(
                           children: [
-                            const Icon(AppIcons.star, size: 16, color: AppTheme.accent),
+                            Icon(AppIcons.star, size: 16, color: AppTheme.primary),
                             const SizedBox(width: 4),
                             Text(
                               '${lead.rating}'
                               '${lead.totalReviews != null ? ' (${lead.totalReviews})' : ''}',
-                              style: const TextStyle(
-                                color: AppTheme.accent800,
+                              style: TextStyle(
+                                color: AppTheme.primary800,
                                 fontWeight: FontWeight.w800,
                               ),
                             ),
@@ -222,10 +222,7 @@ class _BusinessDetailsPageState extends State<BusinessDetailsPage> {
                 Container(
                   width: double.infinity,
                   padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: AppTheme.surface,
-                    borderRadius: BorderRadius.circular(AppTheme.radiusCard),
-                  ),
+                  decoration: AppTheme.cardDecoration(),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -284,7 +281,7 @@ class _BusinessDetailsPageState extends State<BusinessDetailsPage> {
                     width: double.infinity,
                     padding: const EdgeInsets.all(18),
                     decoration: BoxDecoration(
-                      color: AppTheme.accent100,
+                      color: AppTheme.primary100,
                       borderRadius: BorderRadius.circular(AppTheme.radiusCard),
                     ),
                     child: Column(
@@ -292,13 +289,13 @@ class _BusinessDetailsPageState extends State<BusinessDetailsPage> {
                       children: [
                         Row(
                           children: [
-                            const Icon(AppIcons.thumbsDown, size: 14, color: AppTheme.accent700),
+                            Icon(AppIcons.thumbsDown, size: 14, color: AppTheme.primary700),
                             const SizedBox(width: 8),
                             Text(
                               '${lead.badReview.stars}★ · ${lead.badReview.date}'
                               '${lead.badReview.reviewer != null ? ' · ${lead.badReview.reviewer}' : ''}',
-                              style: const TextStyle(
-                                color: AppTheme.accent700,
+                              style: TextStyle(
+                                color: AppTheme.primary700,
                                 fontWeight: FontWeight.w700,
                                 fontSize: 12,
                               ),
@@ -309,7 +306,7 @@ class _BusinessDetailsPageState extends State<BusinessDetailsPage> {
                         Text(
                           '“${lead.badReview.text}”',
                           style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                                color: AppTheme.ink,
+                                color: AppTheme.textPrimary,
                                 fontStyle: FontStyle.italic,
                                 height: 1.5,
                               ),
@@ -348,23 +345,20 @@ class _WhatsAppStatusCard extends StatelessWidget {
             ? 'WhatsApp verified'
             : 'Not on WhatsApp';
     final color = !checked
-        ? AppTheme.subtle
+        ? AppTheme.textSecondary
         : lead.hasWhatsApp
-            ? AppTheme.sage700
-            : AppTheme.accent700;
+            ? AppTheme.success700
+            : AppTheme.primary700;
     final background = !checked
         ? AppTheme.neutral100
         : lead.hasWhatsApp
-            ? AppTheme.sage100
-            : AppTheme.accent100;
+            ? AppTheme.success100
+            : AppTheme.primary100;
 
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: AppTheme.surface,
-        borderRadius: BorderRadius.circular(AppTheme.radiusCard),
-      ),
+      decoration: AppTheme.cardDecoration(),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -396,8 +390,8 @@ class _WhatsAppStatusCard extends StatelessWidget {
                   icon: const Icon(AppIcons.checkCircle, size: 17),
                   label: const Text('Mark validated'),
                   style: OutlinedButton.styleFrom(
-                    foregroundColor: AppTheme.sage700,
-                    side: const BorderSide(color: AppTheme.sage500),
+                    foregroundColor: AppTheme.success700,
+                    side: BorderSide(color: AppTheme.success500),
                   ),
                 ),
               ),
@@ -441,8 +435,8 @@ class _DetailRow extends StatelessWidget {
           Container(
             width: 34,
             height: 34,
-            decoration: const BoxDecoration(color: AppTheme.neutral100, shape: BoxShape.circle),
-            child: Icon(icon, size: 15, color: AppTheme.subtle),
+            decoration: BoxDecoration(color: AppTheme.neutral100, shape: BoxShape.circle),
+            child: Icon(icon, size: 15, color: AppTheme.textSecondary),
           ),
           const SizedBox(width: 14),
           SizedBox(
@@ -456,7 +450,7 @@ class _DetailRow extends StatelessWidget {
             child: Text(
               hasValue ? value! : 'Not available',
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: hasValue && onTap != null ? AppTheme.accent700 : null,
+                    color: hasValue && onTap != null ? AppTheme.primary700 : null,
                     fontWeight: hasValue && onTap != null ? FontWeight.w700 : null,
                     fontStyle: hasValue ? FontStyle.normal : FontStyle.italic,
                   ),

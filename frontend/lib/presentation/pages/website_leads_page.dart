@@ -5,6 +5,7 @@ import '../../core/theme/app_theme.dart';
 import '../../domain/entities/lead_page.dart';
 import '../widgets/site_lead_card.dart';
 import 'lead_list_page.dart';
+import '../widgets/lead_table.dart';
 
 /// Website leads — businesses Google Maps lists with **no website**: the
 /// `websiteLeads` collection, filled by the scan. Only businesses confirmed to
@@ -19,11 +20,13 @@ class WebsiteLeadsPage extends StatelessWidget {
     return LeadListPage(
       config: LeadListConfig(
         collection: LeadCollection.websiteLeads,
-        title: 'Website leads',
+        title: 'No Website Leads',
         subtitleEmpty: 'Businesses with no website land here.',
         emptyTitle: 'No website leads yet',
         emptyBody: 'Run a scan — every business Google Maps lists without a website is saved here.',
         emptyIcon: AppIcons.globe,
+        tableKind: LeadTableKind.website,
+        rowAction: const LeadRowAction(icon: AppIcons.externalLink, tooltip: 'Open in Google Maps'),
         searchHint: 'Search by name, phone, address or category',
         cardExtent: 232,
         cardBuilder: (context, lead, {required onTap, required onDelete, required deleting}) =>

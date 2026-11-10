@@ -19,12 +19,12 @@ class UserAvatar extends StatelessWidget {
     final trimmed = name.trim();
     final initial = Text(
       trimmed.isEmpty ? '?' : String.fromCharCode(trimmed.runes.first).toUpperCase(),
-      style: const TextStyle(fontWeight: FontWeight.w800, color: AppTheme.accent700),
+      style: TextStyle(fontWeight: FontWeight.w800, color: AppTheme.primary700),
     );
     final url = photoUrl;
     return CircleAvatar(
       radius: radius,
-      backgroundColor: AppTheme.accent100,
+      backgroundColor: AppTheme.primary100,
       child: url == null || url.isEmpty
           ? initial
           : ClipOval(

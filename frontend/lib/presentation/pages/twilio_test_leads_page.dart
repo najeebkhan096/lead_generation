@@ -228,10 +228,10 @@ class _TwilioTestLeadsPageState extends State<TwilioTestLeadsPage> {
               children: [
                 _buildReplies(),
                 const SizedBox(height: 28),
-                const Text(
+                Text(
                   'Add a lead to try the Twilio outreach flow. Nothing is sent from here — the lead appears in the '
                   'selected mobile user\'s Outreach inbox, where you can message it.',
-                  style: TextStyle(fontSize: 12.5, color: AppTheme.faint),
+                  style: TextStyle(fontSize: 12.5, color: AppTheme.textMuted),
                 ),
                 const SizedBox(height: 16),
                 _buildForm(),
@@ -255,7 +255,7 @@ class _TwilioTestLeadsPageState extends State<TwilioTestLeadsPage> {
             Expanded(
               child: Text(
                 unread > 0 ? 'WhatsApp replies · $unread new' : 'WhatsApp replies · ${_replies.length}',
-                style: const TextStyle(fontSize: 12.5, color: AppTheme.faint, fontWeight: FontWeight.w700),
+                style: TextStyle(fontSize: 12.5, color: AppTheme.textMuted, fontWeight: FontWeight.w700),
               ),
             ),
             TextButton.icon(
@@ -271,16 +271,16 @@ class _TwilioTestLeadsPageState extends State<TwilioTestLeadsPage> {
         if (_repliesError != null)
           Padding(
             padding: const EdgeInsets.only(bottom: 8),
-            child: Text(_repliesError!, style: const TextStyle(color: AppTheme.danger, fontSize: 12.5)),
+            child: Text(_repliesError!, style: TextStyle(color: AppTheme.error, fontSize: 12.5)),
           ),
         if (_replies.isEmpty && _repliesError == null)
-          const Padding(
+          Padding(
             padding: EdgeInsets.symmetric(vertical: 12),
             child: Text(
               'Nobody has messaged your WhatsApp number yet. A business that taps a WhatsApp chat link and '
               'sends a message appears here, and you can chat '
               'freely for 24 hours.',
-              style: TextStyle(color: AppTheme.faint, fontSize: 12.5),
+              style: TextStyle(color: AppTheme.textMuted, fontSize: 12.5),
             ),
           )
         else
@@ -345,11 +345,11 @@ class _TwilioTestLeadsPageState extends State<TwilioTestLeadsPage> {
             ),
             if (_formError != null) ...[
               const SizedBox(height: 12),
-              Text(_formError!, style: const TextStyle(color: AppTheme.danger, fontSize: 12.5)),
+              Text(_formError!, style: TextStyle(color: AppTheme.error, fontSize: 12.5)),
             ],
             if (_notice != null) ...[
               const SizedBox(height: 12),
-              Text(_notice!, style: const TextStyle(color: AppTheme.sage700, fontSize: 12.5, fontWeight: FontWeight.w600)),
+              Text(_notice!, style: TextStyle(color: AppTheme.success700, fontSize: 12.5, fontWeight: FontWeight.w600)),
             ],
             const SizedBox(height: 16),
             Align(
@@ -371,7 +371,7 @@ class _TwilioTestLeadsPageState extends State<TwilioTestLeadsPage> {
   Widget _buildList() {
     final header = Text(
       _loading || _listError != null ? 'Test leads' : 'Test leads · ${_leads.length}',
-      style: const TextStyle(fontSize: 12.5, color: AppTheme.faint, fontWeight: FontWeight.w700),
+      style: TextStyle(fontSize: 12.5, color: AppTheme.textMuted, fontWeight: FontWeight.w700),
     );
     if (_loading) {
       return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -383,7 +383,7 @@ class _TwilioTestLeadsPageState extends State<TwilioTestLeadsPage> {
       return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         header,
         const SizedBox(height: 12),
-        Text(_listError!, style: const TextStyle(color: AppTheme.danger)),
+        Text(_listError!, style: TextStyle(color: AppTheme.error)),
         const SizedBox(height: 8),
         Align(
           alignment: Alignment.centerLeft,
@@ -395,9 +395,9 @@ class _TwilioTestLeadsPageState extends State<TwilioTestLeadsPage> {
       header,
       const SizedBox(height: 10),
       if (_leads.isEmpty)
-        const Padding(
+        Padding(
           padding: EdgeInsets.symmetric(vertical: 24),
-          child: Center(child: Text('No test leads yet.', style: TextStyle(color: AppTheme.faint))),
+          child: Center(child: Text('No test leads yet.', style: TextStyle(color: AppTheme.textMuted))),
         )
       else
         for (final lead in _leads)
@@ -444,7 +444,7 @@ class _TestLeadCard extends StatelessWidget {
       ),
       child: Row(
         children: [
-          const Icon(AppIcons.phone, size: 18, color: AppTheme.accent700),
+          Icon(AppIcons.phone, size: 18, color: AppTheme.primary700),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -454,7 +454,7 @@ class _TestLeadCard extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(
                   [lead.phoneNumber, if (ownerLabel.isNotEmpty) ownerLabel].join(' · '),
-                  style: const TextStyle(fontSize: 12, color: AppTheme.faint),
+                  style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -505,11 +505,11 @@ class _ReplyCard extends StatelessWidget {
         decoration: BoxDecoration(
           color: AppTheme.surface,
           borderRadius: BorderRadius.circular(AppTheme.radius),
-          border: Border.all(color: unread > 0 ? AppTheme.sage400 : AppTheme.neutral200),
+          border: Border.all(color: unread > 0 ? AppTheme.success400 : AppTheme.neutral200),
         ),
         child: Row(
           children: [
-            const Icon(AppIcons.chat, size: 18, color: AppTheme.sage700),
+            Icon(AppIcons.chat, size: 18, color: AppTheme.success700),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -524,7 +524,7 @@ class _ReplyCard extends StatelessWidget {
                   const SizedBox(height: 2),
                   Text(
                     lead.phoneNumber,
-                    style: const TextStyle(fontSize: 12, color: AppTheme.faint),
+                    style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
                   ),
                   if (lead.lastMessage.isNotEmpty) ...[
                     const SizedBox(height: 4),
@@ -536,11 +536,11 @@ class _ReplyCard extends StatelessWidget {
             if (unread > 0)
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(color: AppTheme.sage600, borderRadius: BorderRadius.circular(AppTheme.radiusPill)),
-                child: Text('$unread', style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w700)),
+                decoration: BoxDecoration(color: AppTheme.success600, borderRadius: BorderRadius.circular(AppTheme.radiusPill)),
+                child: Text('$unread', style: TextStyle(color: AppTheme.onPrimary, fontSize: 12, fontWeight: FontWeight.w700)),
               )
             else
-              const Icon(AppIcons.chevronRight, size: 18, color: AppTheme.faint),
+              Icon(AppIcons.chevronRight, size: 18, color: AppTheme.textMuted),
           ],
         ),
       ),

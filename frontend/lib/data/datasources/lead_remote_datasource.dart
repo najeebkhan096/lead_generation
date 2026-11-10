@@ -350,6 +350,7 @@ class LeadRemoteDataSource {
     String dateRange = '30',
     int maxResultsPerCity = 160,
     bool analyze = false,
+    String mode = 'reviews',
   }) async {
     final response = await _client
         .post(
@@ -362,6 +363,7 @@ class LeadRemoteDataSource {
             'maxResultsPerCity': maxResultsPerCity,
             'analyze': analyze,
             'coverage': coverage,
+            'mode': mode,
           }),
         )
         .timeout(const Duration(seconds: 30));

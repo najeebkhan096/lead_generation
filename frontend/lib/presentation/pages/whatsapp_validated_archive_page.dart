@@ -93,7 +93,7 @@ class _WhatsAppValidatedArchivePageState extends State<WhatsAppValidatedArchiveP
                     ? Center(
                         child: Padding(
                           padding: const EdgeInsets.all(24),
-                          child: Text(_error!, style: const TextStyle(color: AppTheme.danger)),
+                          child: Text(_error!, style: TextStyle(color: AppTheme.error)),
                         ),
                       )
                     : _archives.isEmpty
@@ -132,8 +132,8 @@ class _EmptyState extends StatelessWidget {
             Container(
               width: 72,
               height: 72,
-              decoration: const BoxDecoration(color: AppTheme.sage100, shape: BoxShape.circle),
-              child: const Icon(AppIcons.shieldCheck, size: 30, color: AppTheme.sage700),
+              decoration: BoxDecoration(color: AppTheme.success100, shape: BoxShape.circle),
+              child: Icon(AppIcons.shieldCheck, size: 30, color: AppTheme.success700),
             ),
             const SizedBox(height: 16),
             Text('No verified businesses yet', style: Theme.of(context).textTheme.titleMedium),
@@ -165,7 +165,7 @@ class _VerifiedArchiveCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppTheme.surface,
         borderRadius: BorderRadius.circular(AppTheme.radius),
-        border: Border.all(color: AppTheme.sage300),
+        border: Border.all(color: AppTheme.success300),
       ),
       child: InkWell(
         onTap: onTap,
@@ -177,8 +177,8 @@ class _VerifiedArchiveCard extends StatelessWidget {
               Container(
                 width: 40,
                 height: 40,
-                decoration: const BoxDecoration(color: AppTheme.sage100, shape: BoxShape.circle),
-                child: const Icon(AppIcons.shieldCheck, size: 18, color: AppTheme.sage700),
+                decoration: BoxDecoration(color: AppTheme.success100, shape: BoxShape.circle),
+                child: Icon(AppIcons.shieldCheck, size: 18, color: AppTheme.success700),
               ),
               const SizedBox(width: 14),
               Expanded(
@@ -194,7 +194,7 @@ class _VerifiedArchiveCard extends StatelessWidget {
                     const SizedBox(height: 3),
                     Text(
                       '${archive.totalLeads} verified · ${_timeAgo(archive.createdAt)}',
-                      style: const TextStyle(fontSize: 12, color: AppTheme.faint),
+                      style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -203,12 +203,12 @@ class _VerifiedArchiveCard extends StatelessWidget {
               ),
               IconButton(
                 tooltip: 'Download .xlsx',
-                icon: const Icon(AppIcons.download, size: 18, color: AppTheme.faint),
+                icon: Icon(AppIcons.download, size: 18, color: AppTheme.textMuted),
                 onPressed: () => launchUrl(Uri.parse(archive.downloadUrl)),
               ),
               IconButton(
                 tooltip: 'Delete',
-                icon: const Icon(AppIcons.trash, size: 18, color: AppTheme.faint),
+                icon: Icon(AppIcons.trash, size: 18, color: AppTheme.textMuted),
                 onPressed: onDelete,
               ),
             ],
@@ -284,22 +284,22 @@ class _VerifiedArchiveViewerPageState extends State<_VerifiedArchiveViewerPage> 
             child: _loading
                 ? const Center(child: CircularProgressIndicator())
                 : _error != null
-                    ? Center(child: Text(_error!, style: const TextStyle(color: AppTheme.danger)))
+                    ? Center(child: Text(_error!, style: TextStyle(color: AppTheme.error)))
                     : _leads.isEmpty
-                        ? const Center(child: Text('No businesses in this archive.', style: TextStyle(color: AppTheme.faint)))
+                        ? Center(child: Text('No businesses in this archive.', style: TextStyle(color: AppTheme.textMuted)))
                         : ListView(
                             controller: revealController,
                             padding: const EdgeInsets.fromLTRB(20, 12, 20, 40),
                             children: [
                               Row(
                                 children: [
-                                  const Icon(AppIcons.shieldCheck, size: 16, color: AppTheme.sage700),
+                                  Icon(AppIcons.shieldCheck, size: 16, color: AppTheme.success700),
                                   const SizedBox(width: 8),
                                   Text(
                                     '${_leads.length} WhatsApp-verified businesses',
                                     style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                                           fontWeight: FontWeight.w700,
-                                          color: AppTheme.sage800,
+                                          color: AppTheme.success800,
                                         ),
                                   ),
                                 ],

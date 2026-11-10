@@ -180,7 +180,7 @@ class _AppUpdatePageState extends State<AppUpdatePage> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(_error!, style: const TextStyle(color: AppTheme.danger), textAlign: TextAlign.center),
+              Text(_error!, style: TextStyle(color: AppTheme.error), textAlign: TextAlign.center),
               const SizedBox(height: 12),
               OutlinedButton.icon(onPressed: _load, icon: const Icon(AppIcons.refresh, size: 18), label: const Text('Retry')),
             ],
@@ -356,7 +356,7 @@ class _Row extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: const TextStyle(fontSize: 12, color: AppTheme.faint, fontWeight: FontWeight.w600)),
+          Text(label, style: TextStyle(fontSize: 12, color: AppTheme.textMuted, fontWeight: FontWeight.w600)),
           const SizedBox(height: 2),
           SelectableText(value, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
         ],

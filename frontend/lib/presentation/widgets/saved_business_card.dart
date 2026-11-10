@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../core/theme/app_theme.dart';
+import '../design_system/design_system.dart';
 import '../../domain/entities/lead.dart';
 import '../utils/date_format.dart';
 
@@ -29,165 +29,82 @@ class SavedBusinessCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final addedOn = formatDate(lead.savedAt);
     final letter = lead.business.trim().isEmpty ? '?' : lead.business.trim()[0].toUpperCase();
-    final warm = lead.business.hashCode.isEven;
     // hasWhatsApp is only ever true after a real WhatsApp Web check — a
     // stronger signal than just "has a phone number that might work".
     final verified = lead.hasWhatsApp;
     final maybeWhatsApp = !verified && (lead.waLink?.isNotEmpty ?? false);
 
-    return Material(
-      color: AppTheme.surface,
-      borderRadius: BorderRadius.circular(AppTheme.radiusCard),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(AppTheme.radiusCard),
-        child: Padding(
-          padding: const EdgeInsets.all(18),
-          child: Column(
+    return AppCard(
+      onTap: onTap,
+      padding: const EdgeInsets.all(AppSpace.lg),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      color: warm ? AppTheme.accent100 : AppTheme.sage100,
-                      shape: BoxShape.circle,
-                    ),
-                    alignment: Alignment.center,
-                    child: Text(
-                      letter,
-                      style: TextStyle(
-                        fontWeight: FontWeight.w800,
-                        fontSize: 17,
-                        color: warm ? AppTheme.accent700 : AppTheme.sage700,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          lead.business,
-                          style: Theme.of(context).textTheme.titleSmall?.copyWith(fontSize: 15),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        const SizedBox(height: 4),
-                        _CategoryChip(category: lead.category),
-                      ],
-                    ),
-                  ),
-                  if (onDelete != null)
-                    SizedBox(
-                      width: 30,
-                      height: 30,
-                      child: deleting
-                          ? const Padding(
-                              padding: EdgeInsets.all(7),
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : IconButton(
-                              tooltip: 'Delete',
-                              onPressed: onDelete,
-                              icon: const Icon(AppIcons.trash, size: 16, color: AppTheme.subtle),
-                              padding: EdgeInsets.zero,
-                              visualDensity: VisualDensity.compact,
-                            ),
-                    ),
-                ],
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(color: AppTheme.primary100, borderRadius: BorderRadius.circular(AppTheme.radiusMd)),
+                alignment: Alignment.center,
+                child: Text(letter, style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16, color: AppTheme.primary700)),
               ),
-              const SizedBox(height: 14),
-              if (lead.rating != null)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 6),
-                  child: Row(
-                    children: [
-                      const Icon(AppIcons.star, size: 14, color: AppTheme.accent),
-                      const SizedBox(width: 6),
-                      Text(
-                        '${lead.rating}',
-                        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
-                      ),
-                    ],
-                  ),
+              const SizedBox(width: AppSpace.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(lead.business, style: Theme.of(context).textTheme.titleSmall, maxLines: 1, overflow: TextOverflow.ellipsis),
+                    const SizedBox(height: 4),
+                    if (lead.category.isNotEmpty) AppBadge(lead.category, tone: AppTone.primary, dense: true),
+                  ],
                 ),
-              if (lead.phone != null && lead.phone!.isNotEmpty)
-                _InfoRow(icon: AppIcons.phone, text: lead.phone!),
-              if (lead.address != null && lead.address!.isNotEmpty)
-                _InfoRow(icon: AppIcons.mapPin, text: lead.address!),
-              const Spacer(),
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  Expanded(
-                    child: Wrap(
-                      spacing: 6,
-                      runSpacing: 6,
-                      children: [
-                        if (verified)
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                            decoration: BoxDecoration(
-                              color: AppTheme.sage500,
-                              borderRadius: BorderRadius.circular(AppTheme.radiusPill),
-                            ),
-                            child: const Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(AppIcons.checkCircle, size: 12, color: AppTheme.surface),
-                                SizedBox(width: 4),
-                                Text(
-                                  'Verified',
-                                  style: TextStyle(
-                                    color: AppTheme.surface,
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 11,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          )
-                        else if (maybeWhatsApp)
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                            decoration: BoxDecoration(
-                              color: AppTheme.sage100,
-                              borderRadius: BorderRadius.circular(AppTheme.radiusPill),
-                            ),
-                            child: const Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(AppIcons.chat, size: 12, color: AppTheme.sage700),
-                                SizedBox(width: 4),
-                                Text(
-                                  'WhatsApp',
-                                  style: TextStyle(
-                                    color: AppTheme.sage700,
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 11,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                  if (addedOn != null)
-                    Text(
-                      addedOn,
-                      style: const TextStyle(fontSize: 11, color: AppTheme.faint),
-                    ),
-                ],
               ),
+              if (onDelete != null)
+                AppIconButton(
+                  icon: AppIcons.trash,
+                  tooltip: 'Delete',
+                  size: 30,
+                  loading: deleting,
+                  onPressed: onDelete,
+                ),
             ],
           ),
-        ),
+          const SizedBox(height: AppSpace.md + 2),
+          if (lead.rating != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Row(
+                children: [
+                  Icon(AppIcons.star, size: 14, color: AppTheme.warning),
+                  const SizedBox(width: 6),
+                  Text('${lead.rating}', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                ],
+              ),
+            ),
+          if (lead.phone != null && lead.phone!.isNotEmpty) _InfoRow(icon: AppIcons.phone, text: lead.phone!),
+          if (lead.address != null && lead.address!.isNotEmpty) _InfoRow(icon: AppIcons.mapPin, text: lead.address!),
+          const Spacer(),
+          const SizedBox(height: AppSpace.sm + 2),
+          Row(
+            children: [
+              Expanded(
+                child: Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    if (verified)
+                      const AppBadge('Verified', tone: AppTone.success, icon: AppIcons.checkCircle, dense: true)
+                    else if (maybeWhatsApp)
+                      const AppBadge('WhatsApp', tone: AppTone.neutral, icon: AppIcons.chat, dense: true),
+                  ],
+                ),
+              ),
+              if (addedOn != null) Text(addedOn, style: Theme.of(context).textTheme.bodySmall),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -206,44 +123,12 @@ class _InfoRow extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 13, color: AppTheme.faint),
+          Icon(icon, size: 13, color: AppTheme.textMuted),
           const SizedBox(width: 7),
           Expanded(
-            child: Text(
-              text,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 12.5, color: AppTheme.subtle),
-            ),
+            child: Text(text, maxLines: 1, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.bodyMedium),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _CategoryChip extends StatelessWidget {
-  const _CategoryChip({required this.category});
-
-  final String category;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
-      decoration: BoxDecoration(
-        color: AppTheme.accent100,
-        borderRadius: BorderRadius.circular(AppTheme.radiusPill),
-      ),
-      child: Text(
-        category,
-        style: const TextStyle(
-          color: AppTheme.accent800,
-          fontWeight: FontWeight.w700,
-          fontSize: 11,
-        ),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
       ),
     );
   }

@@ -2,193 +2,145 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/theme/app_theme.dart';
+import 'app_sidebar.dart';
+import 'nav_model.dart';
 
-const _wideBreakpoint = 900.0;
-
-/// One navigation item of the admin console.
-typedef _Destination = ({IconData icon, String label, String hint});
-
-/// The console's persistent frame: a sidebar (bottom bar on narrow
-/// windows) that follows the work in the order it happens —
+/// The console's persistent frame for the pages that keep their state when you
+/// switch away: the [StatefulShellRoute] branches in `app_router.dart`.
 ///
-///   Scan → Archive → Leads → Verified
+/// Wide windows get the sidebar beside the content (collapsible to an icon
+/// rail); narrow ones get a top bar and the same sidebar as a drawer.
 ///
-/// — plus Dashboard (overview) first and More (connections,
-/// sales, watchlist, users) last. Everything beyond the core flow lives
-/// behind More instead of competing for a slot here.
-///
-/// [navigationShell] comes from `app_router.dart`'s `StatefulShellRoute`;
-/// branches past [moreIndex] (Sales, WhatsApp tool) are opened
-/// from More and light up More while they're open.
+/// Branches without a nav item of their own (Sales, WhatsApp tool, the extra
+/// lead lists) still light up the right item — see `nav_model.dart`.
 class AdminShell extends StatelessWidget {
   const AdminShell({super.key, required this.navigationShell});
 
   final StatefulNavigationShell navigationShell;
 
-  static const _destinations = <_Destination>[
-    (icon: AppIcons.dashboard, label: 'Dashboard', hint: 'Overview'),
-    (icon: AppIcons.search, label: 'Scan', hint: 'Find leads'),
-    (icon: AppIcons.inbox, label: 'Archive', hint: 'Finished scans'),
-    (icon: AppIcons.leads, label: 'Leads', hint: '1-star reviews'),
-    (icon: AppIcons.shieldCheck, label: 'Verified', hint: 'WhatsApp'),
-    (icon: AppIcons.settings, label: 'More', hint: 'Tools & access'),
-  ];
+  /// The shell branch of "More".
+  static const moreBranch = 5;
 
-  /// Index of "More" — also the nav item shown selected for every shell
-  /// branch after it.
-  static const moreIndex = 5;
-
-  int get _selected =>
-      navigationShell.currentIndex > moreIndex ? moreIndex : navigationShell.currentIndex;
-
-  void _select(int index) => navigationShell.goBranch(
-        index,
-        // Tapping the already-active item pops it back to its own root
-        // instead of a no-op — matches Material's usual bottom-nav feel.
-        initialLocation: index == navigationShell.currentIndex,
-      );
+  /// The shell branch of Jobs Finder — appended after the older branches so
+  /// none of their indexes moved.
+  static const jobsBranch = 10;
 
   @override
   Widget build(BuildContext context) {
+    final location = GoRouterState.of(context).uri.toString();
+    return AppFrame(
+      location: location,
+      onNavigate: (item) {
+        final branch = item.branch;
+        if (branch != null && item.query.isEmpty) {
+          // Tapping the already-open item pops it back to its own root.
+          navigationShell.goBranch(branch, initialLocation: branch == navigationShell.currentIndex);
+        } else {
+          context.go(item.target);
+        }
+      },
+      child: navigationShell,
+    );
+  }
+}
+
+/// The same frame around routes that are not shell branches (details pages,
+/// Watchlist, Users, …), so the sidebar never disappears.
+class PlainShell extends StatelessWidget {
+  const PlainShell({super.key, required this.location, required this.child});
+
+  final String location;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return AppFrame(location: location, onNavigate: (item) => context.go(item.target), child: child);
+  }
+}
+
+/// Sidebar + content, responsive.
+class AppFrame extends StatelessWidget {
+  const AppFrame({super.key, required this.location, required this.onNavigate, required this.child});
+
+  final String location;
+  final ValueChanged<NavItem> onNavigate;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final selected = navItemFor(location);
     return LayoutBuilder(
       builder: (context, constraints) {
-        final wide = constraints.maxWidth >= _wideBreakpoint;
-        return Scaffold(
-          body: SafeArea(
-            child: Row(
-              children: [
-                if (wide) _Sidebar(index: _selected, onSelect: _select),
-                Expanded(child: navigationShell),
-              ],
-            ),
-          ),
-          bottomNavigationBar: wide
-              ? null
-              : NavigationBar(
-                  selectedIndex: _selected,
-                  onDestinationSelected: _select,
-                  backgroundColor: AppTheme.surface,
-                  indicatorColor: AppTheme.accent100,
-                  destinations: [
-                    for (final d in _destinations)
-                      NavigationDestination(icon: Icon(d.icon), label: d.label),
-                  ],
-                ),
+        final width = constraints.maxWidth;
+        if (width < AppBreakpoints.mobile) {
+          return _MobileFrame(selected: selected, onNavigate: onNavigate, child: child);
+        }
+        return ValueListenableBuilder<bool?>(
+          valueListenable: SidebarPrefs.collapsed,
+          builder: (context, preference, _) {
+            final collapsed = preference ?? width < AppBreakpoints.compact;
+            return Scaffold(
+              backgroundColor: AppTheme.background,
+              body: Row(
+                children: [
+                  AppSidebar(
+                    selected: selected,
+                    onSelect: onNavigate,
+                    collapsed: collapsed,
+                    onToggleCollapsed: () => SidebarPrefs.set(!collapsed),
+                  ),
+                  Expanded(child: ClipRect(child: child)),
+                ],
+              ),
+            );
+          },
         );
       },
     );
   }
 }
 
-class _Sidebar extends StatelessWidget {
-  const _Sidebar({required this.index, required this.onSelect});
+class _MobileFrame extends StatelessWidget {
+  const _MobileFrame({required this.selected, required this.onNavigate, required this.child});
 
-  final int index;
-  final ValueChanged<int> onSelect;
+  final NavItem? selected;
+  final ValueChanged<NavItem> onNavigate;
+  final Widget child;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 232,
-      padding: const EdgeInsets.symmetric(vertical: 24),
-      decoration: const BoxDecoration(
-        color: AppTheme.surface,
-        border: Border(right: BorderSide(color: AppTheme.neutral200)),
-      ),
-      child: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: Row(
-                children: [
-                  Container(
-                    width: 38,
-                    height: 38,
-                    decoration: const BoxDecoration(color: AppTheme.accent100, shape: BoxShape.circle),
-                    child: const Icon(AppIcons.target, size: 18, color: AppTheme.accent700),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'LeadFinder',
-                          style: Theme.of(context).textTheme.titleMedium?.copyWith(fontSize: 16),
-                        ),
-                        const Text(
-                          'Admin console',
-                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppTheme.faint),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 28),
-            for (var i = 0; i < AdminShell._destinations.length; i++)
-              _SidebarItem(
-                destination: AdminShell._destinations[i],
-                selected: i == index,
-                onTap: () => onSelect(i),
-              ),
-          ],
+    return Scaffold(
+      backgroundColor: AppTheme.background,
+      appBar: AppBar(
+        toolbarHeight: 52,
+        titleSpacing: 0,
+        automaticallyImplyLeading: false,
+        leading: Builder(
+          builder: (context) => IconButton(
+            tooltip: 'Menu',
+            icon: const Icon(AppIcons.menu),
+            onPressed: () => Scaffold.of(context).openDrawer(),
+          ),
         ),
+        title: Text(selected?.label ?? 'LeadFinder', style: Theme.of(context).textTheme.titleMedium),
       ),
-    );
-  }
-}
-
-class _SidebarItem extends StatelessWidget {
-  const _SidebarItem({required this.destination, required this.selected, required this.onTap});
-
-  final _Destination destination;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
-      child: Material(
-        color: selected ? AppTheme.accent100 : Colors.transparent,
-        borderRadius: BorderRadius.circular(AppTheme.radiusPill),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(AppTheme.radiusPill),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            child: Row(
-              children: [
-                Icon(destination.icon, size: 19, color: selected ? AppTheme.accent700 : AppTheme.subtle),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        destination.label,
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
-                          color: selected ? AppTheme.accent800 : AppTheme.ink,
-                        ),
-                      ),
-                      Text(
-                        destination.hint,
-                        style: const TextStyle(fontSize: 11, color: AppTheme.faint),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
+      drawer: Drawer(
+        width: sidebarExpandedWidth,
+        backgroundColor: AppTheme.sidebar,
+        shape: const RoundedRectangleBorder(),
+        child: Builder(
+          builder: (drawerContext) => AppSidebar(
+            selected: selected,
+            collapsed: false,
+            inDrawer: true,
+            onSelect: (item) {
+              Navigator.of(drawerContext).pop();
+              onNavigate(item);
+            },
           ),
         ),
       ),
+      body: child,
     );
   }
 }

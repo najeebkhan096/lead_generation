@@ -180,7 +180,7 @@ class _TwilioTestChatPageState extends State<TwilioTestChatPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(title, style: const TextStyle(fontSize: 17)),
-            Text(lead.phoneNumber, style: const TextStyle(fontSize: 12, color: AppTheme.faint)),
+            Text(lead.phoneNumber, style: TextStyle(fontSize: 12, color: AppTheme.textMuted)),
           ],
         ),
         actions: [
@@ -218,11 +218,11 @@ class _TwilioTestChatPageState extends State<TwilioTestChatPage> {
     if (chat.windowOpen) {
       final c = chat.windowClosesAt!.toLocal();
       text = 'WhatsApp free text is open until ${_time(c)} (the lead replied in the last 24 hours).';
-      color = AppTheme.sage100;
+      color = AppTheme.success100;
     } else {
       text = 'WhatsApp free text is closed: the lead has not replied in the last 24 hours. '
           'Start with the template (image) or send an SMS.';
-      color = AppTheme.accent100;
+      color = AppTheme.primary100;
     }
     return Container(
       width: double.infinity,
@@ -235,7 +235,7 @@ class _TwilioTestChatPageState extends State<TwilioTestChatPage> {
           Text(text, style: const TextStyle(fontSize: 12.5)),
           if (_syncError != null) ...[
             const SizedBox(height: 6),
-            Text('Could not check Twilio: $_syncError', style: const TextStyle(fontSize: 12, color: AppTheme.danger)),
+            Text('Could not check Twilio: $_syncError', style: TextStyle(fontSize: 12, color: AppTheme.error)),
           ],
         ],
       ),
@@ -252,7 +252,7 @@ class _TwilioTestChatPageState extends State<TwilioTestChatPage> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(_loadError ?? 'Could not load the conversation.', style: const TextStyle(color: AppTheme.danger), textAlign: TextAlign.center),
+              Text(_loadError ?? 'Could not load the conversation.', style: TextStyle(color: AppTheme.error), textAlign: TextAlign.center),
               const SizedBox(height: 12),
               OutlinedButton.icon(
                 onPressed: () {
@@ -268,7 +268,7 @@ class _TwilioTestChatPageState extends State<TwilioTestChatPage> {
       );
     }
     if (chat.messages.isEmpty) {
-      return const Center(child: Text('No messages yet. Send one below.', style: TextStyle(color: AppTheme.faint)));
+      return Center(child: Text('No messages yet. Send one below.', style: TextStyle(color: AppTheme.textMuted)));
     }
     return ListView.builder(
       controller: _scroll,
@@ -284,7 +284,7 @@ class _TwilioTestChatPageState extends State<TwilioTestChatPage> {
   Widget _buildComposer() {
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-      decoration: const BoxDecoration(border: Border(top: BorderSide(color: AppTheme.neutral200))),
+      decoration: BoxDecoration(border: Border(top: BorderSide(color: AppTheme.neutral200))),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -380,14 +380,14 @@ class _Bubble extends StatelessWidget {
           margin: const EdgeInsets.only(bottom: 10),
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: out ? AppTheme.accent100 : AppTheme.surface,
+            color: out ? AppTheme.primary100 : AppTheme.surface,
             borderRadius: BorderRadius.circular(AppTheme.radius),
-            border: Border.all(color: m.hasFailed ? AppTheme.danger : AppTheme.neutral200),
+            border: Border.all(color: m.hasFailed ? AppTheme.error : AppTheme.neutral200),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(label, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppTheme.faint)),
+              Text(label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppTheme.textMuted)),
               const SizedBox(height: 4),
               SelectableText(body, style: const TextStyle(fontSize: 14)),
               const SizedBox(height: 6),
@@ -399,12 +399,12 @@ class _Bubble extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w600,
-                  color: m.hasFailed ? AppTheme.danger : (m.status == 'read' ? AppTheme.sage700 : AppTheme.faint),
+                  color: m.hasFailed ? AppTheme.error : (m.status == 'read' ? AppTheme.success700 : AppTheme.textMuted),
                 ),
               ),
               if (m.hasFailed) ...[
                 const SizedBox(height: 4),
-                Text(m.errorMessage ?? 'Twilio could not deliver this message.', style: const TextStyle(fontSize: 12, color: AppTheme.danger)),
+                Text(m.errorMessage ?? 'Twilio could not deliver this message.', style: TextStyle(fontSize: 12, color: AppTheme.error)),
                 if (onRetry != null)
                   TextButton.icon(onPressed: onRetry, icon: const Icon(AppIcons.refresh, size: 16), label: const Text('Retry')),
               ],
@@ -467,7 +467,7 @@ class _TemplateConfirmDialogState extends State<_TemplateConfirmDialog> {
                   : _channel == 'sms'
                       ? 'SMS goes from the US Twilio number; many countries reject it.'
                       : 'WhatsApp marketing to US (+1) numbers is blocked by Meta.',
-              style: const TextStyle(fontSize: 12, color: AppTheme.faint),
+              style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
             ),
           ],
         ),

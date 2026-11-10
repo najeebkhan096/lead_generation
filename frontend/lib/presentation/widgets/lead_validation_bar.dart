@@ -288,24 +288,24 @@ class _LeadValidationBarState extends State<LeadValidationBar> {
                   Container(
                     width: 36,
                     height: 36,
-                    decoration: const BoxDecoration(color: AppTheme.sage100, shape: BoxShape.circle),
-                    child: const Icon(AppIcons.shieldCheck, size: 17, color: AppTheme.sage700),
+                    decoration: BoxDecoration(color: AppTheme.success100, shape: BoxShape.circle),
+                    child: Icon(AppIcons.shieldCheck, size: 17, color: AppTheme.success700),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
+                        Text(
                           'Validate these leads',
-                          style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: AppTheme.ink),
+                          style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: AppTheme.textPrimary),
                         ),
                         const SizedBox(height: 2),
                         Text(
                           total == 0
                               ? 'Nothing to validate in this list.'
                               : 'WhatsApp: $waPending to check · of $total loaded',
-                          style: const TextStyle(fontSize: 11.5, color: AppTheme.faint),
+                          style: TextStyle(fontSize: 11.5, color: AppTheme.textMuted),
                         ),
                       ],
                     ),
@@ -353,18 +353,18 @@ class _LeadValidationBarState extends State<LeadValidationBar> {
           spacing: 8,
           runSpacing: 8,
           children: [
-            chip('on WhatsApp', snap.validCount, AppTheme.sage100, AppTheme.sage800),
+            chip('on WhatsApp', snap.validCount, AppTheme.success100, AppTheme.success800),
             if (snap.reusedCount > 0)
-              chip('already verified', snap.reusedCount, AppTheme.sage100, AppTheme.sage800),
+              chip('already verified', snap.reusedCount, AppTheme.success100, AppTheme.success800),
             chip('not on WhatsApp', snap.invalidCount, AppTheme.neutral100, AppTheme.neutral700),
-            if (snap.errorCount > 0) chip('errors', snap.errorCount, AppTheme.accent100, AppTheme.accent800),
+            if (snap.errorCount > 0) chip('errors', snap.errorCount, AppTheme.primary100, AppTheme.primary800),
           ],
         ),
         if (snap.stoppedReason != null && snap.stoppedReason!.isNotEmpty) ...[
           const SizedBox(height: 8),
           Text(
             snap.stoppedReason!,
-            style: const TextStyle(fontSize: 12.5, color: AppTheme.accent700, fontWeight: FontWeight.w600),
+            style: TextStyle(fontSize: 12.5, color: AppTheme.primary700, fontWeight: FontWeight.w600),
           ),
         ],
       ],
@@ -393,7 +393,7 @@ class _LeadValidationBarState extends State<LeadValidationBar> {
                   !started
                       ? 'Starting WhatsApp validation…'
                       : 'WhatsApp — $checked/$total checked · $found on WhatsApp',
-                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: AppTheme.subtle),
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: AppTheme.textSecondary),
                 ),
               ),
               TextButton(onPressed: _cancel, child: const Text('Cancel')),
@@ -410,7 +410,7 @@ class _LeadValidationBarState extends State<LeadValidationBar> {
               'Checking $current',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 12, color: AppTheme.faint),
+              style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
             ),
           ],
         ],

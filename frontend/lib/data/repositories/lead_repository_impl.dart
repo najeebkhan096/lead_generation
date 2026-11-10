@@ -104,6 +104,7 @@ class LeadRepositoryImpl implements LeadRepository {
     int maxResultsPerCity = 160,
     bool analyze = false,
     String coverage = 'standard',
+    String mode = 'reviews',
   }) =>
       _remote.startStateScan(
         categories: categories,
@@ -112,6 +113,7 @@ class LeadRepositoryImpl implements LeadRepository {
         maxResultsPerCity: maxResultsPerCity,
         analyze: analyze,
         coverage: coverage,
+        mode: mode,
       );
 
   @override

@@ -115,7 +115,7 @@ class _MultiScanPageState extends State<MultiScanPage> {
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Keep running')),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Cancel job', style: TextStyle(color: AppTheme.danger)),
+            child: Text('Cancel job', style: TextStyle(color: AppTheme.error)),
           ),
         ],
       ),
@@ -224,8 +224,8 @@ class _NoJobState extends StatelessWidget {
             Container(
               width: 88,
               height: 88,
-              decoration: const BoxDecoration(color: AppTheme.accent100, shape: BoxShape.circle),
-              child: const Icon(AppIcons.search, size: 36, color: AppTheme.accent700),
+              decoration: BoxDecoration(color: AppTheme.primary100, shape: BoxShape.circle),
+              child: Icon(AppIcons.search, size: 36, color: AppTheme.primary700),
             ),
             const SizedBox(height: 20),
             Text('No scan running', style: Theme.of(context).textTheme.headlineSmall),
@@ -256,19 +256,19 @@ class _ReconnectBanner extends StatelessWidget {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-      color: AppTheme.accent100,
+      color: AppTheme.primary100,
       child: Row(
         children: [
-          const SizedBox(
+          SizedBox(
             width: 14,
             height: 14,
-            child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.accent700),
+            child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.primary700),
           ),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
               'Reconnecting — showing last known progress. ($message)',
-              style: const TextStyle(fontSize: 12, color: AppTheme.accent700, fontWeight: FontWeight.w600),
+              style: TextStyle(fontSize: 12, color: AppTheme.primary700, fontWeight: FontWeight.w600),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
@@ -296,13 +296,13 @@ class _ErrorState extends StatelessWidget {
             Container(
               width: 72,
               height: 72,
-              decoration: const BoxDecoration(color: AppTheme.accent100, shape: BoxShape.circle),
-              child: const Icon(AppIcons.alert, size: 30, color: AppTheme.accent700),
+              decoration: BoxDecoration(color: AppTheme.primary100, shape: BoxShape.circle),
+              child: Icon(AppIcons.alert, size: 30, color: AppTheme.primary700),
             ),
             const SizedBox(height: 18),
             Text('Could not load scan status', style: Theme.of(context).textTheme.headlineSmall),
             const SizedBox(height: 8),
-            Text(message, textAlign: TextAlign.center, style: const TextStyle(color: AppTheme.danger)),
+            Text(message, textAlign: TextAlign.center, style: TextStyle(color: AppTheme.error)),
             const SizedBox(height: 18),
             OutlinedButton.icon(onPressed: onRetry, icon: const Icon(AppIcons.refresh, size: 18), label: const Text('Retry')),
           ],
@@ -418,7 +418,7 @@ class _OverallCard extends StatelessWidget {
     final eta = _formatEta(overall.etaMs);
     return Container(
       padding: const EdgeInsets.all(22),
-      decoration: BoxDecoration(color: AppTheme.surface, borderRadius: BorderRadius.circular(AppTheme.radiusCard)),
+      decoration: AppTheme.cardDecoration(),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -427,13 +427,13 @@ class _OverallCard extends StatelessWidget {
               Text('Overall progress', style: Theme.of(context).textTheme.titleMedium),
               const SizedBox(width: 10),
               if (status == 'running' && !overall.paused)
-                _Chip(label: '${overall.activeWorkers} active', color: AppTheme.sage, background: AppTheme.sage100)
+                _Chip(label: '${overall.activeWorkers} active', color: AppTheme.success, background: AppTheme.success100)
               else if (overall.paused)
-                const _Chip(label: 'Paused', color: AppTheme.accent700, background: AppTheme.accent100)
+                _Chip(label: 'Paused', color: AppTheme.primary700, background: AppTheme.primary100)
               else
-                const _Chip(label: 'Done', color: AppTheme.sage700, background: AppTheme.sage100),
+                _Chip(label: 'Done', color: AppTheme.success700, background: AppTheme.success100),
               const Spacer(),
-              Text('${overall.percent}%', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18, color: AppTheme.accent700)),
+              Text('${overall.percent}%', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18, color: AppTheme.primary700)),
             ],
           ),
           const SizedBox(height: 12),
@@ -446,7 +446,7 @@ class _OverallCard extends StatelessWidget {
             children: [
               Text('Elapsed ${_formatDuration(overall.elapsedMs)}', style: Theme.of(context).textTheme.bodySmall),
               if (eta != null) ...[
-                const Text(' · ', style: TextStyle(color: AppTheme.faint)),
+                Text(' · ', style: TextStyle(color: AppTheme.textMuted)),
                 Text(eta, style: Theme.of(context).textTheme.bodySmall),
               ],
             ],
@@ -490,9 +490,9 @@ class _OverallCard extends StatelessWidget {
               spacing: 8,
               children: [
                 if (overall.failed > 0)
-                  _Chip(label: '${overall.failed} failed', color: AppTheme.accent700, background: AppTheme.accent100),
+                  _Chip(label: '${overall.failed} failed', color: AppTheme.primary700, background: AppTheme.primary100),
                 if (overall.cancelled > 0)
-                  _Chip(label: '${overall.cancelled} cancelled', color: AppTheme.subtle, background: AppTheme.neutral100),
+                  _Chip(label: '${overall.cancelled} cancelled', color: AppTheme.textSecondary, background: AppTheme.neutral100),
               ],
             ),
           ],
@@ -517,13 +517,13 @@ class _ArchiveStatusSection extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(color: AppTheme.surface, borderRadius: BorderRadius.circular(AppTheme.radiusCard)),
+      decoration: AppTheme.cardDecoration(),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const Icon(AppIcons.download, size: 16, color: AppTheme.accent700),
+              Icon(AppIcons.download, size: 16, color: AppTheme.primary700),
               const SizedBox(width: 8),
               Text('Excel archives', style: Theme.of(context).textTheme.titleMedium),
               const Spacer(),
@@ -535,9 +535,9 @@ class _ArchiveStatusSection extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 6),
-          const Text(
+          Text(
             'One workbook per category (a sheet per country), uploaded the moment that category finishes — independently of every other category.',
-            style: TextStyle(fontSize: 11.5, color: AppTheme.faint),
+            style: TextStyle(fontSize: 11.5, color: AppTheme.textMuted),
           ),
           const SizedBox(height: 14),
           for (final archive in archives) _CategoryArchiveRow(archive: archive),
@@ -556,11 +556,11 @@ class _CategoryArchiveRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final result = archive.result;
     final (icon, color, background, label) = switch (archive.status) {
-      'done' => (AppIcons.checkCircle, AppTheme.sage700, AppTheme.sage100, 'Done'),
-      'partial' => (AppIcons.clock, AppTheme.accent700, AppTheme.accent100, 'In progress · saved so far'),
-      'failed' => (AppIcons.alert, AppTheme.danger, AppTheme.accent100, 'Upload failed'),
-      'building' => (AppIcons.refresh, AppTheme.subtle, AppTheme.neutral100, 'Saving…'),
-      _ => (AppIcons.clock, AppTheme.subtle, AppTheme.neutral100, 'Waiting for countries to finish'),
+      'done' => (AppIcons.checkCircle, AppTheme.success700, AppTheme.success100, 'Done'),
+      'partial' => (AppIcons.clock, AppTheme.primary700, AppTheme.primary100, 'In progress · saved so far'),
+      'failed' => (AppIcons.alert, AppTheme.error, AppTheme.primary100, 'Upload failed'),
+      'building' => (AppIcons.refresh, AppTheme.textSecondary, AppTheme.neutral100, 'Saving…'),
+      _ => (AppIcons.clock, AppTheme.textSecondary, AppTheme.neutral100, 'Waiting for countries to finish'),
     };
     final subtitle = result != null
         ? '$label · ${result.totalLeads} leads'
@@ -592,7 +592,7 @@ class _CategoryArchiveRow extends StatelessWidget {
           if (result != null)
             IconButton(
               tooltip: 'Download ${result.fileName}',
-              icon: const Icon(AppIcons.download, size: 18, color: AppTheme.faint),
+              icon: Icon(AppIcons.download, size: 18, color: AppTheme.textMuted),
               onPressed: () => launchUrl(Uri.parse(result.downloadUrl)),
             ),
         ],
@@ -616,10 +616,10 @@ class _StatTile extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 15, color: AppTheme.subtle),
+          Icon(icon, size: 15, color: AppTheme.textSecondary),
           const Spacer(),
-          Text(value, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18, color: AppTheme.ink)),
-          Text(label, style: const TextStyle(fontSize: 11, color: AppTheme.faint), maxLines: 1, overflow: TextOverflow.ellipsis),
+          Text(value, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18, color: AppTheme.textPrimary)),
+          Text(label, style: TextStyle(fontSize: 11, color: AppTheme.textMuted), maxLines: 1, overflow: TextOverflow.ellipsis),
         ],
       ),
     );
@@ -651,17 +651,17 @@ class _Chip extends StatelessWidget {
     case CategoryScanStatus.queued:
       return (AppTheme.neutral400, AppTheme.neutral100, 'Queued');
     case CategoryScanStatus.starting:
-      return (AppTheme.sage500, AppTheme.sage100, 'Starting');
+      return (AppTheme.success500, AppTheme.success100, 'Starting');
     case CategoryScanStatus.searching:
-      return (AppTheme.sage500, AppTheme.sage100, 'Searching');
+      return (AppTheme.success500, AppTheme.success100, 'Searching');
     case CategoryScanStatus.scraping:
-      return (AppTheme.sage500, AppTheme.sage100, 'Scraping');
+      return (AppTheme.success500, AppTheme.success100, 'Scraping');
     case CategoryScanStatus.saving:
-      return (AppTheme.sage600, AppTheme.sage100, 'Saving');
+      return (AppTheme.success600, AppTheme.success100, 'Saving');
     case CategoryScanStatus.completed:
-      return (AppTheme.sage700, AppTheme.sage100, 'Completed');
+      return (AppTheme.success700, AppTheme.success100, 'Completed');
     case CategoryScanStatus.failed:
-      return (AppTheme.accent700, AppTheme.accent100, 'Failed');
+      return (AppTheme.primary700, AppTheme.primary100, 'Failed');
     case CategoryScanStatus.cancelled:
       return (AppTheme.neutral600, AppTheme.neutral100, 'Cancelled');
   }
@@ -674,8 +674,8 @@ class _Chip extends StatelessWidget {
 /// every bar also carries a status icon and text label (see
 /// [_LeadsBarRow]), never relied on alone.
 Color _barColorForStatus(CategoryScanStatus status) {
-  if (status.isRunning) return AppTheme.accent500;
-  if (status == CategoryScanStatus.completed) return AppTheme.sage600;
+  if (status.isRunning) return AppTheme.primary500;
+  if (status == CategoryScanStatus.completed) return AppTheme.success600;
   return AppTheme.neutral400;
 }
 
@@ -705,7 +705,7 @@ class _LeadsBarChart extends StatelessWidget {
 
     return Container(
       padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(color: AppTheme.surface, borderRadius: BorderRadius.circular(AppTheme.radiusCard)),
+      decoration: AppTheme.cardDecoration(),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -717,14 +717,14 @@ class _LeadsBarChart extends StatelessWidget {
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(AppIcons.barChart, size: 16, color: AppTheme.accent700),
+                  Icon(AppIcons.barChart, size: 16, color: AppTheme.primary700),
                   const SizedBox(width: 8),
                   Text('Leads found', style: Theme.of(context).textTheme.titleMedium),
                 ],
               ),
-              const _ChartLegendItem(icon: AppIcons.zap, color: AppTheme.accent500, label: 'Running'),
-              const _ChartLegendItem(icon: AppIcons.checkCircle, color: AppTheme.sage600, label: 'Completed'),
-              const _ChartLegendItem(icon: AppIcons.clock, color: AppTheme.neutral400, label: 'Queued / stopped'),
+              _ChartLegendItem(icon: AppIcons.zap, color: AppTheme.primary500, label: 'Running'),
+              _ChartLegendItem(icon: AppIcons.checkCircle, color: AppTheme.success600, label: 'Completed'),
+              _ChartLegendItem(icon: AppIcons.clock, color: AppTheme.neutral400, label: 'Queued / stopped'),
             ],
           ),
           const SizedBox(height: 18),
@@ -749,7 +749,7 @@ class _ChartLegendItem extends StatelessWidget {
       children: [
         Icon(icon, size: 12, color: color),
         const SizedBox(width: 5),
-        Text(label, style: const TextStyle(fontSize: 11, color: AppTheme.faint, fontWeight: FontWeight.w600)),
+        Text(label, style: TextStyle(fontSize: 11, color: AppTheme.textMuted, fontWeight: FontWeight.w600)),
       ],
     );
   }
@@ -784,7 +784,7 @@ class _LeadsBarRow extends StatelessWidget {
                   Expanded(
                     child: Text(
                       progress.label,
-                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.ink),
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.textPrimary),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -828,7 +828,7 @@ class _LeadsBarRow extends StatelessWidget {
               child: Text(
                 '${progress.leadsCollected}',
                 textAlign: TextAlign.right,
-                style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: AppTheme.ink),
+                style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: AppTheme.textPrimary),
               ),
             ),
           ],
@@ -859,7 +859,7 @@ class _CategoryList extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(color: AppTheme.surface, borderRadius: BorderRadius.circular(AppTheme.radiusCard)),
+      decoration: AppTheme.cardDecoration(),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -930,7 +930,7 @@ class _CategoryCard extends StatelessWidget {
                         const SizedBox(height: 2),
                         Text(
                           '$label${progress.currentState != null && progress.status.isRunning ? ' · ${progress.currentState}' : ''} · ${progress.statesDone}/${progress.statesTotal} states · ${progress.leadsCollected} leads',
-                          style: const TextStyle(fontSize: 11.5, color: AppTheme.faint),
+                          style: TextStyle(fontSize: 11.5, color: AppTheme.textMuted),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -939,7 +939,7 @@ class _CategoryCard extends StatelessWidget {
                   ),
                   Text('${progress.progressPercent}%', style: TextStyle(fontWeight: FontWeight.w800, color: dotColor, fontSize: 13)),
                   const SizedBox(width: 8),
-                  Icon(isExpanded ? Icons.expand_less_rounded : Icons.expand_more_rounded, color: AppTheme.faint),
+                  Icon(isExpanded ? Icons.expand_less_rounded : Icons.expand_more_rounded, color: AppTheme.textMuted),
                 ],
               ),
             ),
@@ -979,8 +979,8 @@ class _CategoryCard extends StatelessWidget {
                     Container(
                       width: double.infinity,
                       padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(color: AppTheme.accent100, borderRadius: BorderRadius.circular(AppTheme.radius)),
-                      child: Text(progress.error!, style: const TextStyle(color: AppTheme.accent700, fontSize: 12)),
+                      decoration: BoxDecoration(color: AppTheme.primary100, borderRadius: BorderRadius.circular(AppTheme.radius)),
+                      child: Text(progress.error!, style: TextStyle(color: AppTheme.primary700, fontSize: 12)),
                     ),
                   ],
                   if (progress.warnings.isNotEmpty) ...[
@@ -991,10 +991,10 @@ class _CategoryCard extends StatelessWidget {
                             child: Row(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const Icon(AppIcons.alert, size: 13, color: AppTheme.accent600),
+                                Icon(AppIcons.alert, size: 13, color: AppTheme.primary600),
                                 const SizedBox(width: 6),
                                 Expanded(
-                                  child: Text(w.message, style: const TextStyle(fontSize: 11.5, color: AppTheme.subtle)),
+                                  child: Text(w.message, style: TextStyle(fontSize: 11.5, color: AppTheme.textSecondary)),
                                 ),
                               ],
                             ),
@@ -1021,8 +1021,8 @@ class _CategoryCard extends StatelessWidget {
                           icon: const Icon(AppIcons.close, size: 16),
                           label: const Text('Cancel'),
                           style: OutlinedButton.styleFrom(
-                            foregroundColor: AppTheme.danger,
-                            side: const BorderSide(color: AppTheme.accent300),
+                            foregroundColor: AppTheme.error,
+                            side: BorderSide(color: AppTheme.primary300),
                             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                             minimumSize: Size.zero,
                             textStyle: const TextStyle(fontSize: 12.5),
@@ -1052,8 +1052,8 @@ class _DetailStat extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(label, style: const TextStyle(fontSize: 10.5, color: AppTheme.faint, fontWeight: FontWeight.w600)),
-        Text(value, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.ink)),
+        Text(label, style: TextStyle(fontSize: 10.5, color: AppTheme.textMuted, fontWeight: FontWeight.w600)),
+        Text(value, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.textPrimary)),
       ],
     );
   }
@@ -1069,13 +1069,13 @@ class _ActivityFeed extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(18),
       constraints: const BoxConstraints(maxHeight: 640),
-      decoration: BoxDecoration(color: AppTheme.surface, borderRadius: BorderRadius.circular(AppTheme.radiusCard)),
+      decoration: AppTheme.cardDecoration(),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const Icon(AppIcons.zap, size: 16, color: AppTheme.accent700),
+              Icon(AppIcons.zap, size: 16, color: AppTheme.primary700),
               const SizedBox(width: 8),
               Text('Live activity', style: Theme.of(context).textTheme.titleMedium),
             ],
@@ -1083,7 +1083,7 @@ class _ActivityFeed extends StatelessWidget {
           const SizedBox(height: 12),
           Expanded(
             child: entries.isEmpty
-                ? const Center(child: Text('Nothing yet.', style: TextStyle(color: AppTheme.faint)))
+                ? Center(child: Text('Nothing yet.', style: TextStyle(color: AppTheme.textMuted)))
                 : ListView.builder(
                     itemCount: entries.length,
                     itemBuilder: (context, i) => _ActivityRow(entry: entries[i]),
@@ -1103,9 +1103,9 @@ class _ActivityRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = switch (entry.level) {
-      'error' => AppTheme.accent700,
-      'warn' => AppTheme.accent600,
-      _ => AppTheme.subtle,
+      'error' => AppTheme.primary700,
+      'warn' => AppTheme.primary600,
+      _ => AppTheme.textSecondary,
     };
     final time = entry.timestamp.toLocal();
     final hh = time.hour.toString().padLeft(2, '0');
@@ -1117,7 +1117,7 @@ class _ActivityRow extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('$hh:$mm:$ss', style: const TextStyle(fontSize: 10.5, color: AppTheme.faint, fontFeatures: [FontFeature.tabularFigures()])),
+          Text('$hh:$mm:$ss', style: TextStyle(fontSize: 10.5, color: AppTheme.textMuted, fontFeatures: [FontFeature.tabularFigures()])),
           const SizedBox(width: 8),
           Expanded(child: Text(entry.message, style: TextStyle(fontSize: 12, color: color))),
         ],
@@ -1139,7 +1139,7 @@ class _FinalStatsCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 24),
       padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
-        color: AppTheme.sage100,
+        color: AppTheme.success100,
         borderRadius: BorderRadius.circular(AppTheme.radiusCard),
       ),
       child: Column(
@@ -1150,11 +1150,11 @@ class _FinalStatsCard extends StatelessWidget {
               Container(
                 width: 40,
                 height: 40,
-                decoration: const BoxDecoration(color: AppTheme.sage500, shape: BoxShape.circle),
-                child: const Icon(AppIcons.checkCircle, color: AppTheme.surface, size: 20),
+                decoration: BoxDecoration(color: AppTheme.success500, shape: BoxShape.circle),
+                child: Icon(AppIcons.checkCircle, color: AppTheme.onPrimary, size: 20),
               ),
               const SizedBox(width: 12),
-              Text('Scan complete', style: Theme.of(context).textTheme.titleLarge?.copyWith(color: AppTheme.sage800)),
+              Text('Scan complete', style: Theme.of(context).textTheme.titleLarge?.copyWith(color: AppTheme.success800)),
             ],
           ),
           const SizedBox(height: 18),
@@ -1174,7 +1174,7 @@ class _FinalStatsCard extends StatelessWidget {
           ),
           if (sorted.isNotEmpty) ...[
             const SizedBox(height: 18),
-            Text('Leads per category', style: Theme.of(context).textTheme.titleSmall?.copyWith(color: AppTheme.sage800)),
+            Text('Leads per category', style: Theme.of(context).textTheme.titleSmall?.copyWith(color: AppTheme.success800)),
             const SizedBox(height: 10),
             Wrap(
               spacing: 8,
@@ -1186,7 +1186,7 @@ class _FinalStatsCard extends StatelessWidget {
                     decoration: BoxDecoration(color: AppTheme.surface, borderRadius: BorderRadius.circular(AppTheme.radiusPill)),
                     child: Text(
                       '${e.key} · ${e.value}',
-                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.ink),
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.textPrimary),
                     ),
                   ),
               ],

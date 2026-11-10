@@ -6,6 +6,7 @@ import '../../domain/entities/lead_page.dart';
 import '../widgets/saved_business_card.dart';
 import 'business_details_page.dart' show LeadDetailsArgs;
 import 'lead_list_page.dart';
+import '../widgets/lead_table.dart';
 
 /// Review leads — businesses with a recent 1-star review. A paged list: see
 /// [LeadListPage]. The WhatsApp validation bar validates the leads
@@ -19,11 +20,13 @@ class SavedBusinessesPage extends StatelessWidget {
     return LeadListPage(
       config: LeadListConfig(
         collection: LeadCollection.reviewLeads,
-        title: 'Review leads',
+        title: '1-Star Review Leads',
         subtitleEmpty: 'Businesses with a recent 1-star review land here.',
         emptyTitle: 'No review leads yet',
         emptyBody: 'Run a scan — every business with a recent 1-star review is saved here.',
         emptyIcon: AppIcons.leads,
+        tableKind: LeadTableKind.review,
+        rowAction: const LeadRowAction(icon: AppIcons.eye, tooltip: 'View details'),
         searchHint: 'Search by name, phone, address or category',
         validationCollection: 'leads',
         verifiedFilter: true,

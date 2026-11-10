@@ -71,7 +71,7 @@ class _ExcelArchivePageState extends State<ExcelArchivePage> {
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete', style: TextStyle(color: AppTheme.danger)),
+            child: Text('Delete', style: TextStyle(color: AppTheme.error)),
           ),
         ],
       ),
@@ -168,7 +168,7 @@ class _ExcelArchivePageState extends State<ExcelArchivePage> {
                     ? Center(
                         child: Padding(
                           padding: const EdgeInsets.all(24),
-                          child: Text(_error!, style: const TextStyle(color: AppTheme.danger)),
+                          child: Text(_error!, style: TextStyle(color: AppTheme.error)),
                         ),
                       )
                     : _archives.isEmpty
@@ -209,8 +209,8 @@ class _EmptyArchiveState extends StatelessWidget {
             Container(
               width: 72,
               height: 72,
-              decoration: const BoxDecoration(color: AppTheme.accent100, shape: BoxShape.circle),
-              child: const Icon(AppIcons.inbox, size: 30, color: AppTheme.accent700),
+              decoration: BoxDecoration(color: AppTheme.primary100, shape: BoxShape.circle),
+              child: Icon(AppIcons.inbox, size: 30, color: AppTheme.primary700),
             ),
             const SizedBox(height: 16),
             Text('No Excel archives yet', style: Theme.of(context).textTheme.titleMedium),
@@ -266,8 +266,8 @@ class _ArchiveCard extends StatelessWidget {
                 Container(
                   width: 40,
                   height: 40,
-                  decoration: const BoxDecoration(color: AppTheme.sage100, shape: BoxShape.circle),
-                  child: const Icon(AppIcons.download, size: 18, color: AppTheme.sage700),
+                  decoration: BoxDecoration(color: AppTheme.success100, shape: BoxShape.circle),
+                  child: Icon(AppIcons.download, size: 18, color: AppTheme.success700),
                 ),
                 const SizedBox(width: 14),
                 Expanded(
@@ -289,10 +289,10 @@ class _ArchiveCard extends StatelessWidget {
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                               decoration:
-                                  BoxDecoration(color: AppTheme.accent100, borderRadius: BorderRadius.circular(AppTheme.radiusPill)),
-                              child: const Text(
+                                  BoxDecoration(color: AppTheme.primary100, borderRadius: BorderRadius.circular(AppTheme.radiusPill)),
+                              child: Text(
                                 'In progress',
-                                style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: AppTheme.accent700),
+                                style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: AppTheme.primary700),
                               ),
                             ),
                           ],
@@ -304,7 +304,7 @@ class _ArchiveCard extends StatelessWidget {
                         '${(archive.scannedAt ?? archive.createdAt) == null ? '' : 'Scanned ${_scanDate((archive.scannedAt ?? archive.createdAt)!)} · ${archive.ageDays == 0 ? 'today' : '${archive.ageDays} days ago'}'}',
                         style: TextStyle(
                           fontSize: 12,
-                          color: archive.isStale ? AppTheme.danger : AppTheme.faint,
+                          color: archive.isStale ? AppTheme.error : AppTheme.textMuted,
                           fontWeight: archive.isStale ? FontWeight.w700 : FontWeight.w400,
                         ),
                         maxLines: 1,
@@ -334,7 +334,7 @@ class _ArchiveCard extends StatelessWidget {
                             )
                           : IconButton(
                               tooltip: 'Re-scan for latest reviews',
-                              icon: const Icon(AppIcons.refresh, size: 18, color: AppTheme.faint),
+                              icon: Icon(AppIcons.refresh, size: 18, color: AppTheme.textMuted),
                               onPressed: onRescan,
                             )),
                   const SizedBox(width: 4),
@@ -350,8 +350,8 @@ class _ArchiveCard extends StatelessWidget {
                           icon: const Icon(AppIcons.refresh, size: 15),
                           label: const Text('Resume'),
                           style: OutlinedButton.styleFrom(
-                            foregroundColor: AppTheme.accent700,
-                            side: const BorderSide(color: AppTheme.accent300),
+                            foregroundColor: AppTheme.primary700,
+                            side: BorderSide(color: AppTheme.primary300),
                             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                             minimumSize: Size.zero,
                             textStyle: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700),
@@ -361,7 +361,7 @@ class _ArchiveCard extends StatelessWidget {
                 ],
                 IconButton(
                   tooltip: 'View as leads',
-                  icon: const Icon(AppIcons.leads, size: 18, color: AppTheme.faint),
+                  icon: Icon(AppIcons.leads, size: 18, color: AppTheme.textMuted),
                   onPressed: () => Navigator.of(context).push(
                     MaterialPageRoute(builder: (_) => ExcelArchiveLeadsPage(archive: archive)),
                   ),
@@ -369,7 +369,7 @@ class _ArchiveCard extends StatelessWidget {
                 if (archive.totalLeads > 0)
                   IconButton(
                     tooltip: 'Validate WhatsApp',
-                    icon: const Icon(AppIcons.chat, size: 18, color: AppTheme.sage700),
+                    icon: Icon(AppIcons.chat, size: 18, color: AppTheme.success700),
                     onPressed: () => Navigator.of(context).push(
                       MaterialPageRoute(
                         builder: (_) => ExcelArchiveLeadsPage(archive: archive, autoValidate: true),
@@ -378,12 +378,12 @@ class _ArchiveCard extends StatelessWidget {
                   ),
                 IconButton(
                   tooltip: 'Download .xlsx',
-                  icon: const Icon(AppIcons.download, size: 18, color: AppTheme.faint),
+                  icon: Icon(AppIcons.download, size: 18, color: AppTheme.textMuted),
                   onPressed: () => launchUrl(Uri.parse(archive.downloadUrl)),
                 ),
                 IconButton(
                   tooltip: 'Delete',
-                  icon: const Icon(AppIcons.trash, size: 18, color: AppTheme.faint),
+                  icon: Icon(AppIcons.trash, size: 18, color: AppTheme.textMuted),
                   onPressed: onDelete,
                 ),
               ];
@@ -464,7 +464,7 @@ class _ExcelArchiveViewerPageState extends State<_ExcelArchiveViewerPage> {
     if (_error != null) {
       return Scaffold(
         appBar: AppBar(title: Text(widget.archive.fileName)),
-        body: Center(child: Text(_error!, style: const TextStyle(color: AppTheme.danger))),
+        body: Center(child: Text(_error!, style: TextStyle(color: AppTheme.error))),
       );
     }
 
@@ -496,7 +496,7 @@ class _ExcelArchiveViewerPageState extends State<_ExcelArchiveViewerPage> {
               : null,
         ),
         body: _sheets.isEmpty
-            ? const Center(child: Text('This workbook has no data.', style: TextStyle(color: AppTheme.faint)))
+            ? Center(child: Text('This workbook has no data.', style: TextStyle(color: AppTheme.textMuted)))
             : TabBarView(
                 children: [for (final s in _sheets) _SheetTable(sheet: s)],
               ),
@@ -513,7 +513,7 @@ class _SheetTable extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (sheet.rows.isEmpty) {
-      return const Center(child: Text('No rows in this sheet.', style: TextStyle(color: AppTheme.faint)));
+      return Center(child: Text('No rows in this sheet.', style: TextStyle(color: AppTheme.textMuted)));
     }
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),

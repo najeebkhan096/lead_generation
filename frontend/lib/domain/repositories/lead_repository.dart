@@ -99,6 +99,9 @@ abstract class LeadRepository {
     int maxResultsPerCity = 160,
     bool analyze = false,
     String coverage = 'standard',
+
+    /// `reviews` (1-star scan, needs [dateRange]) or `no_website`.
+    String mode = 'reviews',
   });
 
   /// Live dashboard snapshot for the current (or most recently finished)

@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
-import '../../core/theme/app_theme.dart';
 import '../../domain/entities/lead.dart';
 import '../../domain/entities/lead_page.dart';
 import '../../domain/repositories/lead_repository.dart';
 import '../bloc/paged_leads/paged_leads_bloc.dart';
 import '../bloc/paged_leads/paged_leads_event.dart';
 import '../bloc/paged_leads/paged_leads_state.dart';
+import '../design_system/design_system.dart';
+import '../utils/web_download.dart';
+import '../widgets/lead_table.dart';
 import '../widgets/lead_validation_bar.dart';
 import '../widgets/paged_lead_list.dart';
 
@@ -37,6 +39,8 @@ class LeadListConfig {
     this.verifiedFilter = false,
     this.headerActions,
     this.cardExtent = 248,
+    this.tableKind,
+    this.rowAction = const LeadRowAction(icon: AppIcons.eye, tooltip: 'Open'),
   });
 
   final LeadCollection collection;
@@ -66,16 +70,12 @@ class LeadListConfig {
   /// Extra actions in the header row.
   final List<Widget> Function(BuildContext context, PagedLeadsState state)? headerActions;
   final double cardExtent;
-}
 
-String _thousands(int n) {
-  final s = n.toString();
-  final out = StringBuffer();
-  for (var i = 0; i < s.length; i++) {
-    if (i > 0 && (s.length - i) % 3 == 0) out.write(',');
-    out.write(s[i]);
-  }
-  return out.toString();
+  /// The table layout for this list (wide windows); `null` keeps cards only.
+  final LeadTableKind? tableKind;
+
+  /// The button at the end of a table row — the same action as tapping a card.
+  final LeadRowAction rowAction;
 }
 
 /// One lead list, paged and lazily rendered. See [LeadListConfig] for what
@@ -107,6 +107,12 @@ class _LeadListView extends StatefulWidget {
 class _LeadListViewState extends State<_LeadListView> {
   final _search = TextEditingController();
 
+  /// Table rows the user has ticked (by `dbId`, else `id`).
+  Set<String> _selected = {};
+  String? _sortBy;
+  bool _sortAscending = true;
+  bool _tableView = true;
+
   LeadListConfig get _c => widget.config;
   PagedLeadsBloc get _bloc => context.read<PagedLeadsBloc>();
 
@@ -116,44 +122,57 @@ class _LeadListViewState extends State<_LeadListView> {
     super.dispose();
   }
 
+  String _key(Lead lead) => lead.dbId ?? lead.id;
+
   Future<void> _confirmDelete(Lead lead) async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Delete this lead?'),
-        content: Text('"${lead.business}" will be permanently removed. This can\'t be undone.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete', style: TextStyle(color: AppTheme.danger)),
-          ),
-        ],
-      ),
+    final confirm = await showConfirmDialog(
+      context,
+      title: 'Delete this lead?',
+      message: '"${lead.business}" will be permanently removed. This can\'t be undone.',
+      confirmLabel: 'Delete',
+      destructive: true,
     );
-    if (confirm == true && lead.dbId != null && mounted) _bloc.add(PagedLeadDeleted(lead.dbId!));
+    if (confirm && lead.dbId != null && mounted) _bloc.add(PagedLeadDeleted(lead.dbId!));
+  }
+
+  Future<void> _confirmDeleteSelected(List<Lead> leads) async {
+    final ids = [for (final l in leads) if (l.dbId != null) l.dbId!];
+    if (ids.isEmpty) return;
+    final confirm = await showConfirmDialog(
+      context,
+      title: 'Delete ${ids.length} lead${ids.length == 1 ? '' : 's'}?',
+      message: 'The selected ${_c.noun}${ids.length == 1 ? '' : 'es'} will be permanently removed. This can\'t be undone.',
+      confirmLabel: 'Delete ${ids.length}',
+      destructive: true,
+    );
+    if (!confirm || !mounted) return;
+    for (final id in ids) {
+      _bloc.add(PagedLeadDeleted(id));
+    }
+    setState(() => _selected = {});
   }
 
   Future<void> _confirmDeleteCategory(String category, int? count) async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Delete this category?'),
-        content: Text(
-          'All ${count == null ? '' : '${_thousands(count)} '}${_c.noun}s in "$category" will be '
+    final confirm = await showConfirmDialog(
+      context,
+      title: 'Delete this category?',
+      message: 'All ${count == null ? '' : '${groupedNumber(count)} '}${_c.noun}s in "$category" will be '
           'permanently removed. This can\'t be undone.',
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete all', style: TextStyle(color: AppTheme.danger)),
-          ),
-        ],
-      ),
+      confirmLabel: 'Delete all',
+      destructive: true,
     );
-    if (confirm == true && mounted) _bloc.add(PagedLeadsCategoryDeleted(category));
+    if (confirm && mounted) _bloc.add(PagedLeadsCategoryDeleted(category));
   }
+
+  /// Downloads [leads] (the ticked ones, else everything loaded) as CSV.
+  void _exportCsv(List<Lead> leads) {
+    if (leads.isEmpty) return;
+    final slug = _c.title.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '-').replaceAll(RegExp(r'^-|-$'), '');
+    downloadBytesFile('$slug-${DateTime.now().toIso8601String().substring(0, 10)}.csv', leadsToCsv(leads), 'text/csv');
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Exported ${leads.length} ${_c.noun}${leads.length == 1 ? '' : 'es'} to CSV.')));
+  }
+
+  List<Lead> _selectedLeads(PagedLeadsState s) => [for (final l in s.leads) if (_selected.contains(_key(l))) l];
 
   String _subtitle(PagedLeadsState s) {
     final noun = _c.noun;
@@ -161,7 +180,7 @@ class _LeadListViewState extends State<_LeadListView> {
       return _c.subtitleEmpty ?? 'Nothing here yet.';
     }
     if (s.total != null) {
-      return '${_thousands(s.total!)} $noun${s.total == 1 ? '' : 'es'}'
+      return '${groupedNumber(s.total!)} $noun${s.total == 1 ? '' : 'es'}'
           '${s.hasActiveFilter ? ' match' : ''}';
     }
     if (s.isSearching) {
@@ -171,7 +190,7 @@ class _LeadListViewState extends State<_LeadListView> {
           : '$n $noun${n == 1 ? '' : 'es'} found';
     }
     final n = s.leads.length;
-    return s.hasMore ? '${_thousands(n)}+ ${noun}es' : '${_thousands(n)} $noun${n == 1 ? '' : 'es'}';
+    return s.hasMore ? '${groupedNumber(n)}+ ${noun}es' : '${groupedNumber(n)} $noun${n == 1 ? '' : 'es'}';
   }
 
   Widget _header(BuildContext context, PagedLeadsState s) {
@@ -179,33 +198,30 @@ class _LeadListViewState extends State<_LeadListView> {
     final selected = categories.any((c) => c.name == s.category) ? s.category : null;
     final selectedCount = categories.where((c) => c.name == selected).map((c) => c.count).firstOrNull;
     final actions = _c.headerActions?.call(context, s) ?? const <Widget>[];
+    final picked = _selectedLeads(s);
 
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(_c.title, style: Theme.of(context).textTheme.displaySmall),
-                  const SizedBox(height: 6),
-                  Text(_subtitle(s), style: Theme.of(context).textTheme.bodyLarge),
-                ],
-              ),
-            ),
+        PageHeader(
+          title: _c.title,
+          subtitle: _subtitle(s),
+          actions: [
             ...actions,
-            IconButton(
-              tooltip: 'Refresh',
-              onPressed: () => _bloc.add(const PagedLeadsRefreshed()),
-              icon: const Icon(AppIcons.refresh),
-              style: IconButton.styleFrom(backgroundColor: AppTheme.surface, padding: const EdgeInsets.all(12)),
+            if (_c.tableKind != null)
+              Row(mainAxisSize: MainAxisSize.min, children: [
+                AppIconButton(icon: AppIcons.table, tooltip: 'Table view', selected: _tableView, onPressed: () => setState(() => _tableView = true)),
+                AppIconButton(icon: AppIcons.layoutGrid, tooltip: 'Card view', selected: !_tableView, onPressed: () => setState(() => _tableView = false)),
+              ]),
+            AppButton.outlined(
+              label: picked.isEmpty ? 'Export CSV' : 'Export ${picked.length}',
+              icon: AppIcons.download,
+              onPressed: s.leads.isEmpty ? null : () => _exportCsv(picked.isEmpty ? s.leads : picked),
             ),
+            AppButton.outlined(label: 'Refresh', icon: AppIcons.refresh, onPressed: () => _bloc.add(const PagedLeadsRefreshed())),
           ],
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: AppSpace.xl),
         if (_c.validationCollection != null && s.leads.isNotEmpty) ...[
           // Validates what's loaded — a page at a time, not a whole
           // collection: scroll to load more leads, then validate them.
@@ -214,69 +230,40 @@ class _LeadListViewState extends State<_LeadListView> {
             leads: s.leads,
             onFinished: () => _bloc.add(const PagedLeadsRefreshed()),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: AppSpace.lg),
         ],
         Wrap(
-          spacing: 12,
-          runSpacing: 12,
+          spacing: AppSpace.md,
+          runSpacing: AppSpace.md,
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
             SizedBox(
               width: 340,
-              child: TextField(
+              child: AppSearchField(
                 controller: _search,
+                hint: _c.searchHint,
                 onChanged: (v) => _bloc.add(PagedLeadsQueryChanged(v)),
-                decoration: InputDecoration(
-                  hintText: _c.searchHint,
-                  prefixIcon: const Icon(AppIcons.search, size: 19),
-                  suffixIcon: _search.text.isEmpty
-                      ? null
-                      : IconButton(
-                          icon: const Icon(AppIcons.close, size: 18),
-                          onPressed: () {
-                            _search.clear();
-                            _bloc.add(const PagedLeadsQueryChanged(''));
-                            setState(() {});
-                          },
-                        ),
-                ),
               ),
             ),
             if (categories.isNotEmpty)
-              SizedBox(
+              AppDropdown<String?>(
                 width: 300,
-                child: DropdownButtonFormField<String?>(
-                  key: ValueKey('category-$selected'),
-                  initialValue: selected,
-                  isExpanded: true,
-                  icon: const Icon(AppIcons.chevronDown, size: 18, color: AppTheme.accent),
-                  decoration: const InputDecoration(prefixIcon: Icon(AppIcons.filter, size: 19)),
-                  items: [
-                    const DropdownMenuItem<String?>(value: null, child: Text('All categories')),
-                    for (final c in categories)
-                      DropdownMenuItem<String?>(
-                        value: c.name,
-                        child: Text('${c.name} (${_thousands(c.count)})', overflow: TextOverflow.ellipsis),
-                      ),
-                  ],
-                  onChanged: (v) => _bloc.add(PagedLeadsCategoryChanged(v)),
-                ),
+                value: selected,
+                hint: 'All categories',
+                leadingIcon: AppIcons.filter,
+                options: [
+                  const AppOption<String?>(null, 'All categories'),
+                  for (final c in categories) AppOption<String?>(c.name, c.name, caption: groupedNumber(c.count)),
+                ],
+                onChanged: (v) => _bloc.add(PagedLeadsCategoryChanged(v)),
               ),
             if (selected != null)
-              SizedBox(
-                height: 48,
-                width: 48,
-                child: s.deletingCategory == selected
-                    ? const Padding(padding: EdgeInsets.all(13), child: CircularProgressIndicator(strokeWidth: 2))
-                    : OutlinedButton(
-                        onPressed: () => _confirmDeleteCategory(selected, selectedCount),
-                        style: OutlinedButton.styleFrom(
-                          padding: EdgeInsets.zero,
-                          foregroundColor: AppTheme.danger,
-                          side: const BorderSide(color: AppTheme.danger),
-                        ),
-                        child: const Icon(AppIcons.trash, size: 18),
-                      ),
+              AppIconButton(
+                icon: AppIcons.trash,
+                tooltip: 'Delete this category',
+                color: AppTheme.error,
+                loading: s.deletingCategory == selected,
+                onPressed: () => _confirmDeleteCategory(selected, selectedCount),
               ),
             if (_c.verifiedFilter)
               FilterChip(
@@ -287,21 +274,39 @@ class _LeadListViewState extends State<_LeadListView> {
               ),
           ],
         ),
+        if (picked.isNotEmpty) ...[
+          const SizedBox(height: AppSpace.md),
+          _SelectionBar(
+            count: picked.length,
+            hasPhones: picked.any((l) => (l.phone ?? '').isNotEmpty),
+            hasEmails: picked.any((l) => leadEmails(l).isNotEmpty),
+            onCopyPhones: () => copyText(
+              context,
+              picked.where((l) => (l.phone ?? '').isNotEmpty).map((l) => l.phone!).join('\n'),
+              'Copied ${picked.where((l) => (l.phone ?? '').isNotEmpty).length} phone numbers',
+            ),
+            onCopyEmails: () {
+              final emails = picked.expand(leadEmails).map((e) => e.address).toSet();
+              copyText(context, emails.join('\n'), 'Copied ${emails.length} email addresses');
+            },
+            onExport: () => _exportCsv(picked),
+            onDelete: () => _confirmDeleteSelected(picked),
+            onClear: () => setState(() => _selected = {}),
+          ),
+        ],
       ],
     );
   }
 
   Widget? _placeholder(BuildContext context, PagedLeadsState s) {
     if (s.status == PagedLeadsStatus.failure && s.leads.isEmpty) {
-      return _Message(
-        icon: AppIcons.alert,
-        title: 'Could not load ${_c.title.toLowerCase()}',
-        body: s.error ?? 'Something went wrong.',
-        bodyColor: AppTheme.danger,
-        action: OutlinedButton.icon(
-          onPressed: () => _bloc.add(const PagedLeadsRefreshed()),
-          icon: const Icon(AppIcons.refresh, size: 18),
-          label: const Text('Retry'),
+      return AppCard(
+        child: EmptyState(
+          icon: AppIcons.alert,
+          tone: AppTone.error,
+          title: 'Could not load ${_c.title.toLowerCase()}',
+          message: s.error ?? 'Something went wrong.',
+          action: AppButton.outlined(label: 'Retry', icon: AppIcons.refresh, onPressed: () => _bloc.add(const PagedLeadsRefreshed())),
         ),
       );
     }
@@ -310,116 +315,166 @@ class _LeadListViewState extends State<_LeadListView> {
           s.status == PagedLeadsStatus.initial ||
           (s.isSearching && (s.loadingMore || s.hasMore));
       if (waiting) {
-        return Padding(
-          padding: const EdgeInsets.symmetric(vertical: 80),
+        return AppCard(
+          padding: EdgeInsets.zero,
+          clip: true,
           child: Column(
             children: [
-              const Center(child: CircularProgressIndicator()),
-              if (s.isSearching) ...[
-                const SizedBox(height: 16),
-                Text('Searching ${_c.title.toLowerCase()}…', style: Theme.of(context).textTheme.bodyMedium),
-              ],
+              const SkeletonRows(rows: 7),
+              if (s.isSearching)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: AppSpace.lg),
+                  child: Text('Searching ${_c.title.toLowerCase()}…', style: Theme.of(context).textTheme.bodyMedium),
+                ),
             ],
           ),
         );
       }
       if (s.hasActiveFilter) {
-        return const _Message(
-          icon: AppIcons.searchX,
-          title: 'No matches',
-          body: 'Try a different search, category or filter.',
+        return const AppCard(
+          child: EmptyState(icon: AppIcons.searchX, title: 'No matches', message: 'Try a different search, category or filter.'),
         );
       }
-      return _Message(icon: _c.emptyIcon, title: _c.emptyTitle, body: _c.emptyBody);
+      return AppCard(child: EmptyState(icon: _c.emptyIcon, title: _c.emptyTitle, message: _c.emptyBody));
     }
     return null;
+  }
+
+  /// The loaded leads in the table's current sort order.
+  List<Lead> _sorted(List<Lead> leads, List<AppColumn<Lead>> columns) {
+    final by = _sortBy;
+    if (by == null) return leads;
+    final compare = leadComparator(by);
+    if (compare == null) return leads;
+    final copy = [...leads]..sort(compare);
+    return _sortAscending ? copy : copy.reversed.toList();
+  }
+
+  Future<void> _open(Lead lead) async {
+    final changed = await _c.onOpen(context, lead);
+    if (changed == true && mounted) _bloc.add(const PagedLeadsRefreshed());
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: SafeArea(
-        child: BlocConsumer<PagedLeadsBloc, PagedLeadsState>(
-          listenWhen: (a, b) =>
-              a.deleteError != b.deleteError || a.categoryDeleteMessage != b.categoryDeleteMessage,
-          listener: (context, s) {
-            final message = s.deleteError ?? s.categoryDeleteMessage;
-            if (message != null) {
-              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
-            }
-          },
-          builder: (context, s) {
-            return PagedLeadList(
-              header: _header(context, s),
-              placeholder: _placeholder(context, s),
-              itemCount: s.leads.length,
-              hasMore: s.hasMore,
-              loadingMore: s.loadingMore,
-              mainAxisExtent: _c.cardExtent,
-              onLoadMore: () => _bloc.add(const PagedLeadsLoadMore()),
-              onRefresh: () async {
-                _bloc.add(const PagedLeadsRefreshed());
-                await _bloc.stream.firstWhere((x) => x.status != PagedLeadsStatus.loading);
-              },
-              itemBuilder: (context, i) {
-                final lead = s.leads[i];
-                return _c.cardBuilder(
-                  context,
-                  lead,
-                  onTap: () async {
-                    final changed = await _c.onOpen(context, lead);
-                    if (changed == true && context.mounted) _bloc.add(const PagedLeadsRefreshed());
-                  },
-                  onDelete: lead.dbId == null ? null : () => _confirmDelete(lead),
-                  deleting: s.deletingLeadId != null && s.deletingLeadId == lead.dbId,
-                );
-              },
+      backgroundColor: Colors.transparent,
+      body: BlocConsumer<PagedLeadsBloc, PagedLeadsState>(
+        listenWhen: (a, b) => a.deleteError != b.deleteError || a.categoryDeleteMessage != b.categoryDeleteMessage,
+        listener: (context, s) {
+          final message = s.deleteError ?? s.categoryDeleteMessage;
+          if (message != null) {
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+          }
+        },
+        builder: (context, s) {
+          final kind = _c.tableKind;
+          List<AppColumn<Lead>>? columns;
+          if (kind != null && _tableView) {
+            columns = leadTableColumns(
+              kind,
+              action: _c.rowAction,
+              deletingId: s.deletingLeadId,
+              onOpen: _open,
+              onDelete: (lead) => lead.dbId == null ? null : _confirmDelete,
             );
-          },
-        ),
+          }
+          // Forget ticks for leads that are gone (deleted, or filtered out).
+          final present = {for (final l in s.leads) _key(l)};
+          if (_selected.any((k) => !present.contains(k))) _selected = _selected.intersection(present);
+
+          return PagedLeadList(
+            header: _header(context, s),
+            placeholder: _placeholder(context, s),
+            itemCount: s.leads.length,
+            hasMore: s.hasMore,
+            loadingMore: s.loadingMore,
+            mainAxisExtent: _c.cardExtent,
+            onLoadMore: () => _bloc.add(const PagedLeadsLoadMore()),
+            onRefresh: () async {
+              _bloc.add(const PagedLeadsRefreshed());
+              await _bloc.stream.firstWhere((x) => x.status != PagedLeadsStatus.loading);
+            },
+            tableMinWidth: columns == null ? 0 : minTableWidth(columns, selectable: true) + 2,
+            tableBuilder: columns == null
+                ? null
+                : (context) {
+                    final cols = columns!;
+                    return SliverAppTable<Lead>(
+                      columns: cols,
+                      rows: _sorted(s.leads, cols),
+                      rowKey: _key,
+                      onRowTap: _open,
+                      selected: _selected,
+                      onSelectionChanged: (next) => setState(() => _selected = next),
+                      sortBy: _sortBy,
+                      sortAscending: _sortAscending,
+                      onSort: (column, ascending) => setState(() {
+                        _sortBy = column;
+                        _sortAscending = ascending;
+                      }),
+                    );
+                  },
+            itemBuilder: (context, i) {
+              final lead = s.leads[i];
+              return _c.cardBuilder(
+                context,
+                lead,
+                onTap: () => _open(lead),
+                onDelete: lead.dbId == null ? null : () => _confirmDelete(lead),
+                deleting: s.deletingLeadId != null && s.deletingLeadId == lead.dbId,
+              );
+            },
+          );
+        },
       ),
     );
   }
 }
 
-class _Message extends StatelessWidget {
-  const _Message({
-    required this.icon,
-    required this.title,
-    required this.body,
-    this.action,
-    this.bodyColor,
+/// The bar that appears while table rows are ticked.
+class _SelectionBar extends StatelessWidget {
+  const _SelectionBar({
+    required this.count,
+    required this.hasPhones,
+    required this.hasEmails,
+    required this.onCopyPhones,
+    required this.onCopyEmails,
+    required this.onExport,
+    required this.onDelete,
+    required this.onClear,
   });
 
-  final IconData icon;
-  final String title;
-  final String body;
-  final Widget? action;
-  final Color? bodyColor;
+  final int count;
+  final bool hasPhones;
+  final bool hasEmails;
+  final VoidCallback onCopyPhones;
+  final VoidCallback onCopyEmails;
+  final VoidCallback onExport;
+  final VoidCallback onDelete;
+  final VoidCallback onClear;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: 56, horizontal: 32),
-      decoration: BoxDecoration(color: AppTheme.surface, borderRadius: BorderRadius.circular(AppTheme.radiusCard)),
-      child: Column(
+      padding: const EdgeInsets.symmetric(horizontal: AppSpace.lg, vertical: AppSpace.sm),
+      decoration: BoxDecoration(
+        color: AppTheme.primary100,
+        borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+        border: Border.all(color: AppTheme.primary200),
+      ),
+      child: Wrap(
+        spacing: AppSpace.sm,
+        runSpacing: AppSpace.sm,
+        crossAxisAlignment: WrapCrossAlignment.center,
         children: [
-          Container(
-            width: 72,
-            height: 72,
-            decoration: const BoxDecoration(color: AppTheme.accent100, shape: BoxShape.circle),
-            child: Icon(icon, size: 30, color: AppTheme.accent700),
-          ),
-          const SizedBox(height: 18),
-          Text(title, style: Theme.of(context).textTheme.headlineSmall, textAlign: TextAlign.center),
-          const SizedBox(height: 8),
-          Text(
-            body,
-            style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: bodyColor),
-            textAlign: TextAlign.center,
-          ),
-          if (action != null) ...[const SizedBox(height: 18), action!],
+          Text('$count selected', style: Theme.of(context).textTheme.titleSmall?.copyWith(color: AppTheme.primary800)),
+          const SizedBox(width: AppSpace.sm),
+          if (hasPhones) AppButton.outlined(label: 'Copy phones', icon: AppIcons.phone, size: AppButtonSize.sm, onPressed: onCopyPhones),
+          if (hasEmails) AppButton.outlined(label: 'Copy emails', icon: AppIcons.mail, size: AppButtonSize.sm, onPressed: onCopyEmails),
+          AppButton.outlined(label: 'Export CSV', icon: AppIcons.download, size: AppButtonSize.sm, onPressed: onExport),
+          AppButton.destructive(label: 'Delete', icon: AppIcons.trash, size: AppButtonSize.sm, onPressed: onDelete),
+          AppButton.text(label: 'Clear', size: AppButtonSize.sm, onPressed: onClear),
         ],
       ),
     );

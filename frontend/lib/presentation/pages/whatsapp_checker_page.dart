@@ -344,9 +344,9 @@ class _AutomationCardState extends State<_AutomationCard> {
     return Container(
       padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
-        color: active ? AppTheme.sage100 : AppTheme.surface,
+        color: active ? AppTheme.success100 : AppTheme.surface,
         borderRadius: BorderRadius.circular(AppTheme.radiusCard),
-        border: active ? Border.all(color: AppTheme.sage500, width: 1.5) : null,
+        border: active ? Border.all(color: AppTheme.success500, width: 1.5) : null,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -357,13 +357,13 @@ class _AutomationCardState extends State<_AutomationCard> {
                 width: 40,
                 height: 40,
                 decoration: BoxDecoration(
-                  color: active ? AppTheme.sage500 : AppTheme.neutral200,
+                  color: active ? AppTheme.success500 : AppTheme.neutral200,
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
                   active ? AppIcons.refresh : AppIcons.zap,
                   size: 19,
-                  color: active ? Colors.white : AppTheme.neutral600,
+                  color: active ? AppTheme.onPrimary : AppTheme.neutral600,
                 ),
               ),
               const SizedBox(width: 12),
@@ -419,7 +419,7 @@ class _AutomationCardState extends State<_AutomationCard> {
                 value: total > 0 ? (checked / total).toDouble() : 0,
                 minHeight: 6,
                 backgroundColor: AppTheme.surface,
-                valueColor: const AlwaysStoppedAnimation(AppTheme.sage500),
+                valueColor: AlwaysStoppedAnimation(AppTheme.success500),
               ),
             ),
           ] else ...[
@@ -430,13 +430,13 @@ class _AutomationCardState extends State<_AutomationCard> {
                 child: LinearProgressIndicator(minHeight: 3),
               )
             else if (_summaryError != null)
-              Text(_summaryError!, style: const TextStyle(fontSize: 12.5, color: AppTheme.danger))
+              Text(_summaryError!, style: TextStyle(fontSize: 12.5, color: AppTheme.error))
             else if (_summary != null && _summary!.locations.isNotEmpty) ...[
               Text('States', style: Theme.of(context).textTheme.titleSmall),
               const SizedBox(height: 4),
-              const Text(
+              Text(
                 'Each state is validated on its own. A state that is already validated is not checked again.',
-                style: TextStyle(fontSize: 12.5, color: AppTheme.faint),
+                style: TextStyle(fontSize: 12.5, color: AppTheme.textMuted),
               ),
               const SizedBox(height: 10),
               for (final loc in _summary!.locations)
@@ -470,9 +470,9 @@ class _StateValidationRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (label, color) = switch (location.status) {
-      'validated' => ('Validated · ${location.checked} of ${location.withPhone} checked', AppTheme.sage700),
-      'partial' => ('Partly validated · ${location.checked} of ${location.withPhone} checked', AppTheme.accent700),
-      'no_phone' => ('No phone numbers to check', AppTheme.faint),
+      'validated' => ('Validated · ${location.checked} of ${location.withPhone} checked', AppTheme.success700),
+      'partial' => ('Partly validated · ${location.checked} of ${location.withPhone} checked', AppTheme.primary700),
+      'no_phone' => ('No phone numbers to check', AppTheme.textMuted),
       _ => ('Not validated · ${location.withPhone} to check', AppTheme.neutral600),
     };
     final buttonLabel = switch (location.status) {
@@ -528,10 +528,7 @@ class _WhatsAppWebConnectionCard extends StatelessWidget {
 
     return Container(
       padding: const EdgeInsets.all(22),
-      decoration: BoxDecoration(
-        color: AppTheme.surface,
-        borderRadius: BorderRadius.circular(AppTheme.radiusCard),
-      ),
+      decoration: AppTheme.cardDecoration(),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -541,13 +538,13 @@ class _WhatsAppWebConnectionCard extends StatelessWidget {
                 width: 40,
                 height: 40,
                 decoration: BoxDecoration(
-                  color: s == WhatsAppWebConnectionStatus.ready ? AppTheme.sage100 : AppTheme.accent100,
+                  color: s == WhatsAppWebConnectionStatus.ready ? AppTheme.success100 : AppTheme.primary100,
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
                   s == WhatsAppWebConnectionStatus.ready ? AppIcons.checkCircle : AppIcons.shieldCheck,
                   size: 19,
-                  color: s == WhatsAppWebConnectionStatus.ready ? AppTheme.sage700 : AppTheme.accent700,
+                  color: s == WhatsAppWebConnectionStatus.ready ? AppTheme.success700 : AppTheme.primary700,
                 ),
               ),
               const SizedBox(width: 12),
@@ -598,13 +595,13 @@ class _WhatsAppWebConnectionCard extends StatelessWidget {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
-                color: AppTheme.sage100,
+                color: AppTheme.success100,
                 borderRadius: BorderRadius.circular(AppTheme.radius),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(AppIcons.checkCircle, size: 15, color: AppTheme.sage700),
+                  Icon(AppIcons.checkCircle, size: 15, color: AppTheme.success700),
                   const SizedBox(width: 8),
                   Text(
                     status?.pushname?.isNotEmpty == true
@@ -612,7 +609,7 @@ class _WhatsAppWebConnectionCard extends StatelessWidget {
                         : status?.phoneNumber != null
                             ? 'Linked as +${status!.phoneNumber}'
                             : 'Linked',
-                    style: const TextStyle(color: AppTheme.sage800, fontWeight: FontWeight.w700, fontSize: 12.5),
+                    style: TextStyle(color: AppTheme.success800, fontWeight: FontWeight.w700, fontSize: 12.5),
                   ),
                 ],
               ),
@@ -624,7 +621,7 @@ class _WhatsAppWebConnectionCard extends StatelessWidget {
               onPressed: busy ? null : onDisconnect,
               icon: const Icon(AppIcons.close, size: 16),
               label: const Text('Disconnect'),
-              style: OutlinedButton.styleFrom(foregroundColor: AppTheme.danger),
+              style: OutlinedButton.styleFrom(foregroundColor: AppTheme.error),
             ),
           ],
         );
@@ -638,7 +635,7 @@ class _WhatsAppWebConnectionCard extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: AppTheme.onPrimary,
                   borderRadius: BorderRadius.circular(AppTheme.radius),
                 ),
                 child: Image.memory(
@@ -695,7 +692,7 @@ class _WhatsAppWebConnectionCard extends StatelessWidget {
             if (status?.error != null)
               Padding(
                 padding: const EdgeInsets.only(bottom: 12),
-                child: Text(status!.error!, style: const TextStyle(color: AppTheme.danger, fontSize: 12.5)),
+                child: Text(status!.error!, style: TextStyle(color: AppTheme.error, fontSize: 12.5)),
               ),
             ElevatedButton(onPressed: busy ? null : onConnect, child: const Text('Try again')),
           ],
@@ -705,10 +702,10 @@ class _WhatsAppWebConnectionCard extends StatelessWidget {
         return ElevatedButton.icon(
           onPressed: busy ? null : onConnect,
           icon: busy
-              ? const SizedBox(
+              ? SizedBox(
                   height: 18,
                   width: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2.2, color: AppTheme.surface),
+                  child: CircularProgressIndicator(strokeWidth: 2.2, color: AppTheme.onPrimary),
                 )
               : const Icon(AppIcons.chat, size: 18),
           label: const Text('Connect WhatsApp Web'),
@@ -746,13 +743,13 @@ class _SafetyStatusPanel extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Icon(AppIcons.shieldCheck, size: 15, color: AppTheme.neutral600),
+              Icon(AppIcons.shieldCheck, size: 15, color: AppTheme.neutral600),
               const SizedBox(width: 8),
               Text(
                 uncapped
                     ? '${safety.checksToday} checks today · no daily limit'
                     : '${safety.checksToday} / ${safety.dailyCap} checks used today',
-                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: AppTheme.neutral800),
+                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: AppTheme.neutral800),
               ),
             ],
           ),
@@ -764,7 +761,7 @@ class _SafetyStatusPanel extends StatelessWidget {
                 value: usedFraction,
                 minHeight: 5,
                 backgroundColor: AppTheme.neutral200,
-                valueColor: AlwaysStoppedAnimation(usedFraction >= 1 ? AppTheme.danger : AppTheme.sage500),
+                valueColor: AlwaysStoppedAnimation(usedFraction >= 1 ? AppTheme.error : AppTheme.success500),
               ),
             ),
           ],
@@ -772,8 +769,8 @@ class _SafetyStatusPanel extends StatelessWidget {
             const SizedBox(height: 10),
             _SafetyBadge(
               icon: AppIcons.clock,
-              color: AppTheme.accent700,
-              bg: AppTheme.accent100,
+              color: AppTheme.primary700,
+              bg: AppTheme.primary100,
               text: 'New device warm-up — ${safety.warmUpDaysRemaining}d left, checks limited & slower',
             ),
           ],
@@ -781,8 +778,8 @@ class _SafetyStatusPanel extends StatelessWidget {
             const SizedBox(height: 10),
             _SafetyBadge(
               icon: AppIcons.alert,
-              color: AppTheme.danger,
-              bg: AppTheme.accent100,
+              color: AppTheme.error,
+              bg: AppTheme.primary100,
               text: 'Paused after repeated failures — resumes in ${(safety.circuitResetInMs / 60000).ceil()} min',
             ),
           ] else if (safety.cooldownActive) ...[
@@ -836,8 +833,8 @@ class _ResultCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final valid = result.validFormat;
-    final color = valid ? AppTheme.sage700 : AppTheme.danger;
-    final bg = valid ? AppTheme.sage100 : AppTheme.accent100;
+    final color = valid ? AppTheme.success700 : AppTheme.error;
+    final bg = valid ? AppTheme.success100 : AppTheme.primary100;
 
     return Container(
       width: double.infinity,
@@ -881,8 +878,8 @@ class _ResultCard extends StatelessWidget {
               icon: const Icon(AppIcons.chat, size: 18),
               label: const Text('Open in WhatsApp to Verify'),
               style: FilledButton.styleFrom(
-                backgroundColor: AppTheme.sage500,
-                foregroundColor: AppTheme.surface,
+                backgroundColor: AppTheme.success500,
+                foregroundColor: AppTheme.onPrimary,
               ),
             ),
           ],
@@ -903,12 +900,12 @@ class _ErrorCard extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: AppTheme.accent100,
+        color: AppTheme.primary100,
         borderRadius: BorderRadius.circular(AppTheme.radiusCard),
       ),
       child: Text(
         message,
-        style: const TextStyle(color: AppTheme.danger, fontWeight: FontWeight.w600),
+        style: TextStyle(color: AppTheme.error, fontWeight: FontWeight.w600),
       ),
     );
   }

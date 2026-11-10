@@ -64,9 +64,9 @@ class StateScopeSection extends StatelessWidget {
         children: [
           Text('States', style: Theme.of(context).textTheme.titleSmall),
           const SizedBox(height: 4),
-          const Text(
+          Text(
             'Validate every business in this category, or only the states you pick.',
-            style: TextStyle(fontSize: 12.5, color: AppTheme.faint),
+            style: TextStyle(fontSize: 12.5, color: AppTheme.textMuted),
           ),
           const SizedBox(height: 10),
           SegmentedButton<bool>(
@@ -96,7 +96,7 @@ class StateScopeSection extends StatelessWidget {
               selected.isEmpty
                   ? 'Pick one or more states to validate.'
                   : 'Will check $selectedCount business${selectedCount == 1 ? '' : 'es'} in ${selected.length} state${selected.length == 1 ? '' : 's'}.',
-              style: const TextStyle(fontSize: 12.5, color: AppTheme.faint, fontWeight: FontWeight.w600),
+              style: TextStyle(fontSize: 12.5, color: AppTheme.textMuted, fontWeight: FontWeight.w600),
             ),
           ],
         ],
