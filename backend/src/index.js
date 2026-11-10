@@ -20,6 +20,7 @@ import clientRoutes from './modules/clients/clientRoutes.js';
 import stateCityScanRoutes from './modules/scan/stateCityScanRoutes.js';
 import mapsSessionRoutes from './modules/scan/mapsSessionRoutes.js';
 import twilioTestRoutes from './modules/twilio-test/testLeadRoutes.js';
+import { createJobsModule } from './modules/jobs/index.js';
 import { initFirebase, getFirebaseStatus } from './firebase/admin.js';
 import { getSessionConfig, stopOrphanedProfileChromes } from './scraper/mapsSession.js';
 
@@ -46,6 +47,12 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
+// Jobs Finder: an independent module (own collections, scheduler and scan engine).
+// Mounted before the global JSON parser: it parses its own (small) bodies so that
+// malformed JSON gets its 400 from the module's error handler.
+const jobsModule = createJobsModule();
+app.use('/api/jobs', jobsModule.router);
+
 app.use(express.json({ limit: '16mb' }));
 
 initFirebase();
@@ -106,4 +113,15 @@ app.listen(PORT, '0.0.0.0', () => {
   if (fs.existsSync(path.join(webRoot, 'index.html'))) {
     console.log(`Serving Flutter web from ${webRoot}`);
   }
+  // Daily job scans + resuming scans an earlier run left interrupted.
+  jobsModule.start().catch((err) => console.error('Jobs Finder failed to start:', err.message));
 });
+
+// Let running job scans stop cleanly (they resume on the next start) before the process exits.
+for (const signal of ['SIGTERM', 'SIGINT']) {
+  process.once(signal, () => {
+    const hardStop = setTimeout(() => process.exit(0), 6000);
+    hardStop.unref();
+    jobsModule.stop().catch(() => {}).finally(() => process.exit(0));
+  });
+}

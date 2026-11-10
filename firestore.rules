@@ -232,6 +232,44 @@ service cloud.firestore {
       }
     }
 
+    // ── Jobs Finder ─────────────────────────────────────────────────────────
+    // Every Jobs Finder collection is read and written only by the backend
+    // (the Admin SDK bypasses these rules). Clients get nothing: job
+    // applications hold personal notes, job_sources holds integration state,
+    // and the rest is bulk scan data that the web console reads through the API.
+    // These blocks restate the catch-all below on purpose, so loosening that
+    // rule later can never expose this data by accident.
+    match /jobs/{jobId} {
+      allow read, write: if false;
+      match /raw/{rawId} {
+        allow read, write: if false;
+      }
+    }
+    match /companies/{id} {
+      allow read, write: if false;
+    }
+    match /job_searches/{id} {
+      allow read, write: if false;
+    }
+    match /job_sources/{id} {
+      allow read, write: if false;
+    }
+    match /job_scan_runs/{id} {
+      allow read, write: if false;
+    }
+    match /job_search_queue/{id} {
+      allow read, write: if false;
+    }
+    match /job_applications/{id} {
+      allow read, write: if false;
+    }
+    match /job_alerts/{id} {
+      allow read, write: if false;
+    }
+    match /job_keys/{id} {
+      allow read, write: if false;
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }
