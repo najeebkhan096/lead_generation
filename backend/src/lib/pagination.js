@@ -245,15 +245,18 @@ const categoryCache = new Map(); // collection -> { at, value }
  * minutes, not on every visit. Deleting leads should call
  * [invalidateCategories].
  */
-export async function listCategories(db, collection, { force = false } = {}) {
-  const hit = categoryCache.get(collection);
+export async function listCategories(db, collection, { force = false, where = [] } = {}) {
+  // A filtered count (e.g. only 1-star WhatsApp leads) is cached on its own.
+  const cacheKey = where.length ? `${collection}?${JSON.stringify(where)}` : collection;
+  const hit = categoryCache.get(cacheKey);
   if (!force && hit && Date.now() - hit.at < CATEGORY_TTL_MS) return hit.value;
 
   const counts = new Map();
   let last = null;
   for (;;) {
-    let query = db
-      .collection(collection)
+    let base = db.collection(collection);
+    for (const [field, op, value] of where) base = base.where(field, op, value);
+    let query = base
       .orderBy(FieldPath.documentId())
       .select('category')
       .limit(2000);
@@ -271,11 +274,14 @@ export async function listCategories(db, collection, { force = false } = {}) {
   const value = [...counts.entries()]
     .map(([name, count]) => ({ name, count }))
     .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
-  categoryCache.set(collection, { at: Date.now(), value });
+  categoryCache.set(cacheKey, { at: Date.now(), value });
   return value;
 }
 
 export function invalidateCategories(collection) {
-  if (collection) categoryCache.delete(collection);
-  else categoryCache.clear();
+  if (!collection) return categoryCache.clear();
+  for (const key of [...categoryCache.keys()]) {
+    if (key === collection || key.startsWith(`${collection}?`)) categoryCache.delete(key);
+  }
+  return undefined;
 }

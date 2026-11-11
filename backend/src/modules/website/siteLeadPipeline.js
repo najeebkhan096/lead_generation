@@ -36,7 +36,7 @@ export function websiteStatusOf(business) {
 }
 
 /** The lead-shaped record for a scraped business. */
-export function toSiteRecord(business, { state, country = 'US', reviewLeadKeys = new Set() } = {}) {
+export function toSiteRecord(business, { state, country = 'US', reviewLeadKeys = new Set(), scanMode = 'reviews' } = {}) {
   const e164 = normalizePhone(business.phone, country);
   return {
     business: business.name,
@@ -50,6 +50,9 @@ export function toSiteRecord(business, { state, country = 'US', reviewLeadKeys =
     rating: business.rating ?? null,
     totalReviews: business.totalReviews ?? null,
     source: business.source || 'google_maps',
+    // Which scan found it: `reviews` (the 1-star scan's by-product) or `no_website`
+    // (the dedicated no-website scan). The two are validated separately.
+    scanMode,
     country,
     // One business can be several kinds of lead; this is how they are linked.
     leadTypes: reviewLeadKeys.has(mapsKey(business.mapsUrl)) ? ['review'] : [],
@@ -86,6 +89,8 @@ export async function recordCityWebsites(businesses, {
   // A no-website scan only files businesses WITHOUT a website; it does not
   // crawl the sites of the others for emails (that is the 1-star scan's add-on).
   queueEmails = true,
+  // Which kind of scan this is (`reviews` or `no_website`): recorded on every business it files.
+  scanMode = 'reviews',
   // Nowhere to store website / email leads without Firebase, so skip the lot
   // (and never start crawling sites whose results would be thrown away).
   enabled = getFirebaseStatus().configured,
@@ -101,7 +106,7 @@ export async function recordCityWebsites(businesses, {
   try {
     if (queueEmails) queue = queue || getEmailQueue();
     const reviewLeadKeys = new Set(reviewLeads.map((l) => mapsKey(l.mapsUrl)));
-    const { missing, available, unknown } = classifyBusinesses(businesses, { state, country, reviewLeadKeys });
+    const { missing, available, unknown } = classifyBusinesses(businesses, { state, country, reviewLeadKeys, scanMode });
     summary.missing = missing.length;
     summary.available = available.length;
     summary.unknown = unknown.length;

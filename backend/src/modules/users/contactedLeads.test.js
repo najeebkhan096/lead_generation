@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Timestamp } from 'firebase-admin/firestore';
-import { refundsToday, toContactedLead } from './contactedLeads.js';
+import { leadKind, refundsToday, toContactedLead } from './contactedLeads.js';
 
 test('a contacted lead is shaped for the admin page', () => {
   const lead = toContactedLead('abc', {
@@ -39,4 +39,16 @@ test('moving a lead back frees a slot only when it was contacted today (Qatar da
   assert.equal(refundsToday({ contactedAt: yesterday }, '2026-10-19'), false);
   assert.equal(refundsToday({}, '2026-10-19'), false);
   assert.ok(now);
+});
+
+test('a contacted lead carries its kind: 1-star by default, or no-website', () => {
+  assert.equal(toContactedLead('a', {}).kind, 'review');
+  assert.equal(toContactedLead('b', { business: 'Salon' }, 'website').kind, 'website');
+});
+
+test('the kind to move back is review by default, website on request, nothing else', () => {
+  assert.equal(leadKind(undefined), 'review');
+  assert.equal(leadKind(''), 'review');
+  assert.equal(leadKind('website'), 'website');
+  assert.throws(() => leadKind('users'), (e) => e.status === 400);
 });

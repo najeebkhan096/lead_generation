@@ -99,3 +99,32 @@ test('today is also split by the hour, in Qatar time', () => {
   assert.equal(ali.hourlyToday.reduce((a, b) => a + b, 0), 2);
   assert.equal(stats.totals.hourlyToday.reduce((a, b) => a + b, 0), 3); // Ali's two and Bo's one
 });
+
+test('no-website contacts count too, and each kind is shown on its own', () => {
+  const site = (contactedBy, iso, verified = true) => ({ kind: 'website', verified, status: contactedBy ? 'contacted' : 'lead', contactedBy, contactedAt: contactedBy ? new Date(iso) : null });
+  const both = [
+    ...leads,
+    site('ali', '2026-10-18T05:00:00Z'), // today
+    site('bo', '2026-10-17T05:00:00Z'), // yesterday
+    site(null, null), // verified, still New
+    site(null, null, false), // not verified: not part of the pool
+  ];
+  const stats = buildSalesmanStats({ users, leads: both, now: NOW, days: 14 });
+  const ali = stats.salesmen.find((s) => s.id === 'ali');
+
+  // The daily limit counts both kinds, so today's number does too.
+  assert.equal(ali.contactedToday, 3);
+  assert.equal(ali.contactedTotal, 5);
+  assert.deepEqual(ali.byKind.review, { today: 2, last7: 3, total: 4 });
+  assert.deepEqual(ali.byKind.website, { today: 1, last7: 1, total: 1 });
+  assert.equal(ali.limitLeftToday, 0); // limit 2, contacted 3 in total
+
+  const bo = stats.salesmen.find((s) => s.id === 'bo');
+  assert.deepEqual(bo.byKind.website, { today: 0, last7: 1, total: 1 });
+
+  assert.equal(stats.totals.websiteLeads, 3);
+  assert.equal(stats.totals.websiteNewLeft, 1);
+  assert.deepEqual(stats.totals.byKind.website, { today: 1, last7: 2, total: 2 });
+  assert.equal(stats.totals.byKind.review.total, 6);
+  assert.equal(stats.totals.reviewLeads, 7); // the 1-star pool is unchanged
+});

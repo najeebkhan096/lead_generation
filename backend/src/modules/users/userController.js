@@ -1,6 +1,6 @@
 import { listUsers, setUserApproved, setUserDailyLeadLimit, setUserRole } from './userStore.js';
 import { clampDays, loadSalesmanStats } from './salesmanStats.js';
-import { listContactedLeads, moveLeadBack } from './contactedLeads.js';
+import { leadKind, listContactedLeads, moveLeadBack } from './contactedLeads.js';
 
 export async function getUsers(req, res) {
   try {
@@ -22,7 +22,7 @@ export async function getSalesmanStats(req, res) {
   }
 }
 
-/** GET /api/users/:id/contacted-leads — the 1-star leads this salesman has contacted. */
+/** GET /api/users/:id/contacted-leads — the 1-star and no-website leads this salesman has contacted (each has a `kind`). */
 export async function getSalesmanContactedLeads(req, res) {
   try {
     return res.json({ leads: await listContactedLeads(req.params.id) });
@@ -31,10 +31,10 @@ export async function getSalesmanContactedLeads(req, res) {
   }
 }
 
-/** POST /api/users/:id/contacted-leads/:leadId/move-back — the admin puts the lead back in New. */
+/** POST /api/users/:id/contacted-leads/:leadId/move-back?kind=review|website — the admin puts the lead back in New. */
 export async function moveContactedLeadBack(req, res) {
   try {
-    return res.json(await moveLeadBack(req.params.id, req.params.leadId));
+    return res.json(await moveLeadBack(req.params.id, req.params.leadId, { kind: leadKind(req.query?.kind) }));
   } catch (err) {
     return res.status(err.status || 500).json({ error: err.message || 'Failed to move the lead back' });
   }

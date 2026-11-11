@@ -4,10 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../domain/entities/email_validation.dart';
 import '../../domain/entities/lead_page.dart';
 import '../../domain/entities/whatsapp_web_status.dart';
 import '../../domain/repositories/lead_repository.dart';
 import '../design_system/design_system.dart';
+import '../../domain/entities/lead.dart';
+import '../widgets/state_scope_section.dart' show stateLabelOf;
 import '../widgets/state_validation_list.dart';
 
 const _pollInterval = Duration(seconds: 2);
@@ -182,6 +185,8 @@ class _ValidationSpec {
     required this.foundLabel,
     required this.missLabel,
     required this.runningLabel,
+    required this.results,
+    required this.resultsTitle,
     required this.loadSummary,
     required this.poll,
     required this.cancel,
@@ -197,6 +202,10 @@ class _ValidationSpec {
   final String foundLabel;
   final String missLabel;
   final String runningLabel;
+
+  /// The list of leads this validation has qualified, and what to call it.
+  final LeadCollection results;
+  final String resultsTitle;
 
   final Future<UnvalidatedWhatsAppSummary> Function(LeadRepository repo, String category) loadSummary;
   final Future<_Progress> Function(LeadRepository repo) poll;
@@ -215,6 +224,8 @@ final _whatsAppSpec = _ValidationSpec(
   foundLabel: 'on WhatsApp',
   missLabel: 'not on WhatsApp',
   runningLabel: 'Checking WhatsApp numbers',
+  results: LeadCollection.websiteVerified,
+  resultsTitle: 'Validated on WhatsApp',
   loadSummary: (repo, category) => repo.getUnvalidatedWhatsAppSummary(collection: 'websiteLeads', category: category),
   poll: (repo) async {
     final s = await repo.getWhatsAppValidationStatus();
@@ -245,6 +256,8 @@ final _emailSpec = _ValidationSpec(
   foundLabel: 'with an email',
   missLabel: 'no email found',
   runningLabel: 'Looking up emails',
+  results: LeadCollection.websiteWithEmail,
+  resultsTitle: 'Emails found',
   loadSummary: (repo, category) => repo.getEmailValidationSummary(category: category),
   poll: (repo) async {
     final s = await repo.getEmailValidationStatus();
@@ -289,6 +302,13 @@ class _ValidationTabState extends State<_ValidationTab> with AutomaticKeepAliveC
   /// A run was started (or seen running) from this page. The server keeps only
   /// the last job, which may be another page's, so an old one isn't shown.
   bool _sawRun = false;
+
+  /// Bumped whenever the counts reload, so the validated list below does too.
+  int _resultsVersion = 0;
+
+  /// Runs of this kind that stopped before finishing, offered for Resume.
+  List<ValidationRun> _unfinished = const [];
+  final Set<String> _resuming = {};
   final Set<String> _selected = {};
 
   // WhatsApp only: is the linked session ready, and is the account resting?
@@ -307,6 +327,7 @@ class _ValidationTabState extends State<_ValidationTab> with AutomaticKeepAliveC
       _loadSummary();
       _loadWeb();
       _pollOnce();
+      _loadUnfinished();
     });
   }
 
@@ -352,9 +373,13 @@ class _ValidationTabState extends State<_ValidationTab> with AutomaticKeepAliveC
       final summary = await _spec.loadSummary(_repo, category);
       // Picked another search while this one loaded: that answer is stale.
       if (!mounted || category != widget.category) return;
+      final hadSummary = _summary != null;
       setState(() {
         _summary = summary;
         _loading = false;
+        // The list below loads itself the first time (and for a new search); it
+        // reloads only when counts that already showed have moved.
+        if (hadSummary) _resultsVersion += 1;
         // A state that has nothing left can't stay ticked.
         _selected.removeWhere((name) => !summary.locations.any((l) => l.name == name));
       });
@@ -365,6 +390,46 @@ class _ValidationTabState extends State<_ValidationTab> with AutomaticKeepAliveC
         _error = _clean(e);
       });
     }
+  }
+
+  Future<void> _loadUnfinished() async {
+    try {
+      final runs = await _repo.listValidationRuns(collection: 'websiteLeads', kind: _spec.isWhatsApp ? 'whatsapp' : 'email');
+      if (mounted) setState(() => _unfinished = runs);
+    } catch (_) {
+      // The card is a convenience; the states below still resume a scope by hand.
+    }
+  }
+
+  /// Carries a stopped run on from where it left off.
+  Future<void> _resume(ValidationRun run) async {
+    if (_resuming.contains(run.id) || _starting || _progress.active) return;
+    if (_spec.isWhatsApp && !await _whatsAppGate()) return;
+    if (!mounted) return;
+    setState(() => _resuming.add(run.id));
+    try {
+      final message = await _repo.resumeValidationRun(run.id);
+      _sawRun = true;
+      if (message != null) _toast(message);
+      await _pollOnce();
+      if (mounted && !_progress.active) _loadSummary();
+    } catch (e) {
+      _toast(_clean(e));
+    } finally {
+      if (mounted) {
+        setState(() => _resuming.remove(run.id));
+        _loadUnfinished();
+      }
+    }
+  }
+
+  Future<void> _discard(ValidationRun run) async {
+    try {
+      await _repo.discardValidationRun(run.id);
+    } catch (e) {
+      _toast(_clean(e));
+    }
+    _loadUnfinished();
   }
 
   Future<void> _loadWeb() async {
@@ -394,6 +459,7 @@ class _ValidationTabState extends State<_ValidationTab> with AutomaticKeepAliveC
         if (wasActive) {
           _loadSummary(); // the run finished: counts moved
           _loadWeb();
+          _loadUnfinished(); // ...or stopped early, and can be resumed
         }
       }
     } catch (_) {
@@ -523,6 +589,7 @@ class _ValidationTabState extends State<_ValidationTab> with AutomaticKeepAliveC
             Text(_spec.blurb, style: Theme.of(context).textTheme.bodyMedium),
             const SizedBox(height: AppSpace.lg),
             ..._notices(),
+            if (!_progress.active) ..._unfinishedCards(),
             if (_progress.active) ...[
               _runningCard(),
               const SizedBox(height: AppSpace.lg),
@@ -543,10 +610,53 @@ class _ValidationTabState extends State<_ValidationTab> with AutomaticKeepAliveC
               ),
               child: _states(),
             ),
+            if (widget.category != null) ...[
+              const SizedBox(height: AppSpace.lg),
+              _ValidatedLeads(
+                key: ValueKey('${_spec.isWhatsApp}/${widget.category}'),
+                spec: _spec,
+                category: widget.category!,
+                states: _selected,
+                version: _resultsVersion,
+              ),
+            ],
           ],
         ),
       ),
     );
+  }
+
+  /// A stopped run: what it was, how far it got, and a way to carry on from there.
+  List<Widget> _unfinishedCards() {
+    return [
+      for (final run in _unfinished) ...[
+        AppAlert(
+          tone: AppTone.warning,
+          title: run.status == 'interrupted' ? 'Interrupted validation' : 'Stopped validation',
+          message: [
+            if (run.category != null) '"${run.category}"',
+            run.states.isEmpty ? 'every state' : run.states.join(', '),
+            '${run.checked} of ${run.total} checked',
+            if (run.found > 0) '${run.found} ${_spec.foundLabel}',
+            if (run.stoppedReason != null && run.stoppedReason!.isNotEmpty)
+              run.stoppedReason!
+            else if (run.status == 'interrupted')
+              'the backend stopped while it was running',
+          ].join(' · '),
+          actions: [
+            AppButton.primary(
+              label: 'Resume',
+              icon: AppIcons.refresh,
+              size: AppButtonSize.sm,
+              loading: _resuming.contains(run.id),
+              onPressed: () => _resume(run),
+            ),
+            AppButton.outlined(label: 'Discard', size: AppButtonSize.sm, onPressed: _resuming.contains(run.id) ? null : () => _discard(run)),
+          ],
+        ),
+        const SizedBox(height: AppSpace.lg),
+      ],
+    ];
   }
 
   List<Widget> _notices() {
@@ -683,6 +793,182 @@ class _ValidationTabState extends State<_ValidationTab> with AutomaticKeepAliveC
             const SizedBox(height: AppSpace.sm),
             Text(p.stoppedReason!, style: text.bodySmall?.copyWith(color: AppTheme.warning700, fontWeight: FontWeight.w600)),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+
+/// The leads this validation has qualified in the selected search — those on
+/// WhatsApp, or those with an email found — newest first, paged. Ticking states
+/// above narrows it to them. Reloads when a run finishes.
+class _ValidatedLeads extends StatefulWidget {
+  const _ValidatedLeads({
+    super.key,
+    required this.spec,
+    required this.category,
+    required this.states,
+    required this.version,
+  });
+
+  final _ValidationSpec spec;
+  final String category;
+  final Set<String> states;
+
+  /// A new value reloads the list.
+  final int version;
+
+  @override
+  State<_ValidatedLeads> createState() => _ValidatedLeadsState();
+}
+
+class _ValidatedLeadsState extends State<_ValidatedLeads> {
+  final List<Lead> _leads = [];
+  String? _cursor;
+  int? _total;
+  bool _loading = true;
+  bool _loadingMore = false;
+  String? _error;
+
+  /// Guards against a slow answer for an old search overwriting a newer one.
+  int _generation = 0;
+
+  LeadRepository get _repo => context.read<LeadRepository>();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+  }
+
+  @override
+  void didUpdateWidget(covariant _ValidatedLeads old) {
+    super.didUpdateWidget(old);
+    if (old.version != widget.version) _load();
+  }
+
+  Future<void> _load() async {
+    final generation = ++_generation;
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final page = await _repo.getLeadsPage(widget.spec.results, category: widget.category, limit: 50);
+      if (!mounted || generation != _generation) return;
+      setState(() {
+        _leads
+          ..clear()
+          ..addAll(page.leads);
+        _cursor = page.nextCursor;
+        _total = page.total;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted || generation != _generation) return;
+      setState(() {
+        _loading = false;
+        _error = e.toString().replaceFirst('Exception: ', '');
+      });
+    }
+  }
+
+  Future<void> _more() async {
+    final cursor = _cursor;
+    if (cursor == null || _loadingMore) return;
+    final generation = _generation;
+    setState(() => _loadingMore = true);
+    try {
+      final page = await _repo.getLeadsPage(widget.spec.results, cursor: cursor, category: widget.category, limit: 50);
+      if (!mounted || generation != _generation) return;
+      setState(() {
+        _leads.addAll(page.leads);
+        _cursor = page.nextCursor;
+        _loadingMore = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loadingMore = false);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    final shown = widget.states.isEmpty
+        ? _leads
+        : [for (final l in _leads) if (widget.states.contains(stateLabelOf(l.location))) l];
+    final whatsApp = widget.spec.isWhatsApp;
+    final filtered = widget.states.isNotEmpty;
+    final count = filtered ? '${shown.length}${_cursor != null ? '+' : ''}' : '${_total ?? _leads.length}${_total == null && _cursor != null ? '+' : ''}';
+
+    return SectionCard(
+      title: '${widget.spec.resultsTitle} · $count',
+      icon: whatsApp ? AppIcons.shieldCheck : AppIcons.mail,
+      subtitle: '"${widget.category}"${filtered ? ' · ${widget.states.length} state${widget.states.length == 1 ? '' : 's'} ticked' : ''}',
+      trailing: AppIconButton(icon: AppIcons.refresh, tooltip: 'Refresh', onPressed: _loading ? null : _load),
+      child: Builder(builder: (context) {
+        if (_loading && _leads.isEmpty) return const LoadingView(label: 'Loading…');
+        if (_error != null && _leads.isEmpty) {
+          return AppAlert(
+            tone: AppTone.error,
+            message: _error!,
+            actions: [AppButton.outlined(label: 'Retry', size: AppButtonSize.sm, onPressed: _load)],
+          );
+        }
+        if (shown.isEmpty) {
+          return Text(
+            filtered
+                ? 'None of the ticked states have one yet.'
+                : whatsApp
+                    ? 'No numbers confirmed on WhatsApp in this search yet. Validate some states above.'
+                    : 'No emails found in this search yet. Run the lookup above.',
+            style: text.bodyMedium,
+          );
+        }
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (final lead in shown) _row(context, lead, whatsApp),
+            if (_cursor != null) ...[
+              const SizedBox(height: AppSpace.sm),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: AppButton.outlined(label: 'Load more', size: AppButtonSize.sm, loading: _loadingMore, onPressed: _more),
+              ),
+            ],
+          ],
+        );
+      }),
+    );
+  }
+
+  Widget _row(BuildContext context, Lead lead, bool whatsApp) {
+    final text = Theme.of(context).textTheme;
+    final detail = whatsApp ? (lead.phone ?? '') : (lead.email ?? '');
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(lead.business, style: text.titleSmall, maxLines: 1, overflow: TextOverflow.ellipsis),
+                const SizedBox(height: 2),
+                Text(
+                  [stateLabelOf(lead.location), if (detail.isNotEmpty) detail].join(' · '),
+                  style: text.bodySmall,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: AppSpace.sm),
+          AppBadge(whatsApp ? 'On WhatsApp' : 'Email found', tone: AppTone.success, dense: true),
         ],
       ),
     );

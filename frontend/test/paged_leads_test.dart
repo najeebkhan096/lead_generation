@@ -51,12 +51,8 @@ class _FakeRepository implements LeadRepository {
     if (delay != null) await Future<void>.delayed(delay);
     if (listFails) throw Exception('Failed to load leads');
 
-    final all = switch (collection) {
-      LeadCollection.whatsappLeads => leads,
-      LeadCollection.reviewLeads => leads,
-      LeadCollection.websiteLeads => leads,
-      LeadCollection.emailLeads => leads,
-    };
+    // Every collection (and every narrowed variant of one) serves the same fixture.
+    final all = leads;
     final q = (query ?? '').trim().toLowerCase();
     bool matches(Lead l) {
       if (category != null && l.category != category) return false;

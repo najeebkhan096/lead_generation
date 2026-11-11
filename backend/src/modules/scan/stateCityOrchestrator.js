@@ -449,6 +449,7 @@ async function scanStateCities(job, category, stateRec) {
             reviewLeads: leads,
             // A no-website scan only keeps businesses without a website.
             queueEmails: job.mode !== 'no_website',
+            scanMode: job.mode === 'no_website' ? 'no_website' : 'reviews',
             log: (message, level) => logActivity(job, `"${category}" · ${stateRec.state} · ${city} — ${message}`, level),
           });
           // In a no-website scan the leads ARE those businesses.

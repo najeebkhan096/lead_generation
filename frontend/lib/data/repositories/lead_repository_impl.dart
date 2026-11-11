@@ -201,8 +201,9 @@ class LeadRepositoryImpl implements LeadRepository {
       _remote.startWhatsAppValidation(leads);
 
   @override
-  Future<ValidationStart> validateExternalLeads(List<Map<String, dynamic>> leads, {bool recheck = false}) =>
-      _remote.validateExternalLeads(leads, recheck: recheck);
+  Future<ValidationStart> validateExternalLeads(List<Map<String, dynamic>> leads,
+          {bool recheck = false, Map<String, dynamic>? scope}) =>
+      _remote.validateExternalLeads(leads, recheck: recheck, scope: scope);
 
   @override
   Future<String?> startWhatsAppAutoValidation({List<String>? states, String? collection, String? category}) =>
@@ -225,6 +226,16 @@ class LeadRepositoryImpl implements LeadRepository {
 
   @override
   Future<void> cancelEmailValidation() => _remote.cancelEmailValidation();
+
+  @override
+  Future<List<ValidationRun>> listValidationRuns({String? collection, String? kind}) =>
+      _remote.listValidationRuns(collection: collection, kind: kind);
+
+  @override
+  Future<String?> resumeValidationRun(String id) => _remote.resumeValidationRun(id);
+
+  @override
+  Future<void> discardValidationRun(String id) => _remote.discardValidationRun(id);
 
   @override
   Future<WhatsAppValidationSnapshot> getWhatsAppValidationStatus() =>
@@ -273,7 +284,8 @@ class LeadRepositoryImpl implements LeadRepository {
   Future<List<ContactedLead>> getSalesmanContactedLeads(String userId) => _remote.getSalesmanContactedLeads(userId);
 
   @override
-  Future<bool> moveContactedLeadBack(String userId, String leadId) => _remote.moveContactedLeadBack(userId, leadId);
+  Future<bool> moveContactedLeadBack(String userId, String leadId, {String kind = 'review'}) =>
+      _remote.moveContactedLeadBack(userId, leadId, kind: kind);
 
   @override
   Future<AppUpdateConfig> getAppUpdateConfig() => _remote.getAppUpdateConfig();

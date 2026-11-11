@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lead_generation_app/core/theme/app_theme.dart';
 import 'package:lead_generation_app/domain/entities/email_validation.dart';
+import 'package:lead_generation_app/domain/entities/lead.dart';
 import 'package:lead_generation_app/domain/entities/lead_page.dart';
 import 'package:lead_generation_app/domain/entities/whatsapp_web_status.dart';
 import 'package:lead_generation_app/domain/repositories/lead_repository.dart';
@@ -23,12 +24,60 @@ class _Repo implements LeadRepository {
   final emailStarts = <({List<String>? states, String? category, bool recheck})>[];
   final summaryCalls = <({String? collection, String? category})>[];
   final emailSummaryCategories = <String?>[];
+  final leadPageCalls = <({LeadCollection collection, String? category})>[];
+  final resumed = <String>[];
+  final discarded = <String>[];
+  List<ValidationRun> runs = [];
   bool waReady = true;
 
   @override
   Future<List<LeadCategory>> getLeadCategories(LeadCollection collection) async {
     expect(collection, LeadCollection.websiteLeads);
     return const [LeadCategory(name: 'Cafe USA', count: 19), LeadCategory(name: 'Bakery USA', count: 7)];
+  }
+
+  @override
+  Future<LeadPage> getLeadsPage(
+    LeadCollection collection, {
+    String? cursor,
+    String? category,
+    String? query,
+    int limit = 50,
+    bool verifiedOnly = false,
+  }) async {
+    leadPageCalls.add((collection: collection, category: category));
+    Lead lead(String name, String where, {String? email}) => Lead(
+          id: name,
+          dbId: name,
+          business: name,
+          category: category ?? '',
+          location: where,
+          phone: '+15125550100',
+          email: email,
+          badReview: const BadReview(stars: 1, text: '', date: 'Unknown'),
+        );
+    final withEmail = collection == LeadCollection.websiteWithEmail;
+    final leads = [
+      lead('Alpha Cafe', 'Austin, TX', email: withEmail ? 'hi@alpha.test' : null),
+      lead('Bravo Cafe', 'Miami, FL', email: withEmail ? 'hi@bravo.test' : null),
+    ];
+    return LeadPage(leads: leads, total: 2);
+  }
+
+  @override
+  Future<List<ValidationRun>> listValidationRuns({String? collection, String? kind}) async =>
+      [for (final r in runs) if (r.kind == kind) r];
+
+  @override
+  Future<String?> resumeValidationRun(String id) async {
+    resumed.add(id);
+    return 'Resumed. Started validation for 60 leads.';
+  }
+
+  @override
+  Future<void> discardValidationRun(String id) async {
+    discarded.add(id);
+    runs = [for (final r in runs) if (r.id != id) r];
   }
 
   @override
@@ -74,11 +123,19 @@ class _Repo implements LeadRepository {
 }
 
 /// [search] is the category picked from the dropdown before anything else.
-Future<_Repo> _pump(WidgetTester tester, {int tab = 0, bool waReady = true, String? search = 'Cafe USA'}) async {
+Future<_Repo> _pump(
+  WidgetTester tester, {
+  int tab = 0,
+  bool waReady = true,
+  String? search = 'Cafe USA',
+  List<ValidationRun> runs = const [],
+}) async {
   tester.view.physicalSize = const Size(1100, 1400);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
-  final repo = _Repo()..waReady = waReady;
+  final repo = _Repo()
+    ..waReady = waReady
+    ..runs = [...runs];
   await tester.pumpWidget(
     RepositoryProvider<LeadRepository>.value(
       value: repo,
@@ -217,5 +274,106 @@ void main() {
     await tester.pumpAndSettle();
     expect(repo.emailStarts.single.states, ['FL']);
     expect(repo.emailStarts.single.recheck, isTrue);
+  });
+
+  group('validated leads of the selected search', () {
+    testWidgets('the WhatsApp tab lists the numbers confirmed on WhatsApp in that search', (tester) async {
+      final repo = await _pump(tester);
+      expect(repo.leadPageCalls, [(collection: LeadCollection.websiteVerified, category: 'Cafe USA')]);
+      expect(find.text('Validated on WhatsApp · 2'), findsOneWidget);
+      expect(find.text('Alpha Cafe'), findsOneWidget);
+      expect(find.text('Bravo Cafe'), findsOneWidget);
+      expect(find.text('On WhatsApp'), findsNWidgets(2));
+      expect(find.textContaining('"Cafe USA"'), findsWidgets);
+    });
+
+    testWidgets('nothing is listed until a search is picked', (tester) async {
+      final repo = await _pump(tester, search: null);
+      expect(repo.leadPageCalls, isEmpty);
+      expect(find.textContaining('Validated on WhatsApp'), findsNothing);
+    });
+
+    testWidgets('the Email tab lists the emails found, from the no-website scan\'s leads', (tester) async {
+      final repo = await _pump(tester, tab: 1);
+      expect(repo.leadPageCalls.single, (collection: LeadCollection.websiteWithEmail, category: 'Cafe USA'));
+      expect(find.text('Emails found · 2'), findsOneWidget);
+      expect(find.textContaining('hi@alpha.test'), findsOneWidget);
+      expect(find.text('Email found'), findsNWidgets(2));
+    });
+
+    testWidgets('ticking a state narrows the list to its leads', (tester) async {
+      await _pump(tester);
+      await tester.tap(find.byType(Checkbox).at(2)); // TX
+      await tester.pump();
+      expect(find.text('Alpha Cafe'), findsOneWidget); // Austin, TX
+      expect(find.text('Bravo Cafe'), findsNothing); // Miami, FL
+    });
+
+    testWidgets('changing the search loads that search\'s leads', (tester) async {
+      final repo = await _pump(tester);
+      await tester.tap(find.text('Cafe USA').first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Bakery USA').last);
+      await tester.pumpAndSettle();
+      expect(repo.leadPageCalls.map((c) => c.category), ['Cafe USA', 'Bakery USA']);
+    });
+  });
+
+  group('an interrupted validation', () {
+    const stopped = ValidationRun(
+      id: 'run1',
+      kind: 'whatsapp',
+      status: 'interrupted',
+      category: 'Cafe USA',
+      states: ['TX', 'OH'],
+      total: 300,
+      checked: 120,
+      found: 80,
+    );
+
+    testWidgets('is shown with how far it got, and Resume carries it on', (tester) async {
+      final repo = await _pump(tester, runs: [stopped]);
+      expect(find.text('Interrupted validation'), findsOneWidget);
+      expect(find.textContaining('"Cafe USA" · TX, OH · 120 of 300 checked · 80 on WhatsApp'), findsOneWidget);
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Resume'));
+      await tester.pumpAndSettle();
+      expect(repo.resumed, ['run1']);
+      expect(repo.waStarts, isEmpty, reason: 'a resume goes through the saved run, not a new scope');
+    });
+
+    testWidgets('a run stopped for a safety reason says why; Discard forgets it', (tester) async {
+      final repo = await _pump(tester, runs: [
+        const ValidationRun(
+          id: 'run2',
+          kind: 'whatsapp',
+          status: 'stopped',
+          category: 'Cafe USA',
+          total: 50,
+          checked: 10,
+          stoppedReason: 'Daily check limit reached',
+        ),
+      ]);
+      expect(find.text('Stopped validation'), findsOneWidget);
+      expect(find.textContaining('every state · 10 of 50 checked · Daily check limit reached'), findsOneWidget);
+
+      await tester.tap(find.widgetWithText(OutlinedButton, 'Discard'));
+      await tester.pumpAndSettle();
+      expect(repo.discarded, ['run2']);
+      expect(find.text('Stopped validation'), findsNothing);
+    });
+
+    testWidgets('each tab shows only its own kind of run', (tester) async {
+      await _pump(tester, tab: 1, runs: [stopped]); // a WhatsApp run, Email tab open
+      expect(find.text('Interrupted validation'), findsNothing);
+    });
+
+    testWidgets('WhatsApp not connected: Resume sends nothing and offers to connect', (tester) async {
+      final repo = await _pump(tester, waReady: false, runs: [stopped]);
+      await tester.tap(find.widgetWithText(FilledButton, 'Resume'));
+      await tester.pumpAndSettle();
+      expect(find.text('WhatsApp Web not connected'), findsOneWidget);
+      expect(repo.resumed, isEmpty);
+    });
   });
 }

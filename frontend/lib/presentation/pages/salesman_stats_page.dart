@@ -226,16 +226,20 @@ class _TotalsGrid extends StatelessWidget {
     final tiles = range == StatsRange.today
         ? [
             ('Contacted today', '${t.contactedToday}'),
+            ('1-star contacted today', '${t.review.today}'),
+            ('No-website contacted today', '${t.website.today}'),
             ('Salesmen active today', '${stats.salesmen.where((s) => s.contactedToday > 0).length}'),
-            ('New leads left', '${t.newLeft}'),
-            ('1-star WhatsApp leads', '${t.reviewLeads}'),
+            ('1-star leads left (New)', '${t.newLeft}'),
+            ('No-website leads left (New)', '${t.websiteNewLeft}'),
           ]
         : [
             ('Contacted in total', '${t.contactedTotal}'),
+            ('1-star contacted', '${t.review.total}'),
+            ('No-website contacted', '${t.website.total}'),
             ('Contacted, last 7 days', '${t.contactedLast7}'),
             ('Salesmen who contacted', '${t.activeSalesmen}'),
-            ('New leads left', '${t.newLeft}'),
             ('1-star WhatsApp leads', '${t.reviewLeads}'),
+            ('No-website WhatsApp leads', '${t.websiteLeads}'),
           ];
     return Wrap(
       spacing: 12,
@@ -292,11 +296,15 @@ class _SalesmanCard extends StatelessWidget {
         ? [
             _Chip('Today ${stat.contactedToday} of ${stat.dailyLeadLimit}', highlight: stat.limitLeftToday == 0),
             _Chip('${stat.limitLeftToday} left today'),
+            _Chip('1-star ${stat.review.today}'),
+            _Chip('No website ${stat.website.today}'),
             _Chip('Last contact ${stat.lastContactAt == null ? '—' : dateTimeLabel(stat.lastContactAt!)}'),
           ]
         : [
             _Chip('Total ${stat.contactedTotal}'),
-            _Chip('Last 7 days ${stat.contactedLast7}'),
+            _Chip('1-star ${stat.review.total}'),
+            _Chip('No website ${stat.website.total}'),
+            _Chip('Last 7 days ${stat.contactedLast7} (1-star ${stat.review.last7} · no website ${stat.website.last7})'),
             _Chip('Active days ${stat.activeDays}'),
             _Chip('Average ${stat.averagePerActiveDay.toStringAsFixed(1)} per active day'),
             _Chip('Days at limit ${stat.daysAtLimit}', highlight: stat.daysAtLimit > 0),

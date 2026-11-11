@@ -79,6 +79,7 @@ class LeadRemoteDataSource {
     bool verifiedOnly = false,
   }) async {
     final params = <String, String>{
+      ...collection.query,
       'limit': '$limit',
       'cursor': ?cursor,
       'category': ?category,
@@ -97,7 +98,7 @@ class LeadRemoteDataSource {
   /// filter. The backend caches this, so it's cheap after the first call.
   Future<List<LeadCategory>> getLeadCategories(LeadCollection collection) async {
     final response = await _client.get(
-      _uri(ApiConstants.dbCategories).replace(queryParameters: {'collection': collection.firestoreName}),
+      _uri(ApiConstants.dbCategories).replace(queryParameters: {'collection': collection.firestoreName, ...collection.query}),
     );
     if (response.statusCode >= 400) {
       final body = _tryDecode(response.body);
@@ -467,14 +468,17 @@ class LeadRemoteDataSource {
 
   /// Starts a WhatsApp validation over an explicit list (e.g. an Excel
   /// archive's businesses). Numbers already answered are reused or skipped by
-  /// the backend; [recheck] asks about every number again.
+  /// the backend; [recheck] asks about every number again. [scope] says what
+  /// is being validated (`archiveId`, `category`, `states`), so the run is on
+  /// record and can be resumed if it stops.
   Future<ValidationStart> validateExternalLeads(
     List<Map<String, dynamic>> leads, {
     bool recheck = false,
+    Map<String, dynamic>? scope,
   }) =>
       _startValidation(
         ApiConstants.whatsAppWebValidateList,
-        {'leads': leads, if (recheck) 'recheck': true},
+        {'leads': leads, if (recheck) 'recheck': true, 'scope': ?scope},
         'Failed to start WhatsApp validation',
       );
 
@@ -575,6 +579,37 @@ class LeadRemoteDataSource {
       throw Exception('Failed to load the email lookup status');
     }
     return EmailValidationSnapshot.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  /// Validations that stopped before finishing (WhatsApp / email), newest first.
+  Future<List<ValidationRun>> listValidationRuns({String? collection, String? kind}) async {
+    final query = Uri(queryParameters: {'collection': ?collection, 'kind': ?kind}).query;
+    final response = await _client.get(_uri(query.isEmpty ? ApiConstants.validationRuns : '${ApiConstants.validationRuns}?$query'));
+    if (response.statusCode >= 400) {
+      final body = _tryDecode(response.body);
+      throw Exception(body['error'] ?? 'Failed to load the unfinished validations');
+    }
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    return [for (final r in (body['runs'] as List<dynamic>? ?? const [])) ValidationRun.fromJson(r as Map<String, dynamic>)];
+  }
+
+  /// Carries on a stopped validation from where it left off. Returns the
+  /// server's one-line summary.
+  Future<String?> resumeValidationRun(String id) async {
+    final response = await _client.post(_uri('${ApiConstants.validationRuns}/$id/resume')).timeout(const Duration(minutes: 2));
+    final body = _tryDecode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['error'] ?? 'Failed to resume the validation');
+    }
+    return body['message'] as String?;
+  }
+
+  Future<void> discardValidationRun(String id) async {
+    final response = await _client.delete(_uri('${ApiConstants.validationRuns}/$id'));
+    if (response.statusCode >= 400) {
+      final body = _tryDecode(response.body);
+      throw Exception(body['error'] ?? 'Failed to discard the validation');
+    }
   }
 
   Future<void> cancelEmailValidation() async {
@@ -909,7 +944,7 @@ class LeadRemoteDataSource {
     return usersJson.map((e) => SalesUser.fromJson(e as Map<String, dynamic>)).toList();
   }
 
-  /// The 1-star WhatsApp leads this salesman has contacted, newest first.
+  /// The leads this salesman has contacted — 1-star and no-website — newest first.
   Future<List<ContactedLead>> getSalesmanContactedLeads(String userId) async {
     final response = await _client.get(_uri('${ApiConstants.users}/$userId/contacted-leads'));
     if (response.statusCode >= 400) {
@@ -922,8 +957,8 @@ class LeadRemoteDataSource {
   }
 
   /// Puts a contacted lead back in New. Returns whether it freed a slot in today's count.
-  Future<bool> moveContactedLeadBack(String userId, String leadId) async {
-    final response = await _client.post(_uri('${ApiConstants.users}/$userId/contacted-leads/$leadId/move-back'));
+  Future<bool> moveContactedLeadBack(String userId, String leadId, {String kind = 'review'}) async {
+    final response = await _client.post(_uri('${ApiConstants.users}/$userId/contacted-leads/$leadId/move-back?kind=$kind'));
     final body = _tryDecode(response.body);
     if (response.statusCode >= 400) {
       throw Exception(body['error'] ?? 'Failed to move the lead back');

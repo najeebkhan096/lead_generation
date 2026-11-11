@@ -181,7 +181,7 @@ abstract class LeadRepository {
   /// to Firestore (e.g. extracted from an Excel archive) — results are
   /// read back from [getWhatsAppValidationStatus] and correlated by the
   /// `id` each lead was sent with, not written to any document.
-  Future<ValidationStart> validateExternalLeads(List<Map<String, dynamic>> leads, {bool recheck});
+  Future<ValidationStart> validateExternalLeads(List<Map<String, dynamic>> leads, {bool recheck, Map<String, dynamic>? scope});
 
   /// Automatically discovers and validates unchecked leads from Firestore.
   /// Pass [states] to limit the run to those state names; omit for every
@@ -206,6 +206,17 @@ abstract class LeadRepository {
   Future<EmailValidationSnapshot> getEmailValidationStatus();
 
   Future<void> cancelEmailValidation();
+
+  /// Validations that stopped before finishing, newest first. [collection] is
+  /// `websiteLeads` or `leads`; [kind] is `whatsapp` or `email`.
+  Future<List<ValidationRun>> listValidationRuns({String? collection, String? kind});
+
+  /// Carries a stopped validation on from where it left off (leads it already
+  /// checked are skipped). Returns the server's one-line summary.
+  Future<String?> resumeValidationRun(String id);
+
+  /// Forgets a stopped validation; the leads keep the checks already made.
+  Future<void> discardValidationRun(String id);
 
   Future<WhatsAppValidationSnapshot> getWhatsAppValidationStatus();
 
@@ -244,7 +255,7 @@ abstract class LeadRepository {
   Future<List<ContactedLead>> getSalesmanContactedLeads(String userId);
 
   /// Returns whether the move freed a slot in today's count.
-  Future<bool> moveContactedLeadBack(String userId, String leadId);
+  Future<bool> moveContactedLeadBack(String userId, String leadId, {String kind = 'review'});
 
   Future<AppUpdateConfig> getAppUpdateConfig();
 

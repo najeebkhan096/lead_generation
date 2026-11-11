@@ -81,3 +81,62 @@ class EmailValidationSnapshot extends Equatable {
   @override
   List<Object?> get props => [active, status, total, checked, validCount, invalidCount, noEmailCount, errorCount, currentBusiness, stoppedReason];
 }
+
+/// A validation (WhatsApp or email) that stopped before it finished — cancelled,
+/// halted for a safety reason, or cut off by a backend restart — and can be
+/// resumed from where it left off.
+class ValidationRun extends Equatable {
+  const ValidationRun({
+    required this.id,
+    required this.kind,
+    required this.status,
+    this.collection = 'websiteLeads',
+    this.archiveId,
+    this.category,
+    this.states = const [],
+    this.total = 0,
+    this.checked = 0,
+    this.found = 0,
+    this.stoppedReason,
+    this.updatedAt,
+  });
+
+  final String id;
+
+  /// `whatsapp` or `email`.
+  final String kind;
+
+  /// `stopped` (cancelled or halted) or `interrupted` (the backend went away).
+  final String status;
+  final String collection;
+
+  /// For an Excel archive's validation (`collection == 'archive'`): which archive.
+  final String? archiveId;
+  final String? category;
+  final List<String> states;
+  final int total;
+  final int checked;
+  final int found;
+  final String? stoppedReason;
+  final DateTime? updatedAt;
+
+  bool get isWhatsApp => kind == 'whatsapp';
+
+  factory ValidationRun.fromJson(Map<String, dynamic> json) => ValidationRun(
+        id: (json['id'] as String?) ?? '',
+        kind: (json['kind'] as String?) ?? 'whatsapp',
+        status: (json['status'] as String?) ?? 'stopped',
+        collection: (json['collection'] as String?) ?? 'websiteLeads',
+        archiveId: json['archiveId'] as String?,
+        category: json['category'] as String?,
+        states: [for (final s in (json['states'] as List<dynamic>? ?? const [])) s as String],
+        total: (json['total'] as num?)?.toInt() ?? 0,
+        checked: (json['checked'] as num?)?.toInt() ?? 0,
+        found: (json['found'] as num?)?.toInt() ?? 0,
+        stoppedReason: json['stoppedReason'] as String?,
+        updatedAt: json['updatedAt'] is num ? DateTime.fromMillisecondsSinceEpoch((json['updatedAt'] as num).toInt()) : null,
+      );
+
+  @override
+  List<Object?> get props => [id, kind, status, collection, archiveId, category, states, total, checked, found, stoppedReason, updatedAt];
+}

@@ -1,5 +1,6 @@
 import { startEmailValidationJob, getEmailJobSnapshot, cancelEmailValidationJob } from './emailValidationJob.js';
 import { listUncheckedEmail, summarizeWebsiteLeadValidation } from '../../leads/websiteLeadStore.js';
+import { trackRun } from '../validationRuns.js';
 
 // A lookup is a paced web search plus a few page fetches (several seconds per
 // business), so one run is kept to a size that finishes in a sitting; the
@@ -16,34 +17,55 @@ function requireWebsiteLeads(collection) {
 }
 
 /**
+ * Starts the email lookup over the no-website leads that have none and have not
+ * been looked up yet (in [category] and [states], when given), at most
+ * MAX_EMAIL_LEADS_PER_RUN, and records the run so it can be resumed. A lead
+ * already looked up is skipped, so starting the same scope again continues
+ * where an interrupted run stopped. `recheck` includes the ones already looked
+ * up with nothing found.
+ */
+export async function launchEmailValidation({ states, category, recheck = false }, { startJob = startEmailValidationJob, track = trackRun } = {}) {
+  const all = await listUncheckedEmail({ states, category, recheck });
+  if (!all.length) {
+    return {
+      started: false,
+      message: states?.length ? 'No unchecked businesses in the selected states.' : 'No businesses need an email lookup.',
+    };
+  }
+  const leads = all.slice(0, MAX_EMAIL_LEADS_PER_RUN);
+  const result = startJob({ leads });
+  const runId = track({
+    kind: 'email',
+    collection: 'websiteLeads',
+    category: category || null,
+    states: states || [],
+    recheck,
+    getSnapshot: getEmailJobSnapshot,
+  });
+  const scope = states?.length ? ` in ${states.length} selected state${states.length === 1 ? '' : 's'}` : '';
+  const more = all.length > leads.length ? ` ${all.length - leads.length} more are left — run it again for the rest.` : '';
+  return {
+    started: true,
+    result,
+    runId,
+    remaining: all.length - leads.length,
+    message: `Started the email lookup for ${leads.length} business${leads.length === 1 ? '' : 'es'}${scope}.${more}`,
+  };
+}
+
+/**
  * POST /api/email-validation/validate-auto
  *
  * Body: `{ collection?: 'websiteLeads', category?: string, states?: string[], recheck?: boolean }`.
- * Looks up the public email of every no-website lead (in [category] and [states], or all)
- * that has none and has not been looked up yet. `recheck` includes the ones
- * already looked up with nothing found. At most MAX_EMAIL_LEADS_PER_RUN per run.
  */
 export async function startAutoValidation(req, res) {
   try {
     const { collection, states: rawStates, recheck, category } = req.body || {};
     requireWebsiteLeads(collection);
     const states = Array.isArray(rawStates) ? rawStates.map((s) => String(s).trim()).filter(Boolean) : undefined;
-    const all = await listUncheckedEmail({ states, category, recheck: recheck === true });
-    if (!all.length) {
-      return res.json({
-        success: true,
-        message: states?.length ? 'No unchecked businesses in the selected states.' : 'No businesses need an email lookup.',
-      });
-    }
-    const leads = all.slice(0, MAX_EMAIL_LEADS_PER_RUN);
-    const result = startEmailValidationJob({ leads });
-    const scope = states?.length ? ` in ${states.length} selected state${states.length === 1 ? '' : 's'}` : '';
-    const more = all.length > leads.length ? ` ${all.length - leads.length} more are left — run it again for the rest.` : '';
-    return res.status(202).json({
-      ...result,
-      remaining: all.length - leads.length,
-      message: `Started the email lookup for ${leads.length} business${leads.length === 1 ? '' : 'es'}${scope}.${more}`,
-    });
+    const out = await launchEmailValidation({ states, category, recheck: recheck === true });
+    if (!out.started) return res.json({ success: true, message: out.message });
+    return res.status(202).json({ ...out.result, runId: out.runId, remaining: out.remaining, message: out.message });
   } catch (err) {
     return res.status(err.status || 500).json({ error: err.message || 'Failed to start email validation' });
   }

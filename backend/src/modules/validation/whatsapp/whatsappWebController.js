@@ -10,6 +10,7 @@ import {
   cancelValidationJob,
 } from './whatsappValidationJob.js';
 import { getLeadsForValidation } from '../../leads/firebaseLeadStore.js';
+import { trackRun } from '../validationRuns.js';
 
 export function getStatus(_req, res) {
   return res.json({ ...whatsappWeb.getStatus(), safety: whatsappSafety.getSafetyStatus() });
@@ -109,7 +110,7 @@ export async function startSavedLeadValidation(req, res) {
  * so the per-lead update is a no-op.
  */
 export async function startExternalValidation(req, res) {
-  const { leads, recheck } = req.body || {};
+  const { leads, recheck, scope } = req.body || {};
   if (!Array.isArray(leads) || !leads.length) {
     return res.status(400).json({ error: 'leads array is required' });
   }
@@ -144,39 +145,77 @@ export async function startExternalValidation(req, res) {
       });
     }
     const result = startValidationJob({ leads: toCheck, reused, updateLeadFn: async () => {} });
-    return res.status(202).json({ ...result, alreadyChecked });
+    // An archive validation is recorded like the others, so a stop or a restart
+    // leaves an unfinished run to resume from the archive's page. (Only when the
+    // page says what it is validating; the leads themselves are not stored.)
+    let runId = null;
+    if (scope && typeof scope.archiveId === 'string' && scope.archiveId) {
+      runId = trackRun({
+        kind: 'whatsapp',
+        collection: 'archive',
+        category: typeof scope.category === 'string' ? scope.category : null,
+        states: Array.isArray(scope.states) ? scope.states.map(String) : [],
+        recheck: recheck === true,
+        extra: { archiveId: scope.archiveId },
+        getSnapshot: getJobSnapshot,
+      });
+    }
+    return res.status(202).json({ ...result, alreadyChecked, runId });
   } catch (err) {
     const status = err.status || 500;
     return res.status(status).json({ error: err.message || 'Failed to start validation' });
   }
 }
 
+/**
+ * Starts the WhatsApp check over every unchecked lead of [collection] (in
+ * [category] and [states], when given) and records the run so it can be
+ * resumed. A lead that was already checked is skipped, so starting the same
+ * scope again continues where an interrupted run stopped.
+ *
+ * [deps] are test seams: the job starter and the run tracker.
+ *
+ * @returns {Promise<{started: false, message: string} | {started: true, result: object, runId: string, message: string}>}
+ */
+export async function launchAutoValidation({ collection, states, category }, { startJob = startValidationJob, track = trackRun } = {}) {
+  const source = leadSource(collection);
+  const leads = await source.listUncheckedWhatsApp({ states, category });
+  if (!leads.length) {
+    return {
+      started: false,
+      message: states?.length
+        ? 'No unvalidated leads found in the selected states.'
+        : category
+          ? `No leads needing validation found in "${category}".`
+          : 'No leads needing validation found.',
+    };
+  }
+  const result = startJob({
+    leads: leads.map((l) => ({ ...l, sourceType: source.sourceType })),
+    updateLeadFn: source.setWhatsApp,
+    saveWhatsAppLeadsFn: source.saveVerified,
+  });
+  const runId = track({
+    kind: 'whatsapp',
+    collection: collection || 'leads',
+    category: category || null,
+    states: states || [],
+    getSnapshot: getJobSnapshot,
+  });
+  const scope = states?.length ? ` in ${states.length} selected state${states.length === 1 ? '' : 's'}` : '';
+  return { started: true, result, runId, message: `Started validation for ${leads.length} leads${scope}.` };
+}
+
 export async function startAutoValidation(req, res) {
   try {
-    const source = leadSource(req.body?.collection);
     const rawStates = req.body?.states;
     const states = Array.isArray(rawStates)
       ? rawStates.map((s) => String(s).trim()).filter(Boolean)
       : undefined;
     const category = typeof req.body?.category === 'string' ? req.body.category.trim() : '';
-    const leads = await source.listUncheckedWhatsApp({ states, category });
-    if (!leads.length) {
-      return res.json({
-        success: true,
-        message: states?.length
-          ? 'No unvalidated leads found in the selected states.'
-          : category
-            ? `No leads needing validation found in "${category}".`
-            : 'No leads needing validation found.',
-      });
-    }
-    const result = startValidationJob({
-      leads: leads.map((l) => ({ ...l, sourceType: source.sourceType })),
-      updateLeadFn: source.setWhatsApp,
-      saveWhatsAppLeadsFn: source.saveVerified,
-    });
-    const scope = states?.length ? ` in ${states.length} selected state${states.length === 1 ? '' : 's'}` : '';
-    return res.status(202).json({ ...result, message: `Started validation for ${leads.length} leads${scope}.` });
+    const out = await launchAutoValidation({ collection: req.body?.collection, states, category });
+    if (!out.started) return res.json({ success: true, message: out.message });
+    return res.status(202).json({ ...out.result, runId: out.runId, message: out.message });
   } catch (err) {
     const status = err.status || 500;
     return res.status(status).json({ error: err.message || 'Failed to start auto validation' });

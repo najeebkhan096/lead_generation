@@ -17,13 +17,14 @@ class LeadsHubPage extends StatelessWidget {
   Widget build(BuildContext context) => const SavedBusinessesPage();
 }
 
-/// **Verified** — the output: 1-star review leads whose WhatsApp number was confirmed.
+/// **Verified** — the output: leads whose WhatsApp number was confirmed, in two tabs
+/// (no website / 1-star reviews). `?tab=review` opens the 1-star one.
 class VerifiedHubPage extends StatelessWidget {
   const VerifiedHubPage({super.key, this.tab});
 
-  /// Kept for old links (`?tab=`); there is one list now.
+  /// `review` opens the 1-star tab; anything else, the no-website one.
   final String? tab;
 
   @override
-  Widget build(BuildContext context) => const WhatsAppLeadsPage();
+  Widget build(BuildContext context) => WhatsAppLeadsPage(initialTab: tab == 'review' ? 1 : 0);
 }

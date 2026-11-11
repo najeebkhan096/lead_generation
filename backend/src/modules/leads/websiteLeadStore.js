@@ -16,6 +16,7 @@
  *     rating, totalReviews, source,
  *     websiteStatus: 'missing' (→ 'available' if a later scan finds a site),
  *     websiteCheckedAt, leadTypes: ['no_website', 'review'?],
+ *     scanModes: ['reviews'?, 'no_website'?]   which kinds of scan found it,
  *     createdAt, updatedAt
  *   }
  */
@@ -24,6 +25,7 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { getFirestore } from '../../firebase/admin.js';
 import { leadDocId, normalizeCategory } from '../../lib/leadIdentity.js';
 import { pagedList, invalidateCategories } from '../../lib/pagination.js';
+import { _COLLECTIONS as RUN_COLLECTIONS } from '../scan/noWebsiteRunStore.js';
 
 const COLLECTION = 'websiteLeads';
 
@@ -68,6 +70,9 @@ export function buildWebsiteLeadPatch(existing, site, now = new Date()) {
     websiteStatus: 'missing',
     websiteCheckedAt: now,
     leadTypes: unionList(existing?.leadTypes, ['no_website', ...(site.leadTypes || [])]),
+    // Every kind of scan that has found this business. Only a dedicated
+    // no-website scan puts a lead in the no-website validation and lists.
+    scanModes: unionList(existing?.scanModes, [site.scanMode === 'no_website' ? 'no_website' : 'reviews']),
     updatedAt: now,
   };
   if (!existing) patch.createdAt = now;
@@ -151,9 +156,20 @@ function docToWebsiteLead(doc) {
   };
 }
 
-/** One page of confirmed no-website leads, newest first. */
-export async function listWebsiteLeads({ limit, cursor, category, q } = {}) {
-  return pagedList({
+/**
+ * One page of confirmed no-website leads, newest first.
+ *
+ * [scan] `no_website` keeps only the leads a dedicated no-website scan found
+ * (see [inNoWebsiteScope]) — the 1-star scan also files the no-website
+ * businesses it happens to open, and those are a different list. [verified]
+ * keeps only the leads whose number a WhatsApp check confirmed; [withEmail] only
+ * those an email lookup found an address for.
+ */
+export async function listWebsiteLeads({ limit, cursor, category, q, scan, verified, withEmail } = {}) {
+  const where = [['websiteStatus', '==', 'missing']];
+  if (verified) where.push(['hasWhatsApp', '==', true]);
+  const runCategories = scan === 'no_website' ? await noWebsiteRunCategories() : null;
+  const page = await pagedList({
     db: getFirestore(),
     collection: COLLECTION,
     mapDoc: docToWebsiteLead,
@@ -161,8 +177,21 @@ export async function listWebsiteLeads({ limit, cursor, category, q } = {}) {
     cursor,
     category,
     q,
-    where: [['websiteStatus', '==', 'missing']],
+    where,
+    memoryFilter:
+      runCategories || withEmail
+        ? (d) => (!runCategories || inNoWebsiteScope(d, runCategories)) && (!withEmail || Boolean(d.email))
+        : undefined,
+    maskFields: ['scanModes', 'email'],
   });
+  // A scoped list is read by scanning, which cannot count; the first page
+  // still reports how many leads there are (a short-lived tally, not a read
+  // of the whole collection per request).
+  if (runCategories && page.total == null && !cursor && !String(q || '').trim()) {
+    const rows = await listWebsiteScanCategories({ verified, withEmail });
+    page.total = category ? (rows.find((r) => r.name === category)?.count ?? 0) : rows.reduce((sum, r) => sum + r.count, 0);
+  }
+  return page;
 }
 
 export async function deleteWebsiteLead(leadId) {
@@ -191,6 +220,41 @@ export async function deleteWebsiteLeadsByCategory(category) {
 }
 
 // ---- validation (WhatsApp + email) ----------------------------------------
+
+// ---- which scan found a lead -----------------------------------------------
+
+/**
+ * The categories a dedicated no-website scan has run for, normalised the way
+ * `websiteLeads` stores them ("Cafe" -> "Cafe USA"). Used only for leads filed
+ * before `scanModes` existed, whose origin is otherwise unknown.
+ */
+let runCategoryCache = { at: 0, value: new Set() };
+export async function noWebsiteRunCategories({ db = getFirestore(), now = Date.now() } = {}) {
+  if (now - runCategoryCache.at < 60_000) return runCategoryCache.value;
+  const snap = await db.collection(RUN_COLLECTIONS.PROGRESS).select('category').get();
+  const value = new Set();
+  for (const doc of snap.docs) {
+    const raw = doc.get('category');
+    if (!raw) continue;
+    value.add(String(raw).trim());
+    const tagged = normalizeCategory(raw, 'US');
+    if (tagged) value.add(tagged);
+  }
+  runCategoryCache = { at: now, value };
+  return value;
+}
+
+/**
+ * Was this lead found by a dedicated no-website scan? A lead says so itself
+ * (`scanModes`). One filed before that field existed counts only when its
+ * category is one a no-website scan has run for. A lead only the 1-star scan
+ * has found does not count, so the 1-star searches never show up as no-website
+ * ones.
+ */
+export function inNoWebsiteScope(d, runCategories) {
+  if (Array.isArray(d.scanModes)) return d.scanModes.includes('no_website');
+  return runCategories.has(String(d.category || '').trim());
+}
 
 /** The state part of a location — "Austin, TX" -> "TX"; a bare "Texas" stays. */
 export function stateOfLocation(location) {
@@ -239,12 +303,47 @@ function toValidationLead(id, d) {
   };
 }
 
-/** Every confirmed no-website lead, optionally only those in an exact [category]. */
+/**
+ * Every confirmed no-website lead that a dedicated no-website scan found,
+ * optionally only those in an exact [category]. Validation and the no-website
+ * lists work on these only: leads the 1-star scan filed on the side are not
+ * part of them.
+ */
 async function allMissingDocs(category) {
   let query = getFirestore().collection(COLLECTION).where('websiteStatus', '==', 'missing');
   const wanted = String(category || '').trim();
   if (wanted) query = query.where('category', '==', wanted);
-  return (await query.get()).docs;
+  const [docs, runCategories] = await Promise.all([query.get().then((snap) => snap.docs), noWebsiteRunCategories()]);
+  return docs.filter((doc) => inNoWebsiteScope(doc.data(), runCategories));
+}
+
+/**
+ * The searches of the no-website scans, with how many leads each has: what the
+ * validation page and the verified list offer as categories. [verified] counts
+ * only the leads confirmed on WhatsApp.
+ */
+const SCAN_COUNT_TTL_MS = 20_000;
+const scanCountCache = new Map(); // flags -> { at, value }
+
+export async function listWebsiteScanCategories({ verified = false, withEmail = false } = {}) {
+  const key = `${verified ? 'v' : ''}${withEmail ? 'e' : ''}`;
+  const hit = scanCountCache.get(key);
+  if (hit && Date.now() - hit.at < SCAN_COUNT_TTL_MS) return hit.value;
+
+  const docs = await allMissingDocs();
+  const counts = new Map();
+  for (const doc of docs) {
+    const d = doc.data();
+    if (verified && d.hasWhatsApp !== true) continue;
+    if (withEmail && !d.email) continue;
+    const name = String(d.category || '').trim();
+    if (name) counts.set(name, (counts.get(name) || 0) + 1);
+  }
+  const value = [...counts.entries()]
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+  scanCountCache.set(key, { at: Date.now(), value });
+  return value;
 }
 
 /** No-website leads by Firestore id, in the shape the validation jobs take. */
@@ -330,6 +429,10 @@ export async function updateWebsiteLeadWhatsApp(leadId, { hasWhatsApp }) {
   await getFirestore().collection(COLLECTION).doc(leadId).update({
     hasWhatsApp: Boolean(hasWhatsApp),
     whatsAppCheckedAt: FieldValue.serverTimestamp(),
+    // Only a no-website scan's lead is ever validated, so say so on the lead
+    // itself: that is what lets the phone ask for exactly these (and a lead filed
+    // before `scanModes` existed gets its tag the first time it is checked).
+    scanModes: FieldValue.arrayUnion('no_website'),
   });
 }
 
@@ -347,6 +450,53 @@ export async function updateWebsiteLeadEmail(leadId, { status, email = null, ema
     if (foundOn) patch.emailFoundOn = foundOn;
   }
   await getFirestore().collection(COLLECTION).doc(leadId).set(patch, { merge: true });
+}
+
+/**
+ * Tags the already-validated no-website leads that were filed before `scanModes`
+ * existed, so the phone can ask for exactly the no-website scan's leads.
+ *
+ * A validated lead (`hasWhatsApp`) with no `scanModes` gets `['no_website']`
+ * when its category is one a no-website scan has run for (see
+ * [inNoWebsiteScope]). Anything else is left alone, untagged: it is a lead a
+ * 1-star scan filed on the side, and it stays out of the no-website lists.
+ * Only `scanModes` is written, and only on those documents.
+ *
+ * @returns {Promise<{validated: number, tagged: number, left: {category: string, count: number}[]}>}
+ */
+export async function tagVerifiedNoWebsiteLeads({ apply = false, db = getFirestore() } = {}) {
+  const runCategories = await noWebsiteRunCategories({ db, now: Date.now() + 61_000 });
+  const snap = await db
+    .collection(COLLECTION)
+    .where('websiteStatus', '==', 'missing')
+    .where('hasWhatsApp', '==', true)
+    .get();
+  const toTag = [];
+  const left = new Map();
+  for (const doc of snap.docs) {
+    const d = doc.data();
+    if (Array.isArray(d.scanModes)) continue; // already knows where it came from
+    if (inNoWebsiteScope(d, runCategories)) toTag.push(doc.ref);
+    else left.set(d.category || '(none)', (left.get(d.category || '(none)') || 0) + 1);
+  }
+  if (apply) {
+    for (let i = 0; i < toTag.length; i += 400) {
+      const batch = db.batch();
+      for (const ref of toTag.slice(i, i + 400)) batch.update(ref, { scanModes: FieldValue.arrayUnion('no_website') });
+      await batch.commit();
+    }
+  }
+  return {
+    validated: snap.size,
+    tagged: toTag.length,
+    left: [...left.entries()].map(([category, count]) => ({ category, count })).sort((a, b) => b.count - a.count),
+  };
+}
+
+/** Test seam: forgets the short-lived tallies and the no-website scans' categories. */
+export function _resetScopeCaches() {
+  runCategoryCache = { at: 0, value: new Set() };
+  scanCountCache.clear();
 }
 
 export const _COLLECTION = COLLECTION;

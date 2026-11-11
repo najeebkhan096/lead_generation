@@ -15,7 +15,7 @@ import {
   getWhatsAppLeadCount,
   clearAllWhatsAppLeads,
 } from '../validation/whatsapp/whatsappLeadStore.js';
-import { listWebsiteLeads, deleteWebsiteLead, deleteWebsiteLeadsByCategory } from './websiteLeadStore.js';
+import { listWebsiteLeads, deleteWebsiteLead, deleteWebsiteLeadsByCategory, listWebsiteScanCategories } from './websiteLeadStore.js';
 import { listEmailLeads, deleteEmailLead, deleteEmailLeadsByCategory } from './emailLeadStore.js';
 import { getFirebaseStatus, getFirestore } from '../../firebase/admin.js';
 import { listCategories } from '../../lib/pagination.js';
@@ -45,7 +45,19 @@ export async function getCategories(req, res) {
     if (!CATEGORY_COLLECTIONS.includes(collection)) {
       return res.status(400).json({ error: `collection must be one of: ${CATEGORY_COLLECTIONS.join(', ')}` });
     }
-    const categories = await listCategories(getFirestore(), collection, { force: req.query.refresh === '1' });
+    // `scan=no_website` (websiteLeads only): just the searches of the dedicated
+    // no-website scans, not what the 1-star scan filed on the side; `verified=1`
+    // counts only leads confirmed on WhatsApp.
+    if (collection === 'websiteLeads' && req.query.scan === 'no_website') {
+      const categories = await listWebsiteScanCategories({
+        verified: req.query.verified === '1',
+        withEmail: req.query.email === '1',
+      });
+      return res.json({ collection, categories });
+    }
+    // `sourceType=review` (whatsappLeads): only the 1-star leads' searches.
+    const where = collection === 'whatsappLeads' && req.query.sourceType === 'review' ? [['sourceType', '==', 'review']] : [];
+    const categories = await listCategories(getFirestore(), collection, { force: req.query.refresh === '1', where });
     return res.json({ collection, categories });
   } catch (err) {
     return res.status(err.status || 500).json({ error: err.message || 'Failed to load categories' });
@@ -197,7 +209,14 @@ export async function deleteSavedWhatsAppLeadsByCategory(req, res) {
  */
 export async function getSavedWebsiteLeads(req, res) {
   try {
-    return res.json(await listWebsiteLeads(pageParams(req)));
+    return res.json(
+      await listWebsiteLeads({
+        ...pageParams(req),
+        scan: req.query.scan === 'no_website' ? 'no_website' : undefined,
+        verified: req.query.verified === '1',
+        withEmail: req.query.email === '1',
+      }),
+    );
   } catch (err) {
     return res.status(err.status || 500).json({ error: err.message || 'Failed to load website leads' });
   }

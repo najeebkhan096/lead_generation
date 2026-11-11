@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../../core/theme/app_theme.dart';
 import '../../core/utils/date_labels.dart';
 import '../../domain/entities/contacted_lead.dart';
 import '../../domain/repositories/lead_repository.dart';
+import '../design_system/design_system.dart';
 
 /// Whether [lead] matches a search. Every word of [query] must appear, in any
 /// order and ignoring case, in the business, category, location, phone or review.
@@ -52,6 +52,10 @@ class _SalesmanContactedLeadsPageState
   final Set<String> _busyIds = {};
   final _search = TextEditingController();
   String _query = '';
+
+  /// Which kind to show: null = every contacted lead, `review` = 1-star,
+  /// `website` = no website.
+  String? _kind;
 
   LeadRepository get _repo => context.read<LeadRepository>();
 
@@ -110,16 +114,17 @@ class _SalesmanContactedLeadsPageState
     );
     if (ok != true || !mounted) return;
 
-    setState(() => _busyIds.add(lead.id));
+    setState(() => _busyIds.add(lead.key));
     try {
       final refunded = await _repo.moveContactedLeadBack(
         widget.userId,
         lead.id,
+        kind: lead.kind,
       );
       if (!mounted) return;
       setState(() {
-        _leads = _leads?.where((l) => l.id != lead.id).toList();
-        _busyIds.remove(lead.id);
+        _leads = _leads?.where((l) => l.key != lead.key).toList();
+        _busyIds.remove(lead.key);
       });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -132,7 +137,7 @@ class _SalesmanContactedLeadsPageState
       );
     } catch (e) {
       if (!mounted) return;
-      setState(() => _busyIds.remove(lead.id));
+      setState(() => _busyIds.remove(lead.key));
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
       );
@@ -190,12 +195,17 @@ class _SalesmanContactedLeadsPageState
         ),
       );
     }
-    final all = _leads ?? const [];
+    final everyone = _leads ?? const [];
+    final reviewCount = everyone.where((l) => !l.isWebsite).length;
+    final websiteCount = everyone.length - reviewCount;
+    final all = _kind == null ? everyone : everyone.where((l) => l.kind == _kind).toList();
     final leads = all.where((l) => matchesLeadSearch(l, _query)).toList();
     final searching = _query.trim().isNotEmpty;
     final String summary;
     if (all.isEmpty) {
-      summary = '${widget.salesmanName} has not contacted any leads yet.';
+      summary = everyone.isEmpty
+          ? '${widget.salesmanName} has not contacted any leads yet.'
+          : 'No ${_kind == 'website' ? 'no-website' : '1-star'} leads contacted.';
     } else if (searching) {
       summary = '${leads.length} of ${all.length} match "${_query.trim()}"';
     } else {
@@ -205,7 +215,23 @@ class _SalesmanContactedLeadsPageState
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 40),
       children: [
-        if (all.isNotEmpty) ...[
+        if (everyone.isNotEmpty) ...[
+          Wrap(
+            spacing: 8,
+            children: [
+              for (final (label, value, count) in [
+                ('All', null, everyone.length),
+                ('1-star reviews', 'review', reviewCount),
+                ('No website', 'website', websiteCount),
+              ])
+                ChoiceChip(
+                  label: Text('$label · $count'),
+                  selected: _kind == value,
+                  onSelected: (_) => setState(() => _kind = value),
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
           TextField(
             controller: _search,
             onChanged: (v) => setState(() => _query = v),
@@ -247,8 +273,9 @@ class _SalesmanContactedLeadsPageState
           ),
         for (final lead in leads)
           _LeadCard(
+            key: ValueKey(lead.key),
             lead: lead,
-            busy: _busyIds.contains(lead.id),
+            busy: _busyIds.contains(lead.key),
             onMoveBack: () => _moveBack(lead),
           ),
       ],
@@ -294,6 +321,7 @@ class _BusinessName extends StatelessWidget {
 
 class _LeadCard extends StatelessWidget {
   const _LeadCard({
+    super.key,
     required this.lead,
     required this.busy,
     required this.onMoveBack,
@@ -328,7 +356,18 @@ class _LeadCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _BusinessName(lead: lead),
+                    Wrap(
+                      spacing: 8,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        _BusinessName(lead: lead),
+                        AppBadge(
+                          lead.isWebsite ? 'No website' : '1-star',
+                          tone: lead.isWebsite ? AppTone.info : AppTone.warning,
+                          dense: true,
+                        ),
+                      ],
+                    ),
                     if (details.isNotEmpty)
                       Text(
                         details,

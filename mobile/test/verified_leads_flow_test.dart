@@ -17,117 +17,11 @@ import 'package:lead_mobile/services/verified_lead_repository.dart';
 import 'package:lead_mobile/theme/app_theme.dart';
 import 'package:lead_mobile/widgets/verified_lead_card.dart';
 
-/// An in-memory Firestore: collections of maps, queried the way the pages do
-/// (`where ==`, `orderBy` — which leaves out docs lacking the field, like
-/// Firestore — `limit`, `startAfterDocument`).
-class _Store {
-  final Map<String, Map<String, Map<String, dynamic>>> data = {};
+import 'support/memory_firestore.dart';
+
+/// The shared in-memory Firestore, plus a log of what the fake repository wrote.
+class _Store extends MemoryStore {
   final writes = <String>[];
-  final _listeners = <void Function()>[];
-
-  Map<String, Map<String, dynamic>> col(String c) => data.putIfAbsent(c, () => {});
-
-  /// Tells every live query the data changed, as Firestore does for a write.
-  void changed() {
-    for (final l in List.of(_listeners)) {
-      l();
-    }
-  }
-}
-
-class _Doc implements QueryDocumentSnapshot<Map<String, dynamic>> {
-  _Doc(this.id, this._data);
-
-  @override
-  final String id;
-  final Map<String, dynamic> _data;
-
-  @override
-  Map<String, dynamic> data() => _data;
-
-  @override
-  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
-}
-
-class _Snap implements QuerySnapshot<Map<String, dynamic>> {
-  _Snap(this.docs);
-
-  @override
-  final List<QueryDocumentSnapshot<Map<String, dynamic>>> docs;
-
-  @override
-  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
-}
-
-class _Query implements Query<Map<String, dynamic>> {
-  _Query(this.store, this.collection, {this.filters = const {}, this.order, this.desc = false, this.max, this.after});
-
-  final _Store store;
-  final String collection;
-  final Map<String, Object?> filters;
-  final String? order;
-  final bool desc;
-  final int? max;
-  final String? after;
-
-  _Query _copy({Map<String, Object?>? filters, String? order, bool? desc, int? max, String? after}) => _Query(
-        store,
-        collection,
-        filters: filters ?? this.filters,
-        order: order ?? this.order,
-        desc: desc ?? this.desc,
-        max: max ?? this.max,
-        after: after ?? this.after,
-      );
-
-  @override
-  Query<Map<String, dynamic>> where(Object field, {Object? isEqualTo, Object? isNotEqualTo, Object? isLessThan, Object? isLessThanOrEqualTo, Object? isGreaterThan, Object? isGreaterThanOrEqualTo, Object? arrayContains, Iterable<Object?>? arrayContainsAny, Iterable<Object?>? whereIn, Iterable<Object?>? whereNotIn, bool? isNull}) =>
-      _copy(filters: {...filters, field as String: isEqualTo});
-
-  @override
-  Query<Map<String, dynamic>> orderBy(Object field, {bool descending = false}) =>
-      _copy(order: field as String, desc: descending);
-
-  @override
-  Query<Map<String, dynamic>> limit(int limit) => _copy(max: limit);
-
-  @override
-  Query<Map<String, dynamic>> startAfterDocument(DocumentSnapshot documentSnapshot) => _copy(after: documentSnapshot.id);
-
-  QuerySnapshot<Map<String, dynamic>> _compute() {
-    var rows = store.col(collection).entries.toList();
-    rows = rows.where((e) => filters.entries.every((f) => e.value[f.key] == f.value)).toList();
-    if (order != null) {
-      rows = rows.where((e) => e.value[order] != null).toList();
-      rows.sort((a, b) {
-        final c = (a.value[order] as Timestamp).compareTo(b.value[order] as Timestamp);
-        return desc ? -c : c;
-      });
-    }
-    if (after != null) rows = rows.sublist(rows.indexWhere((e) => e.key == after) + 1);
-    if (max != null && rows.length > max!) rows = rows.sublist(0, max);
-    return _Snap([for (final e in rows) _Doc(e.key, e.value)]);
-  }
-
-  @override
-  Stream<QuerySnapshot<Map<String, dynamic>>> snapshots({
-    bool includeMetadataChanges = false,
-    ListenSource source = ListenSource.defaultSource,
-  }) {
-    late StreamController<QuerySnapshot<Map<String, dynamic>>> controller;
-    void emit() => controller.add(_compute());
-    controller = StreamController<QuerySnapshot<Map<String, dynamic>>>(
-      onListen: () {
-        store._listeners.add(emit);
-        emit();
-      },
-      onCancel: () => store._listeners.remove(emit),
-    );
-    return controller.stream;
-  }
-
-  @override
-  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
 /// Writes what the real repository writes, into the in-memory store.
@@ -239,7 +133,12 @@ Map<String, dynamic> _verified(String business, DateTime verified,
     };
 
 Map<String, dynamic> _site(String business, DateTime verified,
-        {String phone = '+97455500001', DateTime? contacted, String? contactedBy, bool whatsApp = true, String status = 'missing'}) =>
+        {String phone = '+97455500001',
+        DateTime? contacted,
+        String? contactedBy,
+        bool whatsApp = true,
+        String status = 'missing',
+        List<String>? scanModes = const ['no_website']}) =>
     {
       'business': business,
       'category': 'Salon USA',
@@ -248,6 +147,7 @@ Map<String, dynamic> _site(String business, DateTime verified,
       'mapsUrl': 'https://maps.example/$business',
       'websiteStatus': status,
       'hasWhatsApp': whatsApp,
+      'scanModes': ?scanModes,
       'updatedAt': Timestamp.fromDate(verified),
       'createdAt': Timestamp.fromDate(verified),
       'whatsAppCheckedAt': Timestamp.fromDate(verified),
@@ -280,7 +180,7 @@ void main() {
         body: VerifiedLeadsScreen(
           repository: repo,
           daily: daily,
-          collectionQuery: (c) => _Query(store, c),
+          collectionQuery: store.query,
           actions: LeadActions(
             whatsapp: (url) async {
               opened.add('whatsapp $url');
@@ -589,7 +489,7 @@ void main() {
         body: VerifiedLeadsScreen(
           repository: repo,
           daily: _BrokenDaily(),
-          collectionQuery: (c) => _Query(store, c),
+          collectionQuery: store.query,
         ),
       ),
     ));
@@ -648,7 +548,7 @@ void main() {
         home: DealsPage(
           repository: repo,
           uid: _FakeRepo.me,
-          collectionQuery: (c) => _Query(store, c),
+          collectionQuery: store.query,
         ),
       ));
       await tester.pumpAndSettle();
@@ -664,7 +564,7 @@ void main() {
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
       final doc = store.col('whatsappLeads')['c']!;
-      final item = VerifiedLead.fromData(Lead.fromDoc(_Doc('c', doc)), doc);
+      final item = VerifiedLead.fromData(Lead.fromDoc(MemoryDoc('c', doc)), doc);
       await tester.pumpWidget(MaterialApp(
         theme: AppTheme.light(),
         home: VerifiedLeadDetailPage(
@@ -718,7 +618,7 @@ void main() {
           body: WebsiteLeadsScreen(
             repository: repo,
             daily: daily,
-            collectionQuery: (c) => _Query(store, c),
+            collectionQuery: store.query,
             actions: LeadActions(whatsapp: (url) async {
               opened.add('whatsapp $url');
               return true;
@@ -737,7 +637,10 @@ void main() {
         ..['g'] = _site('Golf Salon', at(4), phone: '+97455500007', contacted: at(0, 10), contactedBy: 'other')
         // Not validated on WhatsApp, or has a website after all: never listed.
         ..['x'] = _site('Xray Salon', at(5), whatsApp: false)
-        ..['y'] = _site('Yankee Salon', at(5), status: 'available');
+        ..['y'] = _site('Yankee Salon', at(5), status: 'available')
+        // Validated, but filed by a 1-star scan (tagged, or from before tags): not a no-website scan's lead.
+        ..['s1'] = _site('Side Find Salon', at(0, 8), scanModes: ['reviews'])
+        ..['s2'] = _site('Untagged Salon', at(0, 7), scanModes: null);
     });
 
     testWidgets('a New lead has WhatsApp and a Contacted button — no Map button', (tester) async {
@@ -748,6 +651,9 @@ void main() {
       expect(find.text('Charlie Salon'), findsNothing); // contacted: in the other list
       expect(find.text('Xray Salon'), findsNothing);
       expect(find.text('Yankee Salon'), findsNothing);
+      // Only a no-website scan's leads: the 1-star scan's side-finds are another list.
+      expect(find.text('Side Find Salon'), findsNothing);
+      expect(find.text('Untagged Salon'), findsNothing);
       expect(find.widgetWithText(FilledButton, 'WhatsApp'), findsWidgets);
       expect(find.widgetWithText(FilledButton, 'Contacted'), findsWidgets);
       expect(find.widgetWithText(FilledButton, 'Map'), findsNothing);

@@ -1,6 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { summarizeValidationRows, stateOfLocation, locationInStates, emailCheckIsDefinite } from './websiteLeadStore.js';
+import {
+  summarizeValidationRows, stateOfLocation, locationInStates, emailCheckIsDefinite, inNoWebsiteScope, buildWebsiteLeadPatch,
+} from './websiteLeadStore.js';
+import { toSiteRecord } from '../website/siteLeadPipeline.js';
 import { leadSource } from './leadSources.js';
 
 const docs = [
@@ -46,4 +49,31 @@ test('websiteLeads is a validator source that does not copy verified leads into 
   assert.equal(leadSource().sourceType, 'review');
   assert.equal(leadSource('leads').saveVerified, undefined);
   assert.throws(() => leadSource('nope'), (e) => e.status === 400);
+});
+
+test('only a dedicated no-website scan puts a lead in the no-website list: the 1-star scan\'s by-product does not', () => {
+  const runs = new Set(['Cafe USA']);
+  // Tagged leads say where they came from, whatever the category.
+  assert.equal(inNoWebsiteScope({ scanModes: ['no_website'], category: 'Plumber USA' }, runs), true);
+  assert.equal(inNoWebsiteScope({ scanModes: ['reviews'], category: 'Cafe USA' }, runs), false);
+  assert.equal(inNoWebsiteScope({ scanModes: ['reviews', 'no_website'], category: 'Cafe USA' }, runs), true);
+  // Filed before the tag existed: only a search a no-website scan has run for.
+  assert.equal(inNoWebsiteScope({ category: 'Cafe USA' }, runs), true);
+  assert.equal(inNoWebsiteScope({ category: 'Dentist USA' }, runs), false);
+  assert.equal(inNoWebsiteScope({}, runs), false);
+});
+
+test('a lead records which kinds of scan found it, and a later scan adds to that', () => {
+  const site = (scanMode) => ({ business: 'Joe', category: 'Cafe USA', scanMode });
+  const first = buildWebsiteLeadPatch(undefined, site('reviews'));
+  assert.deepEqual(first.scanModes, ['reviews']);
+  const second = buildWebsiteLeadPatch({ scanModes: first.scanModes }, site('no_website'));
+  assert.deepEqual(second.scanModes, ['reviews', 'no_website']);
+  assert.deepEqual(buildWebsiteLeadPatch(undefined, { business: 'X' }).scanModes, ['reviews']);
+});
+
+test('the site record carries the scan kind it was found by', () => {
+  const business = { name: 'Joe', category: 'Cafe', phone: '5125550100', websiteStatus: 'missing' };
+  assert.equal(toSiteRecord(business, {}).scanMode, 'reviews');
+  assert.equal(toSiteRecord(business, { scanMode: 'no_website' }).scanMode, 'no_website');
 });

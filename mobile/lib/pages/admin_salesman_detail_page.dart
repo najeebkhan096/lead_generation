@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../models/sale.dart';
 import '../models/sales_user.dart';
 import '../services/admin_data.dart';
+import '../services/contact_stats_repository.dart';
 import '../theme/app_theme.dart';
 import '../utils/admin_analytics.dart';
 import '../utils/date_format.dart';
@@ -14,9 +15,12 @@ import 'admin_sale_form.dart';
 /// One salesman: account status, performance, payouts and every order they
 /// have — split into ongoing and completed.
 class AdminSalesmanDetailPage extends StatefulWidget {
-  const AdminSalesmanDetailPage({super.key, required this.userId});
+  const AdminSalesmanDetailPage({super.key, required this.userId, this.contacts});
 
   final String userId;
+
+  /// For tests; defaults to the Firestore-backed one.
+  final ContactStatsRepository? contacts;
 
   @override
   State<AdminSalesmanDetailPage> createState() => _AdminSalesmanDetailPageState();
@@ -184,6 +188,15 @@ class _AdminSalesmanDetailPageState extends State<AdminSalesmanDetailPage> {
               KpiTile(label: 'Payable now', value: formatPkr(r.payablePkr), icon: AppIcons.wallet, tone: r.payablePkr > 0 ? Tone.accent : Tone.neutral, caption: '${payable.length} completed unpaid'),
               KpiTile(label: 'Paid out', value: formatPkr(r.paidPkr), icon: AppIcons.banknote, tone: Tone.success, caption: 'Expected ${formatPkr(r.expectedPkr)}'),
             ]),
+            if (!isAdmin) ...[
+              const SectionHeader(title: 'Contacts'),
+              _ContactsSection(
+                key: ValueKey('contacts-${user.id}'),
+                uid: user.id,
+                limit: user.dailyLeadLimit,
+                repository: widget.contacts,
+              ),
+            ],
             if (payable.isNotEmpty) ...[
               const SizedBox(height: 14),
               SizedBox(
@@ -252,6 +265,146 @@ class _AdminSalesmanDetailPageState extends State<AdminSalesmanDetailPage> {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// The salesman's contact record: today against the daily limit, the last 7
+/// days and the total — 1-star and no-website leads shown separately and
+/// together, since one limit covers both — and the latest contacts.
+class _ContactsSection extends StatefulWidget {
+  const _ContactsSection({super.key, required this.uid, required this.limit, this.repository});
+
+  final String uid;
+  final int limit;
+  final ContactStatsRepository? repository;
+
+  @override
+  State<_ContactsSection> createState() => _ContactsSectionState();
+}
+
+class _ContactsSectionState extends State<_ContactsSection> {
+  late final ContactStatsRepository _repo = widget.repository ?? ContactStatsRepository();
+  ContactStats? _stats;
+  String? _error;
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final stats = await _repo.load(widget.uid);
+      if (!mounted) return;
+      setState(() {
+        _stats = stats;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = 'Could not load the contacts. Check your connection.';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    final stats = _stats;
+    if (stats == null) {
+      return AdminCard(
+        child: _loading
+            ? const Padding(padding: EdgeInsets.all(8), child: Center(child: CircularProgressIndicator(strokeWidth: 2)))
+            : Row(
+                children: [
+                  Expanded(child: Text(_error ?? 'No contact data.', style: text.bodyMedium)),
+                  TextButton(onPressed: _load, child: const Text('Retry')),
+                ],
+              ),
+      );
+    }
+    final atLimit = stats.today >= widget.limit;
+    String split(ContactCounts r, ContactCounts w, int Function(ContactCounts) pick) => '1-star ${pick(r)} · No website ${pick(w)}';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        KpiGrid(tiles: [
+          KpiTile(
+            label: 'Today',
+            value: '${stats.today} of ${widget.limit}',
+            icon: AppIcons.clock,
+            tone: atLimit ? Tone.danger : Tone.accent,
+            caption: split(stats.review, stats.website, (c) => c.today),
+          ),
+          KpiTile(
+            label: 'Last 7 days',
+            value: '${stats.last7}',
+            icon: AppIcons.chat,
+            tone: Tone.accent,
+            caption: split(stats.review, stats.website, (c) => c.last7),
+          ),
+          KpiTile(
+            label: 'Contacted in total',
+            value: '${stats.total}',
+            icon: AppIcons.handshake,
+            tone: Tone.success,
+            caption: split(stats.review, stats.website, (c) => c.total),
+          ),
+        ]),
+        const SizedBox(height: 12),
+        if (stats.recent.isEmpty)
+          AdminCard(child: Text('No leads contacted yet.', style: text.bodyMedium))
+        else
+          AdminCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Recent contacts', style: text.titleSmall),
+                const SizedBox(height: 8),
+                for (final item in stats.recent)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(item.business, style: text.bodyLarge, maxLines: 1, overflow: TextOverflow.ellipsis),
+                              Text(
+                                [
+                                  if (item.location.isNotEmpty) item.location,
+                                  formatDateTime(item.contactedAt) ?? '',
+                                ].where((p) => p.isNotEmpty).join(' · '),
+                                style: text.bodySmall,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        StatusPill(
+                          label: item.kind == ContactKind.website ? 'No website' : (item.status == 'dealDone' ? '1-star · deal' : '1-star'),
+                          tone: item.kind == ContactKind.website ? Tone.neutral : (item.status == 'dealDone' ? Tone.success : Tone.accent),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ),
+      ],
     );
   }
 }

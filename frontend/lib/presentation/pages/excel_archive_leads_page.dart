@@ -4,12 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../core/theme/app_theme.dart';
+import '../../domain/entities/email_validation.dart';
 import '../../domain/entities/excel_archive.dart';
 import '../../domain/entities/lead.dart';
 import '../../domain/entities/validation_start.dart';
 import '../../domain/entities/whatsapp_web_status.dart';
 import '../../domain/repositories/lead_repository.dart';
+import '../design_system/design_system.dart';
 import '../utils/lazy_reveal.dart';
 import '../widgets/lead_card.dart';
 import '../widgets/state_scope_section.dart';
@@ -83,6 +84,10 @@ class _ExcelArchiveLeadsPageState extends State<ExcelArchiveLeadsPage> with Lazy
   bool _allStates = true;
   final Set<String> _selectedStates = {};
 
+  /// This archive's validations that stopped before finishing (cancelled,
+  /// halted for a safety reason, or cut off by a backend restart).
+  List<ValidationRun> _unfinished = const [];
+
   LeadRepository get _repo => context.read<LeadRepository>();
 
   @override
@@ -90,6 +95,7 @@ class _ExcelArchiveLeadsPageState extends State<ExcelArchiveLeadsPage> with Lazy
     super.initState();
     initReveal();
     _load();
+    _loadUnfinished();
   }
 
   @override
@@ -97,6 +103,54 @@ class _ExcelArchiveLeadsPageState extends State<ExcelArchiveLeadsPage> with Lazy
     _validationTimer?.cancel();
     disposeReveal();
     super.dispose();
+  }
+
+  /// What an interrupted validation of THIS archive had been doing, if anything.
+  Future<void> _loadUnfinished() async {
+    try {
+      final runs = await _repo.listValidationRuns(collection: 'archive', kind: 'whatsapp');
+      if (mounted) setState(() => _unfinished = [for (final r in runs) if (r.archiveId == widget.archive.id) r]);
+    } catch (_) {
+      // A convenience: validating again by hand also skips what is already answered.
+    }
+  }
+
+  /// Carries on a stopped validation: same category and states, asking only about
+  /// the numbers that have no answer yet (the backend remembers the ones that do).
+  Future<void> _resume(ValidationRun run) async {
+    final category = run.category;
+    if (category == null || !_categories.contains(category)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('That validation\'s category is not in this archive any more.')),
+      );
+      return;
+    }
+    setState(() {
+      _category = category;
+      _allStates = run.states.isEmpty;
+      _selectedStates
+        ..clear()
+        ..addAll(run.states);
+    });
+    final filtered = _leads.where((l) => l.category == category).toList();
+    final before = _validating;
+    await _startValidation(filtered, resuming: run);
+    // Started: the new run is on record, so the old one is done with.
+    if (!before && _validating) {
+      try {
+        await _repo.discardValidationRun(run.id);
+      } catch (_) {
+        // harmless: it shows as unfinished until the next load
+      }
+      await _loadUnfinished();
+    }
+  }
+
+  Future<void> _discard(ValidationRun run) async {
+    try {
+      await _repo.discardValidationRun(run.id);
+    } catch (_) {}
+    await _loadUnfinished();
   }
 
   Future<void> _load() async {
@@ -151,7 +205,7 @@ class _ExcelArchiveLeadsPageState extends State<ExcelArchiveLeadsPage> with Lazy
 
   int get _totalValidated => _validatedByCategory.values.fold(0, (sum, l) => sum + l.length);
 
-  Future<void> _startValidation(List<Lead> candidates) async {
+  Future<void> _startValidation(List<Lead> candidates, {ValidationRun? resuming}) async {
     WhatsAppWebStatus webStatus;
     try {
       webStatus = await _repo.getWhatsAppWebStatus();
@@ -225,7 +279,7 @@ class _ExcelArchiveLeadsPageState extends State<ExcelArchiveLeadsPage> with Lazy
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setLocal) => AlertDialog(
-          title: const Text('Validate WhatsApp numbers?'),
+          title: Text(resuming == null ? 'Validate WhatsApp numbers?' : 'Resume validating WhatsApp numbers?'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -275,8 +329,14 @@ class _ExcelArchiveLeadsPageState extends State<ExcelArchiveLeadsPage> with Lazy
           'badReview': {'text': l.badReview.text, 'date': l.badReview.date},
         },
     ];
+    // What is being validated, so a stop or a restart leaves a run to resume.
+    final runScope = {
+      'archiveId': widget.archive.id,
+      'category': _category,
+      'states': _allStates ? <String>[] : _selectedStates.toList(),
+    };
     try {
-      final start = await _repo.validateExternalLeads(payload, recheck: recheck);
+      final start = await _repo.validateExternalLeads(payload, recheck: recheck, scope: runScope);
       final summary = start.summary;
       if (summary != null && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(summary)));
@@ -296,7 +356,7 @@ class _ExcelArchiveLeadsPageState extends State<ExcelArchiveLeadsPage> with Lazy
       );
       if (again != true || !mounted) return;
       try {
-        await _repo.validateExternalLeads(payload, recheck: true);
+        await _repo.validateExternalLeads(payload, recheck: true, scope: runScope);
       } catch (err) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -330,6 +390,7 @@ class _ExcelArchiveLeadsPageState extends State<ExcelArchiveLeadsPage> with Lazy
       setState(() => _validationSnapshot = snap);
       if (snap.status != 'running') {
         _validationTimer?.cancel();
+        _loadUnfinished(); // it may have stopped early
         final validated = _validatingLeads
             .where((l) => snap.results[l.id]?.valid == true)
             .map((l) => l.copyWith(hasWhatsApp: true))
@@ -518,6 +579,15 @@ class _ExcelArchiveLeadsPageState extends State<ExcelArchiveLeadsPage> with Lazy
                                   },
                                 ),
                               const SizedBox(height: 16),
+                              if (!_validating)
+                                for (final run in _unfinished) ...[
+                                  _UnfinishedRun(
+                                    run: run,
+                                    onResume: () => _resume(run),
+                                    onDiscard: () => _discard(run),
+                                  ),
+                                  const SizedBox(height: 12),
+                                ],
                               _ValidationCard(
                                 category: _category,
                                 validating: _validating,
@@ -557,6 +627,38 @@ class _ExcelArchiveLeadsPageState extends State<ExcelArchiveLeadsPage> with Lazy
           ),
         ),
       ),
+    );
+  }
+}
+
+/// A validation of this archive that stopped before it finished: what it was,
+/// how far it got, and a way to carry on from there.
+class _UnfinishedRun extends StatelessWidget {
+  const _UnfinishedRun({required this.run, required this.onResume, required this.onDiscard});
+
+  final ValidationRun run;
+  final VoidCallback onResume;
+  final VoidCallback onDiscard;
+
+  @override
+  Widget build(BuildContext context) {
+    return AppAlert(
+      tone: AppTone.warning,
+      title: run.status == 'interrupted' ? 'Interrupted validation' : 'Stopped validation',
+      message: [
+        if (run.category != null) '"${run.category}"',
+        run.states.isEmpty ? 'every state' : run.states.join(', '),
+        '${run.checked} of ${run.total} checked',
+        if (run.found > 0) '${run.found} on WhatsApp',
+        if (run.stoppedReason != null && run.stoppedReason!.isNotEmpty)
+          run.stoppedReason!
+        else if (run.status == 'interrupted')
+          'the backend stopped while it was running',
+      ].join(' · '),
+      actions: [
+        AppButton.primary(label: 'Resume', icon: AppIcons.refresh, size: AppButtonSize.sm, onPressed: onResume),
+        AppButton.outlined(label: 'Discard', size: AppButtonSize.sm, onPressed: onDiscard),
+      ],
     );
   }
 }

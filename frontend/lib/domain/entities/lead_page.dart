@@ -2,7 +2,10 @@ import 'package:equatable/equatable.dart';
 
 import 'lead.dart';
 
-/// The lead collections the backend can list a page of.
+/// The lead lists the backend can page through. The 1-star scans and the
+/// no-website scans are different things, so each has its own lists: a no-website
+/// list never includes the no-website businesses a 1-star scan filed on the side
+/// (the backend scopes it with [query]'s `scan=no_website`).
 enum LeadCollection {
   /// 1-star review leads (`leads`).
   reviewLeads('leads', '/api/db/leads'),
@@ -10,13 +13,23 @@ enum LeadCollection {
   /// Numbers confirmed on WhatsApp (`whatsappLeads`).
   whatsappLeads('whatsappLeads', '/api/db/whatsapp-leads'),
 
-  /// Businesses confirmed to have no website (`websiteLeads`).
-  websiteLeads('websiteLeads', '/api/db/website-leads'),
+  /// Numbers confirmed on WhatsApp for the 1-star review leads only.
+  whatsappReviewLeads('whatsappLeads', '/api/db/whatsapp-leads', {'sourceType': 'review'}),
+
+  /// Businesses confirmed to have no website, found by a no-website scan
+  /// (`websiteLeads`).
+  websiteLeads('websiteLeads', '/api/db/website-leads', {'scan': 'no_website'}),
+
+  /// The no-website leads whose number a WhatsApp check confirmed.
+  websiteVerified('websiteLeads', '/api/db/website-leads', {'scan': 'no_website', 'verified': '1'}),
+
+  /// The no-website leads an email lookup found an address for.
+  websiteWithEmail('websiteLeads', '/api/db/website-leads', {'scan': 'no_website', 'email': '1'}),
 
   /// Businesses whose website publishes a business email (`emailLeads`).
   emailLeads('emailLeads', '/api/db/email-leads');
 
-  const LeadCollection(this.firestoreName, this.path);
+  const LeadCollection(this.firestoreName, this.path, [this.query = const {}]);
 
   /// The Firestore collection name — what `/api/db/categories` and the
   /// validators call it.
@@ -24,6 +37,10 @@ enum LeadCollection {
 
   /// The list endpoint.
   final String path;
+
+  /// Fixed query parameters that narrow the list (sent with the page and the
+  /// category requests alike, so the categories match the list).
+  final Map<String, String> query;
 }
 
 /// One page of a lead list. [nextCursor] is `null` on the last page;

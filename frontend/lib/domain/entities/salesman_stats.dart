@@ -14,6 +14,22 @@ class SalesmanDay {
   }
 }
 
+/// New leads contacted today, in the last 7 days and in total — for one kind of
+/// lead (1-star review or no-website).
+class KindCounts {
+  const KindCounts({this.today = 0, this.last7 = 0, this.total = 0});
+
+  final int today;
+  final int last7;
+  final int total;
+
+  factory KindCounts.fromJson(Map<String, dynamic>? json) => KindCounts(
+        today: (json?['today'] as num?)?.toInt() ?? 0,
+        last7: (json?['last7'] as num?)?.toInt() ?? 0,
+        total: (json?['total'] as num?)?.toInt() ?? 0,
+      );
+}
+
 /// One salesman's contact stats.
 class SalesmanStat {
   const SalesmanStat({
@@ -27,6 +43,8 @@ class SalesmanStat {
     this.contactedToday = 0,
     this.contactedLast7 = 0,
     this.contactedTotal = 0,
+    this.review = const KindCounts(),
+    this.website = const KindCounts(),
     this.activeDays = 0,
     this.averagePerActiveDay = 0,
     this.daysAtLimit = 0,
@@ -46,6 +64,11 @@ class SalesmanStat {
   final int contactedToday;
   final int contactedLast7;
   final int contactedTotal;
+
+  /// The same contacts split by kind. Today / total above are their sum, since
+  /// one daily limit covers both.
+  final KindCounts review;
+  final KindCounts website;
   final int activeDays;
   final double averagePerActiveDay;
 
@@ -72,6 +95,8 @@ class SalesmanStat {
       contactedToday: (json['contactedToday'] as num?)?.toInt() ?? 0,
       contactedLast7: (json['contactedLast7'] as num?)?.toInt() ?? 0,
       contactedTotal: (json['contactedTotal'] as num?)?.toInt() ?? 0,
+      review: KindCounts.fromJson((json['byKind'] as Map<String, dynamic>?)?['review'] as Map<String, dynamic>?),
+      website: KindCounts.fromJson((json['byKind'] as Map<String, dynamic>?)?['website'] as Map<String, dynamic>?),
       activeDays: (json['activeDays'] as num?)?.toInt() ?? 0,
       averagePerActiveDay: (json['averagePerActiveDay'] as num?)?.toDouble() ?? 0,
       daysAtLimit: (json['daysAtLimit'] as num?)?.toInt() ?? 0,
@@ -94,6 +119,10 @@ class SalesmanStatsTotals {
     this.activeSalesmen = 0,
     this.reviewLeads = 0,
     this.newLeft = 0,
+    this.websiteLeads = 0,
+    this.websiteNewLeft = 0,
+    this.review = const KindCounts(),
+    this.website = const KindCounts(),
     this.daily = const [],
     this.hourlyToday = const [],
   });
@@ -109,6 +138,16 @@ class SalesmanStatsTotals {
 
   /// 1-star WhatsApp leads nobody has contacted yet.
   final int newLeft;
+
+  /// Every no-website lead verified on WhatsApp, contacted or not.
+  final int websiteLeads;
+
+  /// No-website leads nobody has contacted yet.
+  final int websiteNewLeft;
+
+  /// Everyone's contacts, by kind.
+  final KindCounts review;
+  final KindCounts website;
   final List<SalesmanDay> daily;
 
   /// Everyone's contacts today by hour of the day (0 to 23, Qatar time).
@@ -122,6 +161,10 @@ class SalesmanStatsTotals {
       activeSalesmen: (json['activeSalesmen'] as num?)?.toInt() ?? 0,
       reviewLeads: (json['reviewLeads'] as num?)?.toInt() ?? 0,
       newLeft: (json['newLeft'] as num?)?.toInt() ?? 0,
+      websiteLeads: (json['websiteLeads'] as num?)?.toInt() ?? 0,
+      websiteNewLeft: (json['websiteNewLeft'] as num?)?.toInt() ?? 0,
+      review: KindCounts.fromJson((json['byKind'] as Map<String, dynamic>?)?['review'] as Map<String, dynamic>?),
+      website: KindCounts.fromJson((json['byKind'] as Map<String, dynamic>?)?['website'] as Map<String, dynamic>?),
       daily: [
         for (final d in (json['daily'] as List<dynamic>? ?? const [])) SalesmanDay.fromJson(d as Map<String, dynamic>),
       ],

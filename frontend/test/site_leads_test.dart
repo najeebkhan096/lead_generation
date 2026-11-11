@@ -39,6 +39,20 @@ void main() {
       expect(LeadCollection.emailLeads.firestoreName, 'emailLeads');
     });
 
+    test('the no-website lists are scoped to the no-website scans; the 1-star list to 1-star leads', () {
+      // The 1-star scan files no-website businesses on the side; those are not a no-website scan's leads.
+      expect(LeadCollection.websiteLeads.query, {'scan': 'no_website'});
+      expect(LeadCollection.websiteVerified.query, {'scan': 'no_website', 'verified': '1'});
+      expect(LeadCollection.websiteWithEmail.query, {'scan': 'no_website', 'email': '1'});
+      for (final c in [LeadCollection.websiteVerified, LeadCollection.websiteWithEmail]) {
+        expect(c.firestoreName, 'websiteLeads');
+        expect(c.path, '/api/db/website-leads');
+      }
+      expect(LeadCollection.whatsappReviewLeads.query, {'sourceType': 'review'});
+      expect(LeadCollection.whatsappReviewLeads.firestoreName, 'whatsappLeads');
+      expect(LeadCollection.reviewLeads.query, isEmpty);
+    });
+
     test('the existing review and WhatsApp collections are unchanged', () {
       expect(LeadCollection.reviewLeads.path, '/api/db/leads');
       expect(LeadCollection.whatsappLeads.path, '/api/db/whatsapp-leads');

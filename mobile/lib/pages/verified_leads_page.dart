@@ -213,7 +213,14 @@ class _VerifiedLeadsPageState extends State<VerifiedLeadsPage> {
           if (_review) {
             q = q.where('sourceType', isEqualTo: 'review');
           } else if (forNew) {
-            q = q.where('hasWhatsApp', isEqualTo: true).where('websiteStatus', isEqualTo: 'missing');
+            // `scanModes` says which scan found it: only a dedicated no-website
+            // scan's leads are listed here, not the no-website businesses a
+            // 1-star scan filed on the side. (A lead is tagged when it is
+            // validated, and the older validated ones were tagged once.)
+            q = q
+                .where('hasWhatsApp', isEqualTo: true)
+                .where('websiteStatus', isEqualTo: 'missing')
+                .where('scanModes', arrayContains: 'no_website');
           }
           if (category != null) q = q.where('category', isEqualTo: category);
           return q;
