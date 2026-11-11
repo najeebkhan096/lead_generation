@@ -84,6 +84,20 @@ class _StateScanPageState extends State<StateScanPage> {
     await _poll();
   }
 
+  /// Picks a stopped no-website scan back up (the covered cities are skipped).
+  Future<void> _resumeStopped(String runId) async {
+    try {
+      await _repo.resumeNoWebsiteRun(runId);
+      // Polling stopped when the scan finished; start it again for the resumed run.
+      _timer?.cancel();
+      _timer = Timer.periodic(_pollInterval, (_) => _poll());
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))));
+    }
+    await _poll();
+  }
+
   Future<void> _confirmCancel() async {
     final confirm = await showConfirmDialog(
       context,
@@ -120,11 +134,15 @@ class _StateScanPageState extends State<StateScanPage> {
                               constraints: const BoxConstraints(maxWidth: AppSpace.pageMaxWidth),
                               child: PageHeader(
                                 title: snap.isNoWebsite ? 'No-website scan progress' : '1-star scan progress',
-                                subtitle: isDone
-                                    ? 'This scan has finished.'
-                                    : (isPaused ? 'Paused — resume to carry on.' : 'Live, state by state and city by city.'),
+                                subtitle: snap.canResume
+                                    ? 'Stopped — resume to carry on; the cities already covered are skipped.'
+                                    : isDone
+                                        ? 'This scan has finished.'
+                                        : (isPaused ? 'Paused — resume to carry on.' : 'Live, state by state and city by city.'),
                                 onBack: () => context.go('/scan'),
                                 actions: [
+                                  if (snap.canResume)
+                                    AppButton.primary(label: 'Resume scan', icon: AppIcons.play, onPressed: () => _resumeStopped(snap.runId!)),
                                   if (!isDone)
                                     AppButton.outlined(
                                       label: isPaused ? 'Resume' : 'Pause',

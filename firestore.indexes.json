@@ -747,6 +747,46 @@
           "order": "DESCENDING"
         }
       ]
+    },
+    {
+      "collectionGroup": "websiteLeads",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "hasWhatsApp",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "websiteStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "updatedAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "websiteLeads",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "hasWhatsApp",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "websiteStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "category",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "updatedAt",
+          "order": "DESCENDING"
+        }
+      ]
     }
   ],
   "fieldOverrides": []

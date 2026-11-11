@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
@@ -5,9 +7,11 @@ import 'package:go_router/go_router.dart';
 import '../../core/constants/business_categories.dart';
 import '../../domain/entities/coverage_option.dart';
 import '../../domain/entities/maps_session_status.dart';
+import '../../domain/entities/scan_run.dart';
 import '../../domain/repositories/lead_repository.dart';
 import '../design_system/design_system.dart';
 import '../widgets/google_session_card.dart';
+import '../utils/date_format.dart';
 import '../widgets/scan_layout.dart';
 import '../../domain/entities/state_city_scan_snapshot.dart';
 
@@ -41,6 +45,14 @@ class _ExcelScanPageState extends State<ExcelScanPage> {
   String _coverage = 'extended';
   List<CoverageOption> _coverageOptions = const [];
   bool _starting = false;
+
+  /// No-website scans that were stopped or cut off and can be resumed.
+  List<ScanRun> _runs = const [];
+
+  /// This page stays mounted while you use the rest of the app, so the list
+  /// refreshes itself: a scan stopped (or cut off) a moment ago appears without a reload.
+  Timer? _runsTimer;
+  String? _busyRun;
   StateCityScanSnapshot? _existingJob;
   MapsSessionStatus? _session;
 
@@ -59,6 +71,59 @@ class _ExcelScanPageState extends State<ExcelScanPage> {
     super.initState();
     _checkExistingJob();
     _loadCoverage();
+    _loadRuns();
+    _runsTimer = Timer.periodic(const Duration(seconds: 8), (_) {
+      if (_noWebsite && !_starting) _loadRuns();
+    });
+  }
+
+  Future<void> _loadRuns() async {
+    try {
+      final runs = await context.read<LeadRepository>().listNoWebsiteRuns();
+      if (mounted) setState(() => _runs = runs);
+    } catch (_) {
+      // Best-effort: the form works without the list.
+    }
+  }
+
+  Future<void> _resumeRun(ScanRun run) async {
+    setState(() => _busyRun = run.id);
+    try {
+      await context.read<LeadRepository>().resumeNoWebsiteRun(run.id);
+      if (!mounted) return;
+      context.pushReplacement('/scan-progress');
+    } catch (e) {
+      if (!mounted) return;
+      final message = e.toString().replaceFirst('Exception: ', '');
+      if (message.toLowerCase().contains('already running')) {
+        context.push('/scan-progress');
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message), duration: const Duration(seconds: 8)));
+      }
+    } finally {
+      if (mounted) setState(() => _busyRun = null);
+    }
+  }
+
+  Future<void> _discardRun(ScanRun run) async {
+    final ok = await showConfirmDialog(
+      context,
+      title: 'Discard this scan?',
+      message: 'Its saved progress is forgotten, so it can no longer be resumed. '
+          'The ${run.leads} no-website lead${run.leads == 1 ? '' : 's'} already found stay in No Website Leads.',
+      confirmLabel: 'Discard',
+      destructive: true,
+    );
+    if (!ok || !mounted) return;
+    setState(() => _busyRun = run.id);
+    try {
+      await context.read<LeadRepository>().discardNoWebsiteRun(run.id);
+      await _loadRuns();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))));
+    } finally {
+      if (mounted) setState(() => _busyRun = null);
+    }
   }
 
   Future<void> _loadCoverage() async {
@@ -93,6 +158,7 @@ class _ExcelScanPageState extends State<ExcelScanPage> {
 
   @override
   void dispose() {
+    _runsTimer?.cancel();
     _categoryController.dispose();
     super.dispose();
   }
@@ -183,6 +249,14 @@ class _ExcelScanPageState extends State<ExcelScanPage> {
               AppButton.primary(label: 'View live progress', size: AppButtonSize.sm, onPressed: () => context.push('/scan-progress')),
             ],
           ),
+        if (_noWebsite && _runs.isNotEmpty)
+          _UnfinishedScans(
+            runs: _runs,
+            busyId: _busyRun,
+            disabled: _starting || _existingJob != null,
+            onResume: _resumeRun,
+            onDiscard: _discardRun,
+          ),
         if (!_noWebsite)
           GoogleSessionCard(
             onStatus: (s) {
@@ -194,7 +268,10 @@ class _ExcelScanPageState extends State<ExcelScanPage> {
             SectionCard(
               title: 'What are you looking for?',
               subtitle: 'Each scan type finds a different kind of lead',
-              child: _ScanTypePicker(noWebsite: _noWebsite, enabled: !_starting, onChanged: (v) => setState(() => _noWebsite = v)),
+              child: _ScanTypePicker(noWebsite: _noWebsite, enabled: !_starting, onChanged: (v) {
+                setState(() => _noWebsite = v);
+                if (v) _loadRuns();
+              }),
             ),
             SectionCard(
               title: 'Target',
@@ -588,6 +665,105 @@ class _ScanTypePicker extends StatelessWidget {
           children: [Expanded(child: reviews), const SizedBox(width: AppSpace.md), Expanded(child: website)],
         );
       },
+    );
+  }
+}
+
+/// No-website scans that were stopped (or cut off by a restart): resume one and
+/// only the cities it had not covered are searched.
+class _UnfinishedScans extends StatelessWidget {
+  const _UnfinishedScans({
+    required this.runs,
+    required this.busyId,
+    required this.disabled,
+    required this.onResume,
+    required this.onDiscard,
+  });
+
+  final List<ScanRun> runs;
+  final String? busyId;
+
+  /// Another scan is running, so nothing can be resumed right now.
+  final bool disabled;
+  final ValueChanged<ScanRun> onResume;
+  final ValueChanged<ScanRun> onDiscard;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    return SectionCard(
+      title: 'Unfinished no-website scans',
+      subtitle: 'Resume one and the cities it already covered are skipped',
+      icon: AppIcons.history,
+      padding: EdgeInsets.zero,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (var i = 0; i < runs.length; i++) ...[
+            if (i > 0) Divider(height: 1, color: AppTheme.divider),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: AppSpace.lg, vertical: AppSpace.md + 2),
+              child: LayoutBuilder(
+                builder: (context, c) {
+                  final run = runs[i];
+                  final info = Row(
+                    children: [
+                      IconTile(run.interrupted ? AppIcons.alert : AppIcons.pause, tone: run.interrupted ? AppTone.warning : AppTone.neutral, size: 36),
+                      const SizedBox(width: AppSpace.md),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(children: [
+                              Flexible(
+                                child: Text(
+                                  run.categories.take(3).join(', ') + (run.categories.length > 3 ? ' +${run.categories.length - 3}' : ''),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: text.titleSmall,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              AppBadge(run.interrupted ? 'Interrupted' : 'Stopped', tone: run.interrupted ? AppTone.warning : AppTone.neutral, dense: true),
+                            ]),
+                            const SizedBox(height: 2),
+                            Text(
+                              '${run.percent}% done · ${groupedNumber(run.leads)} no-website lead${run.leads == 1 ? '' : 's'} · '
+                              '${groupedNumber(run.citiesLeft)} cities left'
+                              '${run.updatedAt == null ? '' : ' · ${run.interrupted ? 'cut off' : 'stopped'} ${formatDate(run.updatedAt)}'}',
+                              style: text.bodySmall,
+                            ),
+                            const SizedBox(height: 6),
+                            SizedBox(width: 260, child: AppProgressBar(value: run.percent / 100, height: 5)),
+                          ],
+                        ),
+                      ),
+                    ],
+                  );
+                  final actions = Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      AppButton.primary(
+                        label: 'Resume',
+                        icon: AppIcons.play,
+                        size: AppButtonSize.sm,
+                        loading: busyId == run.id,
+                        onPressed: disabled || busyId != null ? null : () => onResume(run),
+                      ),
+                      const SizedBox(width: AppSpace.sm),
+                      AppButton.text(label: 'Discard', size: AppButtonSize.sm, onPressed: busyId != null ? null : () => onDiscard(run)),
+                    ],
+                  );
+                  if (c.maxWidth < 560) {
+                    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [info, const SizedBox(height: AppSpace.md), actions]);
+                  }
+                  return Row(children: [Expanded(child: info), const SizedBox(width: AppSpace.lg), actions]);
+                },
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }

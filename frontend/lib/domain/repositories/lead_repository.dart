@@ -6,6 +6,7 @@ import '../entities/validation_start.dart';
 import '../entities/multi_search_snapshot.dart';
 import '../entities/coverage_option.dart';
 import '../entities/maps_session_status.dart';
+import '../entities/scan_run.dart';
 import '../entities/state_city_scan_snapshot.dart';
 import '../entities/excel_archive.dart';
 import '../entities/sale.dart';
@@ -109,6 +110,15 @@ abstract class LeadRepository {
   Future<StateCityScanSnapshot> getStateScanStatus();
 
   Future<void> cancelStateScan();
+
+  /// No-website scans that were stopped or cut off and can be resumed.
+  Future<List<ScanRun>> listNoWebsiteRuns();
+
+  /// Picks a stopped no-website scan back up: only the cities it had not covered are searched.
+  Future<void> resumeNoWebsiteRun(String id);
+
+  /// Forgets a stopped scan's saved progress.
+  Future<void> discardNoWebsiteRun(String id);
   Future<void> pauseStateScan();
   Future<void> resumeStateScan();
 

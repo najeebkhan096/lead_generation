@@ -254,6 +254,8 @@ class StateCityScanSnapshot extends Equatable {
     this.stoppedReason,
     this.blocked,
     this.mode = 'reviews',
+    this.runId,
+    this.cancelled = false,
     this.coverage,
     this.pacePerMinute,
     this.paceMax,
@@ -289,6 +291,15 @@ class StateCityScanSnapshot extends Equatable {
 
   bool get isNoWebsite => mode == 'no_website';
 
+  /// A no-website scan's saved-progress id: what a resume picks it up by.
+  final String? runId;
+
+  /// The scan was stopped before it covered everything.
+  final bool cancelled;
+
+  /// A stopped no-website scan can be resumed from here (1-star scans resume from the Archive).
+  bool get canResume => isNoWebsite && status == 'done' && cancelled && runId != null;
+
   /// standard | extended | maximum, and the current page pace (it finds its own level).
   final String? coverage;
   final double? pacePerMinute;
@@ -320,6 +331,8 @@ class StateCityScanSnapshot extends Equatable {
       stoppedReason: json['stoppedReason'] as String?,
       blocked: json['blocked'] is Map<String, dynamic> ? ScanBlockInfo.fromJson(json['blocked'] as Map<String, dynamic>) : null,
       mode: (json['mode'] as String?) == 'no_website' ? 'no_website' : 'reviews',
+      runId: json['runId'] as String?,
+      cancelled: json['cancelled'] == true,
       coverage: json['coverage'] as String?,
       pacePerMinute: ((json['pace'] as Map<String, dynamic>?)?['perMinute'] as num?)?.toDouble(),
       paceMax: ((json['pace'] as Map<String, dynamic>?)?['max'] as num?)?.toDouble(),
@@ -333,5 +346,5 @@ class StateCityScanSnapshot extends Equatable {
   }
 
   @override
-  List<Object?> get props => [active, status, concurrency, currentCategory, paused, mode, categories, activity];
+  List<Object?> get props => [active, status, concurrency, currentCategory, paused, mode, runId, cancelled, categories, activity];
 }

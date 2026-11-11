@@ -14,6 +14,7 @@ import '../../domain/entities/validation_start.dart';
 import '../../domain/entities/multi_search_snapshot.dart';
 import '../../domain/entities/coverage_option.dart';
 import '../../domain/entities/maps_session_status.dart';
+import '../../domain/entities/scan_run.dart';
 import '../../domain/entities/state_city_scan_snapshot.dart';
 import '../../domain/entities/excel_archive.dart';
 import '../../domain/entities/sale.dart';
@@ -391,6 +392,25 @@ class LeadRemoteDataSource {
   }
 
   Future<void> cancelStateScan() => _postStateScanControl(ApiConstants.stateScanCancel);
+
+  /// No-website scans that were stopped or cut off and can be resumed.
+  Future<List<ScanRun>> listNoWebsiteRuns() async {
+    final response = await _client.get(_uri(ApiConstants.stateScanRuns));
+    if (response.statusCode >= 400) {
+      throw Exception(_tryDecode(response.body)['error'] ?? 'Failed to load unfinished scans');
+    }
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    return ((body['runs'] as List<dynamic>?) ?? const []).map((e) => ScanRun.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  Future<void> resumeNoWebsiteRun(String id) => _postStateScanControl(ApiConstants.stateScanRunResume(id));
+
+  Future<void> discardNoWebsiteRun(String id) async {
+    final response = await _client.delete(_uri(ApiConstants.stateScanRun(id)));
+    if (response.statusCode >= 400) {
+      throw Exception(_tryDecode(response.body)['error'] ?? 'Could not discard the scan');
+    }
+  }
   Future<void> pauseStateScan() => _postStateScanControl(ApiConstants.stateScanPause);
   Future<void> resumeStateScan() => _postStateScanControl(ApiConstants.stateScanResume);
 

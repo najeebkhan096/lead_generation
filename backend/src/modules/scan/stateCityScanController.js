@@ -6,7 +6,11 @@ import {
   cancelStateCityJob,
   pauseStateCityJob,
   resumeStateCityJob,
+  resumeNoWebsiteScan,
+  getStateCityJobSnapshot as currentScan,
 } from './stateCityOrchestrator.js';
+import { listResumableRuns, deleteRun } from './noWebsiteRunStore.js';
+import { getFirebaseStatus } from '../../firebase/admin.js';
 
 export async function startScan(req, res) {
   const { categories, concurrency = 8, dateRange = '30', maxResultsPerCity = 160, analyze = false, allowUnsignedScan = false, coverage = 'standard', mode = 'reviews' } = req.body || {};
@@ -77,4 +81,40 @@ export function getCoverage(_req, res) {
     perMinute,
     tiers: Object.keys(COVERAGE_TIERS).map((tier) => describeCoverage(tier, perMinute)),
   });
+}
+
+/** GET /api/state-scan/runs: no-website scans that were stopped or cut off and can be resumed. */
+export async function listRuns(_req, res) {
+  // Progress is kept in Firestore; without it there is nothing to resume.
+  if (!getFirebaseStatus().configured) return res.json({ runs: [] });
+  try {
+    return res.json({ runs: await listResumableRuns() });
+  } catch (err) {
+    return res.status(500).json({ error: err.message || 'Failed to list scans' });
+  }
+}
+
+/** POST /api/state-scan/runs/:id/resume */
+export async function resumeRun(req, res) {
+  try {
+    const concurrency = req.body?.concurrency == null ? undefined : Number(req.body.concurrency);
+    const result = await resumeNoWebsiteScan({ runId: req.params.id, concurrency });
+    return res.status(202).json({ started: true, ...result, message: `Resumed: ${result.remaining} cities left.` });
+  } catch (err) {
+    return res.status(err.status || 500).json({ error: err.message || 'Failed to resume the scan', code: err.code });
+  }
+}
+
+/** DELETE /api/state-scan/runs/:id: forget a stopped scan's saved progress. */
+export async function discardRun(req, res) {
+  try {
+    const live = currentScan();
+    if (live && live.status === 'running' && live.runId === req.params.id) {
+      return res.status(409).json({ error: 'This scan is running. Stop it first.' });
+    }
+    const removed = await deleteRun(req.params.id);
+    return removed ? res.json({ success: true }) : res.status(404).json({ error: 'Scan not found' });
+  } catch (err) {
+    return res.status(500).json({ error: err.message || 'Failed to discard the scan' });
+  }
 }

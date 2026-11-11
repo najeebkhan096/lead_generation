@@ -35,37 +35,41 @@ void main() {
 
   int shownTab(WidgetTester tester) => tester.widget<IndexedStack>(find.byType(IndexedStack)).index!;
 
-  testWidgets('the bottom bar has Leads, Deals, Sales and More, and opens on the WhatsApp leads', (tester) async {
+  testWidgets('the bottom bar starts with No Website, then Leads, Deals, Sales and More, and opens on No Website', (tester) async {
     await pumpApp(tester);
 
     final labels = tester
         .widgetList<NavigationDestination>(find.byType(NavigationDestination))
         .map((d) => d.label)
         .toList();
-    expect(labels, ['Leads', 'Deals', 'Sales', 'More']);
+    expect(labels, ['No Website', 'Leads', 'Deals', 'Sales', 'More']);
     expect(shownTab(tester), 0);
+    expect(find.text('WhatsApp · no website'), findsOneWidget);
+
+    // The 1-star review leads are the next tab, with New / Contacted.
+    await tapTab(tester, 'Leads');
+    expect(shownTab(tester), 1);
     expect(find.text('WhatsApp · 1-star reviews'), findsOneWidget);
     expect(find.widgetWithText(ChoiceChip, 'New'), findsWidgets);
     expect(find.widgetWithText(ChoiceChip, 'Contacted'), findsWidgets);
-    // Email and no-website leads are not part of the app.
+    // Email leads are not part of the app.
     expect(find.widgetWithText(Tab, 'Email'), findsNothing);
-    expect(find.textContaining('No website'), findsNothing);
   });
 
   testWidgets('Sales is its own tab, and More holds the account with Sign out but no outreach chat', (tester) async {
     await pumpApp(tester);
 
     await tapTab(tester, 'Sales');
-    expect(shownTab(tester), 2);
+    expect(shownTab(tester), 3);
 
     await tapTab(tester, 'More');
-    expect(shownTab(tester), 3);
+    expect(shownTab(tester), 4);
     expect(find.text('Sign Out'), findsOneWidget);
     expect(find.text('Outreach chat'), findsNothing);
     expect(find.text('My sales'), findsNothing);
 
     await tapTab(tester, 'Leads');
-    expect(shownTab(tester), 0);
+    expect(shownTab(tester), 1);
     expect(find.text('WhatsApp · 1-star reviews'), findsOneWidget);
   });
 }

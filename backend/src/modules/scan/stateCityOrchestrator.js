@@ -30,6 +30,7 @@ import { buildCoverage, isCoverageTier } from '../../data/usCoverage.js';
 import { completedCitiesFromStates, placeIdsFromLeads, applyResumeProgress, checkpointDue } from './scanProgress.js';
 import { scrapeOneCity } from './leadService.js';
 import { getFirebaseStatus } from '../../firebase/admin.js';
+import * as noWebsiteRuns from './noWebsiteRunStore.js';
 import { recordCityWebsites } from '../website/siteLeadPipeline.js';
 import { Mutex } from '../../lib/asyncMutex.js';
 import { writeLeadsXlsxFile, xlsxBufferToJson, sheetsToLeadsJson } from '../archive/exportService.js';
@@ -272,6 +273,71 @@ function newStateRecord(state, cities) {
 /** Test hooks: the per-state scanner and its record shape. */
 export { scanStateCities as _scanStateCities, newStateRecord as _newStateRecord };
 
+// ── Saved progress of no-website scans (see noWebsiteRunStore.js) ───────────
+
+/** How often a running scan saves its progress at most. */
+const RUN_PERSIST_MS = 5000;
+
+/** While a no-website scan runs it saves at least this often, even mid-city, so it never looks dead. */
+const RUN_HEARTBEAT_MS = 15000;
+
+/** What a resume needs: the cities covered and the counts so far, by category. */
+function runProgressOf(job) {
+  const progress = {};
+  let citiesDone = 0;
+  let leads = 0;
+  let businesses = 0;
+  for (const category of job.categories) {
+    const covered = {};
+    const stats = {};
+    for (const rec of job.categoryStates[category]) {
+      if (rec.covered.length) covered[rec.state] = [...rec.covered];
+      if (rec.leadsCollected || rec.businessesProcessed) {
+        stats[rec.state] = { leads: rec.leadsCollected, businesses: rec.businessesProcessed };
+      }
+      citiesDone += rec.covered.length;
+      leads += rec.leadsCollected;
+      businesses += rec.businessesProcessed;
+    }
+    progress[category] = { covered, stats };
+  }
+  return { progress, totals: { citiesDone, citiesTotal: job.runMeta.citiesTotal, leads, businesses } };
+}
+
+/** Saves the run now. Never throws: a failed save must not stop the scan. */
+async function persistRun(job, status = 'running') {
+  if (!job.runStore) return;
+  await job.runMutex.runExclusive(async () => {
+    try {
+      const { progress, totals } = runProgressOf(job);
+      const now = Date.now();
+      await job.runStore.saveRun(
+        { ...job.runMeta, status, updatedAt: now, finishedAt: status === 'running' ? null : now, totals },
+        progress
+      );
+      job.runPersistedAt = now;
+    } catch (err) {
+      logActivity(job, `Could not save the scan's progress (${err.message}); resuming it later would redo more cities.`, 'warn');
+    }
+  });
+}
+
+/** Saves soon, but no more often than every few seconds. */
+function schedulePersist(job) {
+  if (!job.runStore) return;
+  const wait = (job.runPersistMs ?? RUN_PERSIST_MS) - (Date.now() - (job.runPersistedAt || 0));
+  if (wait <= 0) {
+    persistRun(job);
+    return;
+  }
+  if (job.runTimer) return;
+  job.runTimer = setTimeout(() => {
+    job.runTimer = null;
+    persistRun(job);
+  }, wait);
+  job.runTimer.unref?.();
+}
+
 /** Scrapes every city in `stateRec` with up to `job.concurrency` workers
  * running at once, mutating `stateRec` (covered/pending/inProgress/failed/
  * leads) live as each city starts and finishes — the source of truth the
@@ -390,6 +456,8 @@ async function scanStateCities(job, category, stateRec) {
         } catch (err) {
           logActivity(job, `"${category}" · ${stateRec.state} · ${city} — website/email processing failed (${err.message}); review results are unaffected.`, 'warn');
         }
+        // A no-website scan remembers which cities it has covered, so it can be resumed.
+        schedulePersist(job);
       } catch (err) {
         if (err instanceof GoogleBlockedError || err?.code === 'GOOGLE_BLOCKED') {
           // Not a failed city: Google asked this network to slow down. Put the
@@ -591,6 +659,14 @@ async function runJob(job) {
 
   job.finishedAt = Date.now();
   job.status = 'done';
+  if (job.runStore) {
+    clearTimeout(job.runTimer);
+    clearInterval(job.runHeartbeat);
+    job.runTimer = null;
+    // Finished only if every city was covered; stopped, or with failed cities, it can be resumed.
+    const complete = !job.cancelled && Object.values(job.categoryStates).flat().every((st) => st.pending.length === 0 && st.failed.length === 0);
+    await persistRun(job, complete ? 'done' : 'stopped');
+  }
   const allStates = Object.values(job.categoryStates).flat();
   const notFullyRead = allStates.reduce((n, st) => n + (st.incompleteBusinesses || 0), 0);
   const skipped = allStates.reduce((n, st) => n + (st.skippedListings || 0), 0);
@@ -653,6 +729,14 @@ export async function startStateCityScan({
   // 'reviews' = the 1-star scan; 'no_website' = find businesses whose Maps
   // listing has no website (no reviews read, no date window, no sign-in needed).
   mode = 'reviews',
+  // Test seam / resume: where a no-website scan saves its progress (default: Firestore).
+  runStore,
+  // Set by `resumeNoWebsiteScan`: the saved run to pick up.
+  resumeRun,
+  // Test seam: stands in for the website / email pipeline (see website/siteLeadPipeline.js).
+  recordCityWebsitesFn,
+  // Test seam: how often a running no-website scan saves a heartbeat.
+  runHeartbeatMs,
 }) {
   if (mode !== 'reviews' && mode !== 'no_website') {
     const err = new Error('mode must be reviews or no_website');
@@ -732,6 +816,21 @@ export async function startStateCityScan({
     }
   }
 
+  // Resuming a no-website scan: skip the cities it already covered and carry its counts on.
+  if (resumeRun) {
+    for (const category of uniqueCategories) {
+      const saved = resumeRun.progress?.[category] || {};
+      applyResumeProgress(categoryStates[category], saved.covered || {});
+      for (const rec of categoryStates[category]) {
+        const st = saved.stats?.[rec.state];
+        rec.leadsCollected = st?.leads || 0;
+        rec.businessesProcessed = st?.businesses || 0;
+      }
+    }
+  }
+  const effectiveRunStore =
+    mode === 'no_website' ? runStore || (!scrapeLocationFn && getFirebaseStatus().configured ? noWebsiteRuns : null) : null;
+
   const thisJob = {
     categories: uniqueCategories,
     concurrency: poolSize,
@@ -740,6 +839,13 @@ export async function startStateCityScan({
     analyze: Boolean(analyze),
     scrapeLocationFn,
     mode,
+    runId: effectiveRunStore ? resumeRun?.id || jobId : null,
+    runStore: effectiveRunStore,
+    recordCityWebsitesFn,
+    runHeartbeatMs,
+    runMutex: new Mutex(),
+    runTimer: null,
+    runPersistedAt: 0,
     requireSignIn: mode === 'reviews' && Boolean(requireSignIn),
     stoppedReason: null,
     // Set while Google's "unusual traffic" check has the scan paused.
@@ -779,6 +885,15 @@ export async function startStateCityScan({
   thisJob.checkpointFn = scrapeLocationFn
     ? null
     : (category) => thisJob.archiveMutexes[category].runExclusive(() => uploadCategoryArchiveNow(thisJob, category, { isFinal: false }));
+  thisJob.runMeta = {
+    id: thisJob.runId,
+    categories: uniqueCategories,
+    coverage: thisJob.coverage,
+    concurrency: poolSize,
+    maxResultsPerCity: thisJob.maxResultsPerCity,
+    startedAt: resumeRun?.startedAt || thisJob.startedAt,
+    citiesTotal: uniqueCategories.length * states.reduce((n, st) => n + st.cities.length, 0),
+  };
   currentJob = thisJob;
   resetSortDiagnostics();
   _resetSharedPace();
@@ -835,6 +950,12 @@ export async function startStateCityScan({
       throw err;
     }
   }
+  // Record the run before the first city, so even an immediate crash leaves something to resume.
+  await persistRun(thisJob);
+  if (thisJob.runStore) {
+    thisJob.runHeartbeat = setInterval(() => persistRun(thisJob), thisJob.runHeartbeatMs ?? RUN_HEARTBEAT_MS);
+    thisJob.runHeartbeat.unref?.();
+  }
   runJob(thisJob).catch((err) => {
     console.error('State/city scan crashed:', err);
     logActivity(thisJob, `Scan crashed: ${err.message}`, 'error');
@@ -847,6 +968,7 @@ export async function startStateCityScan({
     totalStates: categoryStates[uniqueCategories[0]].length,
     coverage: thisJob.coverage,
     mode,
+    runId: thisJob.runId,
     totalSearches: categoryStates[uniqueCategories[0]].reduce((n, st) => n + st.citiesTotal, 0),
   };
 }
@@ -927,6 +1049,62 @@ export async function resumeStateCityScan({ archiveId, concurrency, scrapeLocati
 
   logActivity(currentJob, `Resuming "${category}" — ${missingStates.length} of ${allStates.length} states remaining.`);
   return result;
+}
+
+/**
+ * Picks a stopped / interrupted no-website scan back up: only the cities it
+ * had not covered are searched, and its counts carry on from where they were.
+ * (A 1-star scan resumes from its archive instead; see `resumeStateCityScan`.)
+ */
+export async function resumeNoWebsiteScan({ runId, concurrency, runStore = noWebsiteRuns, scrapeLocationFn, statesOverride } = {}) {
+  if (!runId) throw new Error('runId is required');
+  if (currentJob && currentJob.status !== 'done') {
+    const err = new Error('A scan is already running.');
+    err.status = 409;
+    throw err;
+  }
+  const run = await runStore.loadRun(runId);
+  if (!run) {
+    const err = new Error('Scan not found — it may have been discarded.');
+    err.status = 404;
+    throw err;
+  }
+  if (run.status === 'done') {
+    const err = new Error('This scan already finished — there is nothing to resume.');
+    err.status = 400;
+    throw err;
+  }
+  if (run.status === 'running') {
+    const err = new Error('This scan is still running.');
+    err.status = 409;
+    throw err;
+  }
+
+  const coverage = isCoverageTier(run.coverage) ? run.coverage : 'standard';
+  const states = statesOverride || buildCoverage(coverage);
+  const remaining = (run.categories || []).reduce((n, category) => {
+    const covered = run.progress?.[category]?.covered || {};
+    return n + states.reduce((m, st) => m + st.cities.filter((c) => !(covered[st.state] || []).includes(c)).length, 0);
+  }, 0);
+  if (!remaining) {
+    const err = new Error('Every city was already covered — there is nothing left to resume.');
+    err.status = 400;
+    throw err;
+  }
+
+  const result = await startStateCityScan({
+    categories: run.categories,
+    mode: 'no_website',
+    concurrency: concurrency ?? run.concurrency,
+    maxResultsPerCity: run.maxResultsPerCity,
+    coverage,
+    statesOverride,
+    scrapeLocationFn,
+    runStore,
+    resumeRun: run,
+  });
+  logActivity(currentJob, `Resuming the no-website scan — ${remaining} cit${remaining === 1 ? 'y' : 'ies'} left.`);
+  return { ...result, remaining };
 }
 
 /**
@@ -1024,6 +1202,9 @@ export function getStateCityJobSnapshot() {
     stoppedReason: job.stoppedReason,
     blocked: job.blocked,
     mode: job.mode || 'reviews',
+    // A stopped no-website scan can be resumed by this id.
+    runId: job.runId || null,
+    cancelled: Boolean(job.cancelled),
     coverage: job.coverage,
     pace: job.pace ? { perMinute: job.pace.perMinute, max: job.pace.max, learnedCap: job.pace.learnedCap ?? null } : null,
     // How each review lookup went (sorted, sign-in required, ...): why some businesses are "not fully read".

@@ -19,6 +19,9 @@ class ApiConstants {
   static const String stateScanCancel = '/api/state-scan/cancel';
   static const String stateScanPause = '/api/state-scan/pause';
   static const String stateScanResume = '/api/state-scan/resume';
+  static const String stateScanRuns = '/api/state-scan/runs';
+  static String stateScanRunResume(String id) => '/api/state-scan/runs/$id/resume';
+  static String stateScanRun(String id) => '/api/state-scan/runs/$id';
 
   static const String multiSearch = '/api/search/multi';
   static const String multiSearchStatus = '/api/search/multi/status';

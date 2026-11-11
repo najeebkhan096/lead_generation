@@ -6,6 +6,7 @@ import '../../domain/entities/validation_start.dart';
 import '../../domain/entities/multi_search_snapshot.dart';
 import '../../domain/entities/coverage_option.dart';
 import '../../domain/entities/maps_session_status.dart';
+import '../../domain/entities/scan_run.dart';
 import '../../domain/entities/state_city_scan_snapshot.dart';
 import '../../domain/entities/excel_archive.dart';
 import '../../domain/entities/sale.dart';
@@ -118,6 +119,15 @@ class LeadRepositoryImpl implements LeadRepository {
 
   @override
   Future<StateCityScanSnapshot> getStateScanStatus() => _remote.getStateScanStatus();
+
+  @override
+  Future<List<ScanRun>> listNoWebsiteRuns() => _remote.listNoWebsiteRuns();
+
+  @override
+  Future<void> resumeNoWebsiteRun(String id) => _remote.resumeNoWebsiteRun(id);
+
+  @override
+  Future<void> discardNoWebsiteRun(String id) => _remote.discardNoWebsiteRun(id);
 
   @override
   Future<void> cancelStateScan() => _remote.cancelStateScan();
