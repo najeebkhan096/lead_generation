@@ -283,3 +283,24 @@ export async function crawlSiteForEmails(websiteUrl, {
   if (failure) return result('check_failed', failure, [], pagesChecked, start);
   return result('not_found', null, [], pagesChecked, start);
 }
+
+/**
+ * One page, fetched with the same guards as the crawl: a public http(s) address,
+ * robots.txt respected, a timeout and a body cap, never throwing. For pages that
+ * are not a business's own site (a web search's results).
+ *
+ * @returns {Promise<{ok: true, html: string, url: string} | {ok: false, reason: string}>}
+ */
+export async function fetchPage(url, {
+  fetchFn = globalThis.fetch,
+  timeoutMs = DEFAULT_TIMEOUT_MS,
+  sleep = (ms) => new Promise((r) => setTimeout(r, ms)),
+} = {}) {
+  const start = normalizeWebsiteUrl(url);
+  if (!start) return { ok: false, reason: 'invalid_url' };
+  const opts = { fetchFn, timeoutMs, sleep };
+  const { origin, pathname } = new URL(start);
+  const robots = await loadRobots(origin, opts);
+  if (!robots.isAllowed(pathname || '/')) return { ok: false, reason: 'robots_disallowed' };
+  return fetchWithRetry(start, opts);
+}

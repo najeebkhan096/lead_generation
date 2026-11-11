@@ -10,6 +10,7 @@ import '../../domain/entities/lead_page.dart';
 import '../../domain/entities/app_update_config.dart';
 import '../../domain/entities/contacted_lead.dart';
 import '../../domain/entities/salesman_stats.dart';
+import '../../domain/entities/email_validation.dart';
 import '../../domain/entities/validation_start.dart';
 import '../../domain/entities/multi_search_snapshot.dart';
 import '../../domain/entities/coverage_option.dart';
@@ -494,12 +495,12 @@ class LeadRemoteDataSource {
     }
   }
 
-  Future<void> startWhatsAppAutoValidation({List<String>? states}) async {
+  Future<String?> startWhatsAppAutoValidation({List<String>? states, String? collection}) async {
     final response = await _client
         .post(
           _uri(ApiConstants.whatsAppWebValidateAuto),
           headers: {'Content-Type': 'application/json'},
-          body: jsonEncode({'states': ?states}),
+          body: jsonEncode({'states': ?states, 'collection': ?collection}),
         )
         .timeout(const Duration(minutes: 2));
     if (response.statusCode >= 400) {
@@ -508,11 +509,12 @@ class LeadRemoteDataSource {
         body['error'] ?? 'Failed to start auto WhatsApp validation',
       );
     }
+    return _tryDecode(response.body)['message'] as String?;
   }
 
-  Future<UnvalidatedWhatsAppSummary> getUnvalidatedWhatsAppSummary() async {
+  Future<UnvalidatedWhatsAppSummary> getUnvalidatedWhatsAppSummary({String? collection}) async {
     final response = await _client
-        .get(_uri(ApiConstants.whatsAppWebUnvalidated))
+        .get(_uri(collection == null ? ApiConstants.whatsAppWebUnvalidated : '${ApiConstants.whatsAppWebUnvalidated}?collection=$collection'))
         .timeout(const Duration(minutes: 2));
     if (response.statusCode >= 400) {
       final body = _tryDecode(response.body);
@@ -531,6 +533,50 @@ class LeadRemoteDataSource {
     return WhatsAppValidationSnapshot.fromJson(
       jsonDecode(response.body) as Map<String, dynamic>,
     );
+  }
+
+  /// Looks up the public email of the no-website leads in [states] (all when
+  /// null). Returns the server's one-line summary of what started.
+  Future<String?> startEmailValidation({List<String>? states, bool recheck = false}) async {
+    final response = await _client
+        .post(
+          _uri(ApiConstants.emailValidateAuto),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'collection': 'websiteLeads', 'states': ?states, if (recheck) 'recheck': true}),
+        )
+        .timeout(const Duration(minutes: 2));
+    final body = _tryDecode(response.body);
+    if (response.statusCode >= 400) {
+      throw Exception(body['error'] ?? 'Failed to start the email lookup');
+    }
+    return body['message'] as String?;
+  }
+
+  Future<UnvalidatedWhatsAppSummary> getEmailValidationSummary() async {
+    final response = await _client
+        .get(_uri('${ApiConstants.emailUnvalidated}?collection=websiteLeads'))
+        .timeout(const Duration(minutes: 2));
+    if (response.statusCode >= 400) {
+      final body = _tryDecode(response.body);
+      throw Exception(body['error'] ?? 'Failed to load the email lookup progress');
+    }
+    return UnvalidatedWhatsAppSummary.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  Future<EmailValidationSnapshot> getEmailValidationStatus() async {
+    final response = await _client.get(_uri(ApiConstants.emailValidateStatus));
+    if (response.statusCode >= 400) {
+      throw Exception('Failed to load the email lookup status');
+    }
+    return EmailValidationSnapshot.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  Future<void> cancelEmailValidation() async {
+    final response = await _client.post(_uri(ApiConstants.emailValidateCancel));
+    if (response.statusCode >= 400) {
+      final body = _tryDecode(response.body);
+      throw Exception(body['error'] ?? 'Failed to cancel the email lookup');
+    }
   }
 
   Future<void> cancelWhatsAppValidation() async {

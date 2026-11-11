@@ -20,6 +20,7 @@
  *   }
  */
 
+import { FieldValue } from 'firebase-admin/firestore';
 import { getFirestore } from '../../firebase/admin.js';
 import { leadDocId, normalizeCategory } from '../../lib/leadIdentity.js';
 import { pagedList, invalidateCategories } from '../../lib/pagination.js';
@@ -135,8 +136,13 @@ function docToWebsiteLead(doc) {
     mapsUrl: d.mapsUrl || null,
     rating: d.rating ?? null,
     totalReviews: d.totalReviews ?? null,
-    hasWhatsApp: false,
+    hasWhatsApp: d.hasWhatsApp === true,
+    whatsAppCheckedAt: iso(d.whatsAppCheckedAt),
     waLink: d.waLink || null,
+    email: d.email || null,
+    emailStatus: d.emailStatus || null,
+    emailFoundOn: d.emailFoundOn || null,
+    emailCheckedAt: iso(d.emailCheckedAt),
     websiteStatus: d.websiteStatus || 'missing',
     leadTypes: d.leadTypes || [],
     badReview: { stars: 1, text: '', date: 'Unknown' },
@@ -182,6 +188,162 @@ export async function deleteWebsiteLeadsByCategory(category) {
     await batch.commit();
   }
   return { deleted: refs.length };
+}
+
+// ---- validation (WhatsApp + email) ----------------------------------------
+
+/** The state part of a location — "Austin, TX" -> "TX"; a bare "Texas" stays. */
+export function stateOfLocation(location) {
+  const loc = String(location || '').trim();
+  if (!loc) return '';
+  const comma = loc.lastIndexOf(',');
+  return (comma >= 0 ? loc.slice(comma + 1) : loc).trim();
+}
+
+/** Does [location] belong to one of [states] (lower-cased set)? No set = all. */
+export function locationInStates(location, wantedLower) {
+  if (!wantedLower?.size) return true;
+  const loc = String(location || '').trim().toLowerCase();
+  if (!loc) return false;
+  return wantedLower.has(loc) || wantedLower.has(stateOfLocation(location).toLowerCase());
+}
+
+function wantedStates(states) {
+  const list = (Array.isArray(states) ? states : []).map((s) => String(s).trim().toLowerCase()).filter(Boolean);
+  return list.length ? new Set(list) : null;
+}
+
+/** An email check that ended without an answer is retried on the next run. */
+export function emailCheckIsDefinite(d) {
+  return Boolean(d.emailCheckedAt) && d.emailStatus !== 'check_failed';
+}
+
+/** What a validator works on: the stored business, in the shape the jobs take. */
+function toValidationLead(id, d) {
+  return {
+    id,
+    dbId: id,
+    business: d.business || 'Unknown',
+    phone: d.phone || null,
+    location: d.location || null,
+    category: d.category || null,
+    address: d.address || null,
+    website: null,
+    mapsUrl: d.mapsUrl || null,
+    waLink: d.waLink || null,
+    email: d.email || null,
+    whatsAppCheckedAt: d.whatsAppCheckedAt || null,
+    emailCheckedAt: d.emailCheckedAt || null,
+    emailStatus: d.emailStatus || null,
+    sourceType: 'website',
+  };
+}
+
+async function allMissingDocs() {
+  const snap = await getFirestore().collection(COLLECTION).where('websiteStatus', '==', 'missing').get();
+  return snap.docs;
+}
+
+/** No-website leads by Firestore id, in the shape the validation jobs take. */
+export async function getWebsiteLeadsByIds(ids) {
+  const unique = [...new Set((ids || []).map(String).filter(Boolean))];
+  if (!unique.length) return [];
+  const db = getFirestore();
+  const snaps = await db.getAll(...unique.map((id) => db.collection(COLLECTION).doc(id)));
+  return snaps.filter((s) => s.exists).map((s) => toValidationLead(s.id, s.data()));
+}
+
+/**
+ * Every no-website lead with a phone that has not been checked for WhatsApp,
+ * optionally limited to [states]. Reads the collection and filters here — a
+ * lead that was never checked has no `whatsAppCheckedAt` field at all, which a
+ * Firestore `== null` query does not match.
+ */
+export async function listUncheckedWhatsApp({ states, recheck = false } = {}) {
+  const wanted = wantedStates(states);
+  return (await allMissingDocs())
+    .map((doc) => [doc.id, doc.data()])
+    .filter(([, d]) => d.phone && (recheck || !d.whatsAppCheckedAt) && locationInStates(d.location, wanted))
+    .map(([id, d]) => toValidationLead(id, d));
+}
+
+/**
+ * Every no-website lead without an email, that has not been looked up yet (or
+ * whose last lookup failed), optionally limited to [states].
+ */
+export async function listUncheckedEmail({ states, recheck = false } = {}) {
+  const wanted = wantedStates(states);
+  return (await allMissingDocs())
+    .map((doc) => [doc.id, doc.data()])
+    .filter(([, d]) => !d.email && d.business && (recheck || !emailCheckIsDefinite(d)) && locationInStates(d.location, wanted))
+    .map(([id, d]) => toValidationLead(id, d));
+}
+
+/**
+ * Per-state validation progress, for the state pickers: how many businesses
+ * each state has, how many a check applies to, how many are checked, and how
+ * many came out positive. `count` is what a run would work through.
+ */
+export function summarizeValidationRows(docs, kind) {
+  const byState = new Map();
+  for (const d of docs) {
+    const name = stateOfLocation(d.location) || 'Unknown';
+    const row = byState.get(name) || { name, total: 0, eligible: 0, checked: 0, found: 0 };
+    row.total += 1;
+    if (kind === 'whatsapp') {
+      if (d.phone) {
+        row.eligible += 1;
+        if (d.whatsAppCheckedAt) row.checked += 1;
+        if (d.hasWhatsApp === true) row.found += 1;
+      }
+    } else {
+      row.eligible += 1;
+      if (d.email) {
+        row.checked += 1;
+        row.found += 1;
+      } else if (emailCheckIsDefinite(d)) {
+        row.checked += 1;
+      }
+    }
+    byState.set(name, row);
+  }
+  const locations = [...byState.values()]
+    .map((row) => {
+      const count = row.eligible - row.checked;
+      const status = !row.eligible ? 'no_phone' : row.checked >= row.eligible ? 'validated' : row.checked === 0 ? 'not_validated' : 'partial';
+      return { ...row, count, status };
+    })
+    .sort((a, b) => a.name.localeCompare(b.name));
+  return { total: locations.reduce((sum, l) => sum + l.count, 0), locations };
+}
+
+export async function summarizeWebsiteLeadValidation(kind) {
+  const docs = (await allMissingDocs()).map((d) => d.data());
+  return summarizeValidationRows(docs, kind === 'email' ? 'email' : 'whatsapp');
+}
+
+/** Flags a no-website lead with the result of a real WhatsApp check. */
+export async function updateWebsiteLeadWhatsApp(leadId, { hasWhatsApp }) {
+  await getFirestore().collection(COLLECTION).doc(leadId).update({
+    hasWhatsApp: Boolean(hasWhatsApp),
+    whatsAppCheckedAt: FieldValue.serverTimestamp(),
+  });
+}
+
+/**
+ * Records how an email lookup ended. A found address is stored on the lead
+ * itself; "not found" and "failed" only stamp the check, so an address that was
+ * already stored is never erased by a later miss.
+ */
+export async function updateWebsiteLeadEmail(leadId, { status, email = null, emails = [], source = null, foundOn = null }) {
+  const patch = { emailStatus: status, emailCheckedAt: FieldValue.serverTimestamp() };
+  if (status === 'found' && email) {
+    patch.email = email;
+    patch.emails = emails;
+    if (source) patch.emailSource = source;
+    if (foundOn) patch.emailFoundOn = foundOn;
+  }
+  await getFirestore().collection(COLLECTION).doc(leadId).set(patch, { merge: true });
 }
 
 export const _COLLECTION = COLLECTION;

@@ -230,6 +230,7 @@ class UnvalidatedLocationCount extends Equatable {
     this.total = 0,
     this.withPhone = 0,
     this.checked = 0,
+    this.found = 0,
     this.status = 'not_validated',
   });
 
@@ -238,8 +239,14 @@ class UnvalidatedLocationCount extends Equatable {
   /// Numbers still to check: what "Validate" would work through.
   final int count;
   final int total;
+  /// Businesses a check applies to: those with a phone number (WhatsApp), or
+  /// every business (email lookup).
   final int withPhone;
   final int checked;
+
+  /// Checked ones with a positive answer (on WhatsApp / an email found). Only
+  /// no-website leads report it; 0 otherwise.
+  final int found;
 
   /// `validated`, `partial`, `not_validated` or `no_phone` (set by the server).
   final String status;
@@ -251,14 +258,15 @@ class UnvalidatedLocationCount extends Equatable {
       name: (json['name'] as String?) ?? 'Unknown',
       count: (json['count'] as num?)?.toInt() ?? 0,
       total: (json['total'] as num?)?.toInt() ?? 0,
-      withPhone: (json['withPhone'] as num?)?.toInt() ?? 0,
+      withPhone: ((json['withPhone'] ?? json['eligible']) as num?)?.toInt() ?? 0,
       checked: (json['checked'] as num?)?.toInt() ?? 0,
+      found: (json['found'] as num?)?.toInt() ?? 0,
       status: (json['status'] as String?) ?? 'not_validated',
     );
   }
 
   @override
-  List<Object?> get props => [name, count, total, withPhone, checked, status];
+  List<Object?> get props => [name, count, total, withPhone, checked, found, status];
 }
 
 /// Unchecked Firestore leads, grouped by state, so the WhatsApp Tool can

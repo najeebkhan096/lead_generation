@@ -11,6 +11,7 @@ import '../../presentation/pages/jobs/job_details_page.dart';
 import '../../presentation/pages/jobs/jobs_hub_page.dart';
 import '../../presentation/pages/excel_scan_page.dart';
 import '../../presentation/pages/multi_scan_page.dart';
+import '../../presentation/pages/no_website_validation_page.dart';
 import '../../presentation/pages/clients_page.dart';
 import '../../presentation/pages/sales_page.dart';
 import '../../presentation/pages/lead_hubs.dart';
@@ -182,6 +183,12 @@ final GoRouter appRouter = GoRouter(
           builder: (context, state) => const WatchlistPage(),
         ),
         GoRoute(path: '/users', builder: (context, state) => const UsersPage()),
+        // Validate the no-website leads by state — WhatsApp and email tabs.
+        GoRoute(
+          path: '/website-leads/validate',
+          builder: (context, state) =>
+              NoWebsiteValidationPage(initialTab: state.uri.queryParameters['tab'] == 'email' ? 1 : 0),
+        ),
         GoRoute(
           path: '/salesman-stats',
           builder: (context, state) => const SalesmanStatsPage(),

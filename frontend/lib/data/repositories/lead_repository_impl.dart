@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import '../../domain/entities/lead.dart';
 import '../../domain/entities/lead_page.dart';
+import '../../domain/entities/email_validation.dart';
 import '../../domain/entities/validation_start.dart';
 import '../../domain/entities/multi_search_snapshot.dart';
 import '../../domain/entities/coverage_option.dart';
@@ -204,12 +205,25 @@ class LeadRepositoryImpl implements LeadRepository {
       _remote.validateExternalLeads(leads, recheck: recheck);
 
   @override
-  Future<void> startWhatsAppAutoValidation({List<String>? states}) =>
-      _remote.startWhatsAppAutoValidation(states: states);
+  Future<String?> startWhatsAppAutoValidation({List<String>? states, String? collection}) =>
+      _remote.startWhatsAppAutoValidation(states: states, collection: collection);
 
   @override
-  Future<UnvalidatedWhatsAppSummary> getUnvalidatedWhatsAppSummary() =>
-      _remote.getUnvalidatedWhatsAppSummary();
+  Future<UnvalidatedWhatsAppSummary> getUnvalidatedWhatsAppSummary({String? collection}) =>
+      _remote.getUnvalidatedWhatsAppSummary(collection: collection);
+
+  @override
+  Future<String?> startEmailValidation({List<String>? states, bool recheck = false}) =>
+      _remote.startEmailValidation(states: states, recheck: recheck);
+
+  @override
+  Future<UnvalidatedWhatsAppSummary> getEmailValidationSummary() => _remote.getEmailValidationSummary();
+
+  @override
+  Future<EmailValidationSnapshot> getEmailValidationStatus() => _remote.getEmailValidationStatus();
+
+  @override
+  Future<void> cancelEmailValidation() => _remote.cancelEmailValidation();
 
   @override
   Future<WhatsAppValidationSnapshot> getWhatsAppValidationStatus() =>

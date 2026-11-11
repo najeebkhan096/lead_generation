@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import '../entities/lead.dart';
 import '../entities/lead_page.dart';
+import '../entities/email_validation.dart';
 import '../entities/validation_start.dart';
 import '../entities/multi_search_snapshot.dart';
 import '../entities/coverage_option.dart';
@@ -185,9 +186,25 @@ abstract class LeadRepository {
   /// Automatically discovers and validates unchecked leads from Firestore.
   /// Pass [states] to limit the run to those state names; omit for every
   /// unvalidated lead (no batch cap).
-  Future<void> startWhatsAppAutoValidation({List<String>? states});
+  ///
+  /// [collection] picks the leads: the 1-star review leads by default, or
+  /// `websiteLeads` for the no-website leads.
+  /// Returns the server's one-line summary of what started (or why nothing did).
+  Future<String?> startWhatsAppAutoValidation({List<String>? states, String? collection});
 
-  Future<UnvalidatedWhatsAppSummary> getUnvalidatedWhatsAppSummary();
+  /// Per-state validation progress for [collection] (1-star leads by default).
+  Future<UnvalidatedWhatsAppSummary> getUnvalidatedWhatsAppSummary({String? collection});
+
+  /// Looks up the public email address of the no-website leads in [states]
+  /// (every state when null). Returns the server's one-line summary.
+  Future<String?> startEmailValidation({List<String>? states, bool recheck = false});
+
+  /// Per-state progress of the no-website email lookup.
+  Future<UnvalidatedWhatsAppSummary> getEmailValidationSummary();
+
+  Future<EmailValidationSnapshot> getEmailValidationStatus();
+
+  Future<void> cancelEmailValidation();
 
   Future<WhatsAppValidationSnapshot> getWhatsAppValidationStatus();
 

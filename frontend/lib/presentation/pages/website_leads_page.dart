@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../../core/theme/app_theme.dart';
 import '../../domain/entities/lead_page.dart';
+import '../design_system/design_system.dart';
 import '../widgets/site_lead_card.dart';
 import 'lead_list_page.dart';
 import '../widgets/lead_table.dart';
@@ -29,6 +30,13 @@ class WebsiteLeadsPage extends StatelessWidget {
         rowAction: const LeadRowAction(icon: AppIcons.externalLink, tooltip: 'Open in Google Maps'),
         searchHint: 'Search by name, phone, address or category',
         cardExtent: 232,
+        headerActions: (context, _) => [
+          AppButton.primary(
+            label: 'Validate',
+            icon: AppIcons.shieldCheck,
+            onPressed: () => context.push('/website-leads/validate'),
+          ),
+        ],
         cardBuilder: (context, lead, {required onTap, required onDelete, required deleting}) =>
             WebsiteLeadCard(lead: lead, onTap: onTap, onDelete: onDelete, deleting: deleting),
         onOpen: (context, lead) async {

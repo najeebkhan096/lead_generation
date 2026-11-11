@@ -53,6 +53,11 @@ class ApiConstants {
   static const String whatsAppWebValidateStatus = '/api/whatsapp-web/validate/status';
   static const String whatsAppWebValidateCancel = '/api/whatsapp-web/validate/cancel';
 
+  static const String emailValidateAuto = '/api/email-validation/validate-auto';
+  static const String emailUnvalidated = '/api/email-validation/unvalidated';
+  static const String emailValidateStatus = '/api/email-validation/validate/status';
+  static const String emailValidateCancel = '/api/email-validation/validate/cancel';
+
   static const String watchlist = '/api/watchlist';
   static const String watchlistScan = '/api/watchlist/scan';
   static String watchlistDelete(String id) => '/api/watchlist/$id';

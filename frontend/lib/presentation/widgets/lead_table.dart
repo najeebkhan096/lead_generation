@@ -156,6 +156,10 @@ List<AppColumn<Lead>> leadTableColumns(
         category,
         phone,
         rating,
+        // Filled by the validation page (/website-leads/validate). Dropped before
+        // Added/Category when the window narrows (higher priority number goes first).
+        AppColumn<Lead>(label: 'WhatsApp', width: 148, priority: 4, cell: (context, lead) => _WhatsAppBadge(lead: lead)),
+        AppColumn<Lead>(label: 'Email', flex: 2, minWidth: 190, priority: 5, cell: (context, lead) => _EmailsCell(lead: lead)),
         AppColumn<Lead>(label: 'Website', width: 120, cell: (context, lead) => const AppBadge('No website', tone: AppTone.info, icon: AppIcons.globe, dense: true)),
         added,
         actions,
