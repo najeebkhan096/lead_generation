@@ -18,17 +18,17 @@ function requireWebsiteLeads(collection) {
 /**
  * POST /api/email-validation/validate-auto
  *
- * Body: `{ collection?: 'websiteLeads', states?: string[], recheck?: boolean }`.
- * Looks up the public email of every no-website lead (in [states], or all)
+ * Body: `{ collection?: 'websiteLeads', category?: string, states?: string[], recheck?: boolean }`.
+ * Looks up the public email of every no-website lead (in [category] and [states], or all)
  * that has none and has not been looked up yet. `recheck` includes the ones
  * already looked up with nothing found. At most MAX_EMAIL_LEADS_PER_RUN per run.
  */
 export async function startAutoValidation(req, res) {
   try {
-    const { collection, states: rawStates, recheck } = req.body || {};
+    const { collection, states: rawStates, recheck, category } = req.body || {};
     requireWebsiteLeads(collection);
     const states = Array.isArray(rawStates) ? rawStates.map((s) => String(s).trim()).filter(Boolean) : undefined;
-    const all = await listUncheckedEmail({ states, recheck: recheck === true });
+    const all = await listUncheckedEmail({ states, category, recheck: recheck === true });
     if (!all.length) {
       return res.json({
         success: true,
@@ -53,7 +53,7 @@ export async function startAutoValidation(req, res) {
 export async function getUnvalidatedSummary(req, res) {
   try {
     requireWebsiteLeads(req.query?.collection);
-    return res.json(await summarizeWebsiteLeadValidation('email'));
+    return res.json(await summarizeWebsiteLeadValidation('email', { category: req.query?.category }));
   } catch (err) {
     return res.status(err.status || 500).json({ error: err.message || 'Failed to load email lookup progress' });
   }

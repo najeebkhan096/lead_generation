@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../domain/entities/lead_page.dart';
 import '../../domain/entities/whatsapp_web_status.dart';
 import '../../domain/repositories/lead_repository.dart';
 import '../design_system/design_system.dart';
@@ -11,26 +12,100 @@ import '../widgets/state_validation_list.dart';
 
 const _pollInterval = Duration(seconds: 2);
 
-/// The no-website leads, validated by state — one tab per way to qualify them:
+/// The no-website leads, validated one search at a time — first pick the search
+/// (a category such as "Cafe USA"), then the states of its leads to validate.
+/// One tab per way to qualify them:
 ///
 ///  * **WhatsApp** — checks each lead's phone number against the linked
 ///    WhatsApp Web session and flags the ones that are on WhatsApp.
 ///  * **Email** — looks each business up on the public web for a business email
 ///    address and keeps the ones that verify as deliverable.
 ///
-/// Both tabs list the states the leads are in, with how far each is validated,
-/// and let you run the selected states, a single state, or all of them.
-class NoWebsiteValidationPage extends StatelessWidget {
+/// Both tabs list that search's states, with how far each is validated, and let
+/// you run the selected states, a single state, or all of them.
+class NoWebsiteValidationPage extends StatefulWidget {
   const NoWebsiteValidationPage({super.key, this.initialTab = 0});
 
   /// 0 = WhatsApp, 1 = Email.
   final int initialTab;
 
   @override
+  State<NoWebsiteValidationPage> createState() => _NoWebsiteValidationPageState();
+}
+
+class _NoWebsiteValidationPageState extends State<NoWebsiteValidationPage> {
+  List<LeadCategory>? _categories;
+  String? _categoriesError;
+  String? _category;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadCategories());
+  }
+
+  Future<void> _loadCategories() async {
+    setState(() => _categoriesError = null);
+    try {
+      final list = await context.read<LeadRepository>().getLeadCategories(LeadCollection.websiteLeads);
+      if (!mounted) return;
+      setState(() {
+        _categories = list;
+        // The one search there is needs no choosing.
+        if (list.length == 1) _category = list.first.name;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _categoriesError = e.toString().replaceFirst('Exception: ', ''));
+    }
+  }
+
+  Widget _picker(BuildContext context) {
+    final categories = _categories;
+    final text = Theme.of(context).textTheme;
+    if (_categoriesError != null) {
+      return AppAlert(
+        tone: AppTone.error,
+        message: _categoriesError!,
+        actions: [AppButton.outlined(label: 'Retry', size: AppButtonSize.sm, onPressed: _loadCategories)],
+      );
+    }
+    if (categories == null) return const LinearProgressIndicator(minHeight: 3);
+    if (categories.isEmpty) {
+      return Text('No no-website leads yet. Run a No-Website scan and they appear here.', style: text.bodyMedium);
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        AppDropdown<String?>(
+          // A fixed width: the menu is capped at 480, so a full-width field breaks it.
+          width: 400,
+          label: 'Search',
+          hint: 'Select a search to validate',
+          leadingIcon: AppIcons.filter,
+          value: _category,
+          options: [
+            for (final c in categories) AppOption<String?>(c.name, c.name, caption: groupedNumber(c.count)),
+          ],
+          onChanged: (v) => setState(() => _category = v),
+        ),
+        const SizedBox(height: AppSpace.xs),
+        Text(
+          _category == null
+              ? 'Pick the search first — validation runs on one search\'s leads, then by state.'
+              : 'Showing the states of "$_category".',
+          style: text.bodySmall,
+        ),
+      ],
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final gutter = AppSpace.pageGutter(MediaQuery.sizeOf(context).width);
     return DefaultTabController(
       length: 2,
-      initialIndex: initialTab.clamp(0, 1),
+      initialIndex: widget.initialTab.clamp(0, 1),
       child: Scaffold(
         appBar: AppBar(
           title: const Text('No-website validation'),
@@ -42,10 +117,26 @@ class NoWebsiteValidationPage extends StatelessWidget {
           ),
         ),
         body: SafeArea(
-          child: TabBarView(
+          child: Column(
             children: [
-              _ValidationTab(spec: _whatsAppSpec),
-              _ValidationTab(spec: _emailSpec),
+              Align(
+                alignment: Alignment.topCenter,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 820),
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(gutter, AppSpace.lg, gutter, 0),
+                    child: _picker(context),
+                  ),
+                ),
+              ),
+              Expanded(
+                child: TabBarView(
+                  children: [
+                    _ValidationTab(spec: _whatsAppSpec, category: _category),
+                    _ValidationTab(spec: _emailSpec, category: _category),
+                  ],
+                ),
+              ),
             ],
           ),
         ),
@@ -107,12 +198,12 @@ class _ValidationSpec {
   final String missLabel;
   final String runningLabel;
 
-  final Future<UnvalidatedWhatsAppSummary> Function(LeadRepository repo) loadSummary;
+  final Future<UnvalidatedWhatsAppSummary> Function(LeadRepository repo, String category) loadSummary;
   final Future<_Progress> Function(LeadRepository repo) poll;
   final Future<void> Function(LeadRepository repo) cancel;
 
-  /// Starts a run over [states] (null = all); returns the server's message.
-  final Future<String?> Function(LeadRepository repo, List<String>? states, bool recheck) start;
+  /// Starts a run over [states] (null = all) of [category]; returns the server's message.
+  final Future<String?> Function(LeadRepository repo, String category, List<String>? states, bool recheck) start;
 }
 
 final _whatsAppSpec = _ValidationSpec(
@@ -124,7 +215,7 @@ final _whatsAppSpec = _ValidationSpec(
   foundLabel: 'on WhatsApp',
   missLabel: 'not on WhatsApp',
   runningLabel: 'Checking WhatsApp numbers',
-  loadSummary: (repo) => repo.getUnvalidatedWhatsAppSummary(collection: 'websiteLeads'),
+  loadSummary: (repo, category) => repo.getUnvalidatedWhatsAppSummary(collection: 'websiteLeads', category: category),
   poll: (repo) async {
     final s = await repo.getWhatsAppValidationStatus();
     return _Progress(
@@ -140,7 +231,8 @@ final _whatsAppSpec = _ValidationSpec(
     );
   },
   cancel: (repo) => repo.cancelWhatsAppValidation(),
-  start: (repo, states, _) => repo.startWhatsAppAutoValidation(states: states, collection: 'websiteLeads'),
+  start: (repo, category, states, _) =>
+      repo.startWhatsAppAutoValidation(states: states, collection: 'websiteLeads', category: category),
 );
 
 final _emailSpec = _ValidationSpec(
@@ -153,7 +245,7 @@ final _emailSpec = _ValidationSpec(
   foundLabel: 'with an email',
   missLabel: 'no email found',
   runningLabel: 'Looking up emails',
-  loadSummary: (repo) => repo.getEmailValidationSummary(),
+  loadSummary: (repo, category) => repo.getEmailValidationSummary(category: category),
   poll: (repo) async {
     final s = await repo.getEmailValidationStatus();
     return _Progress(
@@ -169,13 +261,16 @@ final _emailSpec = _ValidationSpec(
     );
   },
   cancel: (repo) => repo.cancelEmailValidation(),
-  start: (repo, states, recheck) => repo.startEmailValidation(states: states, recheck: recheck),
+  start: (repo, category, states, recheck) => repo.startEmailValidation(states: states, category: category, recheck: recheck),
 );
 
 class _ValidationTab extends StatefulWidget {
-  const _ValidationTab({required this.spec});
+  const _ValidationTab({required this.spec, required this.category});
 
   final _ValidationSpec spec;
+
+  /// The search whose leads are validated; null until one is picked.
+  final String? category;
 
   @override
   State<_ValidationTab> createState() => _ValidationTabState();
@@ -216,6 +311,17 @@ class _ValidationTabState extends State<_ValidationTab> with AutomaticKeepAliveC
   }
 
   @override
+  void didUpdateWidget(covariant _ValidationTab old) {
+    super.didUpdateWidget(old);
+    if (old.category != widget.category) {
+      // A different search has different states: nothing ticked carries over.
+      _selected.clear();
+      _summary = null;
+      _loadSummary();
+    }
+  }
+
+  @override
   void dispose() {
     _timer?.cancel();
     super.dispose();
@@ -229,13 +335,23 @@ class _ValidationTabState extends State<_ValidationTab> with AutomaticKeepAliveC
   String _clean(Object e) => e.toString().replaceFirst('Exception: ', '');
 
   Future<void> _loadSummary() async {
+    final category = widget.category;
+    if (category == null) {
+      setState(() {
+        _summary = null;
+        _loading = false;
+        _error = null;
+      });
+      return;
+    }
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
-      final summary = await _spec.loadSummary(_repo);
-      if (!mounted) return;
+      final summary = await _spec.loadSummary(_repo, category);
+      // Picked another search while this one loaded: that answer is stale.
+      if (!mounted || category != widget.category) return;
       setState(() {
         _summary = summary;
         _loading = false;
@@ -334,10 +450,10 @@ class _ValidationTabState extends State<_ValidationTab> with AutomaticKeepAliveC
 
   Future<bool> _confirm(List<String>? states) async {
     final scope = states == null
-        ? 'every state'
+        ? 'every state of "${widget.category}"'
         : states.length == 1
-            ? states.first
-            : '${states.length} states';
+            ? '${states.first} · "${widget.category}"'
+            : '${states.length} states of "${widget.category}"';
     final String message;
     if (_spec.isWhatsApp) {
       message = 'Checks the phone numbers of the no-website leads in $scope that have not been checked yet, one at a time and at a '
@@ -362,13 +478,14 @@ class _ValidationTabState extends State<_ValidationTab> with AutomaticKeepAliveC
   }
 
   Future<void> _start(List<String>? states) async {
-    if (_starting || _progress.active) return;
+    final category = widget.category;
+    if (category == null || _starting || _progress.active) return;
     if (_spec.isWhatsApp && !await _whatsAppGate()) return;
     if (!mounted || !await _confirm(states)) return;
 
     setState(() => _starting = true);
     try {
-      final message = await _spec.start(_repo, states, _recheck);
+      final message = await _spec.start(_repo, category, states, _recheck);
       _sawRun = true;
       if (message != null) _toast(message);
       await _pollOnce();
@@ -449,6 +566,9 @@ class _ValidationTabState extends State<_ValidationTab> with AutomaticKeepAliveC
   }
 
   Widget _states() {
+    if (widget.category == null) {
+      return Text('Select a search above to see its states.', style: Theme.of(context).textTheme.bodyMedium);
+    }
     if (_loading && _summary == null) return const LoadingView(label: 'Counting leads…');
     if (_error != null && _summary == null) {
       return AppAlert(
@@ -460,7 +580,7 @@ class _ValidationTabState extends State<_ValidationTab> with AutomaticKeepAliveC
     final summary = _summary;
     if (summary == null || summary.locations.isEmpty) {
       return Text(
-        'No no-website leads yet. Run a No-Website scan and they appear here.',
+        'No leads in this search.',
         style: Theme.of(context).textTheme.bodyMedium,
       );
     }

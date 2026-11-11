@@ -205,19 +205,20 @@ class LeadRepositoryImpl implements LeadRepository {
       _remote.validateExternalLeads(leads, recheck: recheck);
 
   @override
-  Future<String?> startWhatsAppAutoValidation({List<String>? states, String? collection}) =>
-      _remote.startWhatsAppAutoValidation(states: states, collection: collection);
+  Future<String?> startWhatsAppAutoValidation({List<String>? states, String? collection, String? category}) =>
+      _remote.startWhatsAppAutoValidation(states: states, collection: collection, category: category);
 
   @override
-  Future<UnvalidatedWhatsAppSummary> getUnvalidatedWhatsAppSummary({String? collection}) =>
-      _remote.getUnvalidatedWhatsAppSummary(collection: collection);
+  Future<UnvalidatedWhatsAppSummary> getUnvalidatedWhatsAppSummary({String? collection, String? category}) =>
+      _remote.getUnvalidatedWhatsAppSummary(collection: collection, category: category);
 
   @override
-  Future<String?> startEmailValidation({List<String>? states, bool recheck = false}) =>
-      _remote.startEmailValidation(states: states, recheck: recheck);
+  Future<String?> startEmailValidation({List<String>? states, String? category, bool recheck = false}) =>
+      _remote.startEmailValidation(states: states, category: category, recheck: recheck);
 
   @override
-  Future<UnvalidatedWhatsAppSummary> getEmailValidationSummary() => _remote.getEmailValidationSummary();
+  Future<UnvalidatedWhatsAppSummary> getEmailValidationSummary({String? category}) =>
+      _remote.getEmailValidationSummary(category: category);
 
   @override
   Future<EmailValidationSnapshot> getEmailValidationStatus() => _remote.getEmailValidationStatus();

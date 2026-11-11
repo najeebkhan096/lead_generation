@@ -239,9 +239,12 @@ function toValidationLead(id, d) {
   };
 }
 
-async function allMissingDocs() {
-  const snap = await getFirestore().collection(COLLECTION).where('websiteStatus', '==', 'missing').get();
-  return snap.docs;
+/** Every confirmed no-website lead, optionally only those in an exact [category]. */
+async function allMissingDocs(category) {
+  let query = getFirestore().collection(COLLECTION).where('websiteStatus', '==', 'missing');
+  const wanted = String(category || '').trim();
+  if (wanted) query = query.where('category', '==', wanted);
+  return (await query.get()).docs;
 }
 
 /** No-website leads by Firestore id, in the shape the validation jobs take. */
@@ -255,13 +258,13 @@ export async function getWebsiteLeadsByIds(ids) {
 
 /**
  * Every no-website lead with a phone that has not been checked for WhatsApp,
- * optionally limited to [states]. Reads the collection and filters here — a
+ * optionally limited to one [category] and to [states]. Reads the collection and filters here — a
  * lead that was never checked has no `whatsAppCheckedAt` field at all, which a
  * Firestore `== null` query does not match.
  */
-export async function listUncheckedWhatsApp({ states, recheck = false } = {}) {
+export async function listUncheckedWhatsApp({ states, category, recheck = false } = {}) {
   const wanted = wantedStates(states);
-  return (await allMissingDocs())
+  return (await allMissingDocs(category))
     .map((doc) => [doc.id, doc.data()])
     .filter(([, d]) => d.phone && (recheck || !d.whatsAppCheckedAt) && locationInStates(d.location, wanted))
     .map(([id, d]) => toValidationLead(id, d));
@@ -271,9 +274,9 @@ export async function listUncheckedWhatsApp({ states, recheck = false } = {}) {
  * Every no-website lead without an email, that has not been looked up yet (or
  * whose last lookup failed), optionally limited to [states].
  */
-export async function listUncheckedEmail({ states, recheck = false } = {}) {
+export async function listUncheckedEmail({ states, category, recheck = false } = {}) {
   const wanted = wantedStates(states);
-  return (await allMissingDocs())
+  return (await allMissingDocs(category))
     .map((doc) => [doc.id, doc.data()])
     .filter(([, d]) => !d.email && d.business && (recheck || !emailCheckIsDefinite(d)) && locationInStates(d.location, wanted))
     .map(([id, d]) => toValidationLead(id, d));
@@ -317,8 +320,8 @@ export function summarizeValidationRows(docs, kind) {
   return { total: locations.reduce((sum, l) => sum + l.count, 0), locations };
 }
 
-export async function summarizeWebsiteLeadValidation(kind) {
-  const docs = (await allMissingDocs()).map((d) => d.data());
+export async function summarizeWebsiteLeadValidation(kind, { category } = {}) {
+  const docs = (await allMissingDocs(category)).map((d) => d.data());
   return summarizeValidationRows(docs, kind === 'email' ? 'email' : 'whatsapp');
 }
 

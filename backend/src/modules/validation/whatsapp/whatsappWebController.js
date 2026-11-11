@@ -158,13 +158,16 @@ export async function startAutoValidation(req, res) {
     const states = Array.isArray(rawStates)
       ? rawStates.map((s) => String(s).trim()).filter(Boolean)
       : undefined;
-    const leads = await source.listUncheckedWhatsApp({ states });
+    const category = typeof req.body?.category === 'string' ? req.body.category.trim() : '';
+    const leads = await source.listUncheckedWhatsApp({ states, category });
     if (!leads.length) {
       return res.json({
         success: true,
         message: states?.length
           ? 'No unvalidated leads found in the selected states.'
-          : 'No leads needing validation found.',
+          : category
+            ? `No leads needing validation found in "${category}".`
+            : 'No leads needing validation found.',
       });
     }
     const result = startValidationJob({
@@ -182,7 +185,7 @@ export async function startAutoValidation(req, res) {
 
 export async function getUnvalidatedSummary(req, res) {
   try {
-    const summary = await leadSource(req.query?.collection).summarizeWhatsApp();
+    const summary = await leadSource(req.query?.collection).summarizeWhatsApp({ category: req.query?.category });
     return res.json(summary);
   } catch (err) {
     return res.status(err.status || 500).json({ error: err.message || 'Failed to load unvalidated leads' });

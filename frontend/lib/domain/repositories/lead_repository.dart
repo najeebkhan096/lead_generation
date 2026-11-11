@@ -188,19 +188,20 @@ abstract class LeadRepository {
   /// unvalidated lead (no batch cap).
   ///
   /// [collection] picks the leads: the 1-star review leads by default, or
-  /// `websiteLeads` for the no-website leads.
+  /// `websiteLeads` for the no-website leads. [category] (no-website leads only)
+  /// limits the run to one search, e.g. "Cafe USA".
   /// Returns the server's one-line summary of what started (or why nothing did).
-  Future<String?> startWhatsAppAutoValidation({List<String>? states, String? collection});
+  Future<String?> startWhatsAppAutoValidation({List<String>? states, String? collection, String? category});
 
   /// Per-state validation progress for [collection] (1-star leads by default).
-  Future<UnvalidatedWhatsAppSummary> getUnvalidatedWhatsAppSummary({String? collection});
+  Future<UnvalidatedWhatsAppSummary> getUnvalidatedWhatsAppSummary({String? collection, String? category});
 
   /// Looks up the public email address of the no-website leads in [states]
   /// (every state when null). Returns the server's one-line summary.
-  Future<String?> startEmailValidation({List<String>? states, bool recheck = false});
+  Future<String?> startEmailValidation({List<String>? states, String? category, bool recheck = false});
 
   /// Per-state progress of the no-website email lookup.
-  Future<UnvalidatedWhatsAppSummary> getEmailValidationSummary();
+  Future<UnvalidatedWhatsAppSummary> getEmailValidationSummary({String? category});
 
   Future<EmailValidationSnapshot> getEmailValidationStatus();
 

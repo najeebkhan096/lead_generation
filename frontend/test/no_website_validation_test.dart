@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lead_generation_app/core/theme/app_theme.dart';
 import 'package:lead_generation_app/domain/entities/email_validation.dart';
+import 'package:lead_generation_app/domain/entities/lead_page.dart';
 import 'package:lead_generation_app/domain/entities/whatsapp_web_status.dart';
 import 'package:lead_generation_app/domain/repositories/lead_repository.dart';
 import 'package:lead_generation_app/presentation/pages/no_website_validation_page.dart';
@@ -18,19 +19,29 @@ UnvalidatedWhatsAppSummary _summary({required bool email}) => UnvalidatedWhatsAp
 
 /// Only what the page touches; anything else fails loudly via [noSuchMethod].
 class _Repo implements LeadRepository {
-  final waStarts = <({List<String>? states, String? collection})>[];
-  final emailStarts = <({List<String>? states, bool recheck})>[];
-  final summaryCollections = <String?>[];
+  final waStarts = <({List<String>? states, String? collection, String? category})>[];
+  final emailStarts = <({List<String>? states, String? category, bool recheck})>[];
+  final summaryCalls = <({String? collection, String? category})>[];
+  final emailSummaryCategories = <String?>[];
   bool waReady = true;
 
   @override
-  Future<UnvalidatedWhatsAppSummary> getUnvalidatedWhatsAppSummary({String? collection}) async {
-    summaryCollections.add(collection);
+  Future<List<LeadCategory>> getLeadCategories(LeadCollection collection) async {
+    expect(collection, LeadCollection.websiteLeads);
+    return const [LeadCategory(name: 'Cafe USA', count: 19), LeadCategory(name: 'Bakery USA', count: 7)];
+  }
+
+  @override
+  Future<UnvalidatedWhatsAppSummary> getUnvalidatedWhatsAppSummary({String? collection, String? category}) async {
+    summaryCalls.add((collection: collection, category: category));
     return _summary(email: false);
   }
 
   @override
-  Future<UnvalidatedWhatsAppSummary> getEmailValidationSummary() async => _summary(email: true);
+  Future<UnvalidatedWhatsAppSummary> getEmailValidationSummary({String? category}) async {
+    emailSummaryCategories.add(category);
+    return _summary(email: true);
+  }
 
   @override
   Future<WhatsAppWebStatus> getWhatsAppWebStatus() async => WhatsAppWebStatus(
@@ -47,14 +58,14 @@ class _Repo implements LeadRepository {
       const EmailValidationSnapshot(active: false, status: 'idle');
 
   @override
-  Future<String?> startWhatsAppAutoValidation({List<String>? states, String? collection}) async {
-    waStarts.add((states: states, collection: collection));
+  Future<String?> startWhatsAppAutoValidation({List<String>? states, String? collection, String? category}) async {
+    waStarts.add((states: states, collection: collection, category: category));
     return 'Started';
   }
 
   @override
-  Future<String?> startEmailValidation({List<String>? states, bool recheck = false}) async {
-    emailStarts.add((states: states, recheck: recheck));
+  Future<String?> startEmailValidation({List<String>? states, String? category, bool recheck = false}) async {
+    emailStarts.add((states: states, category: category, recheck: recheck));
     return 'Started the email lookup';
   }
 
@@ -62,7 +73,8 @@ class _Repo implements LeadRepository {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
-Future<_Repo> _pump(WidgetTester tester, {int tab = 0, bool waReady = true}) async {
+/// [search] is the category picked from the dropdown before anything else.
+Future<_Repo> _pump(WidgetTester tester, {int tab = 0, bool waReady = true, String? search = 'Cafe USA'}) async {
   tester.view.physicalSize = const Size(1100, 1400);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
@@ -74,6 +86,12 @@ Future<_Repo> _pump(WidgetTester tester, {int tab = 0, bool waReady = true}) asy
     ),
   );
   await tester.pumpAndSettle();
+  if (search != null) {
+    await tester.tap(find.text('Select a search to validate'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(search).last);
+    await tester.pumpAndSettle();
+  }
   return repo;
 }
 
@@ -85,6 +103,25 @@ void main() {
     // WhatsApp is the first tab and loads the no-website collection's states.
     expect(find.text('WhatsApp validation'), findsNothing); // blurb, not a heading
     expect(find.textContaining('your linked WhatsApp Web session'), findsOneWidget);
+  });
+
+  testWidgets('nothing is listed or validated until a search is picked', (tester) async {
+    final repo = await _pump(tester, search: null);
+    expect(find.text('Select a search to validate'), findsOneWidget);
+    expect(find.text('Select a search above to see its states.'), findsOneWidget);
+    expect(find.text('TX · 10'), findsNothing);
+    expect(repo.summaryCalls, isEmpty);
+  });
+
+  testWidgets('choosing another search reloads the states for it', (tester) async {
+    final repo = await _pump(tester);
+    expect(repo.summaryCalls.map((c) => c.category), ['Cafe USA']);
+    await tester.tap(find.text('Cafe USA').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Bakery USA').last);
+    await tester.pumpAndSettle();
+    expect(repo.summaryCalls.map((c) => c.category), ['Cafe USA', 'Bakery USA']);
+    expect(find.text('Showing the states of "Bakery USA".'), findsOneWidget);
   });
 
   testWidgets('lists each state with its progress and a Validate button', (tester) async {
@@ -101,7 +138,7 @@ void main() {
 
   testWidgets('WhatsApp: ticking states validates exactly those, against the no-website leads', (tester) async {
     final repo = await _pump(tester);
-    expect(repo.summaryCollections, ['websiteLeads']);
+    expect(repo.summaryCalls, [(collection: 'websiteLeads', category: 'Cafe USA')]);
 
     await tester.tap(find.byType(Checkbox).at(2)); // TX (FL is disabled but still a checkbox)
     await tester.tap(find.byType(Checkbox).at(3)); // OH
@@ -111,13 +148,14 @@ void main() {
 
     await tester.tap(find.text('Validate selected (2)'));
     await tester.pumpAndSettle();
-    expect(find.text('Validate WhatsApp numbers in 2 states?'), findsOneWidget);
+    expect(find.text('Validate WhatsApp numbers in 2 states of "Cafe USA"?'), findsOneWidget);
     await tester.tap(find.text('Start'));
     await tester.pumpAndSettle();
 
     expect(repo.waStarts, hasLength(1));
     expect(repo.waStarts.single.states, ['TX', 'OH']);
     expect(repo.waStarts.single.collection, 'websiteLeads');
+    expect(repo.waStarts.single.category, 'Cafe USA');
   });
 
   testWidgets('WhatsApp: one state, and Validate all, send the right scope', (tester) async {
@@ -154,11 +192,13 @@ void main() {
     await tester.pump();
     await tester.tap(find.text('Validate selected (1)'));
     await tester.pumpAndSettle();
-    expect(find.text('Look up emails in OH?'), findsOneWidget);
+    expect(find.text('Look up emails in OH · "Cafe USA"?'), findsOneWidget);
     await tester.tap(find.text('Start'));
     await tester.pumpAndSettle();
 
+    expect(repo.emailSummaryCategories, everyElement('Cafe USA')); // reloaded after the start too
     expect(repo.emailStarts.single.states, ['OH']);
+    expect(repo.emailStarts.single.category, 'Cafe USA');
     expect(repo.emailStarts.single.recheck, isFalse);
     expect(repo.waStarts, isEmpty);
   });

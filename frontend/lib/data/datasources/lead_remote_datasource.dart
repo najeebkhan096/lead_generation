@@ -33,6 +33,12 @@ class LeadRemoteDataSource {
 
   final http.Client _client;
 
+  /// [path] with the non-null [params] as an encoded query string.
+  static String _withQuery(String path, Map<String, String?> params) {
+    final query = Uri(queryParameters: {for (final e in params.entries) if (e.value != null) e.key: e.value!}).query;
+    return query.isEmpty ? path : '$path?$query';
+  }
+
   Uri _uri(String path) {
     var base = ApiConstants.baseUrl.trim();
     if (base.isEmpty) {
@@ -495,12 +501,12 @@ class LeadRemoteDataSource {
     }
   }
 
-  Future<String?> startWhatsAppAutoValidation({List<String>? states, String? collection}) async {
+  Future<String?> startWhatsAppAutoValidation({List<String>? states, String? collection, String? category}) async {
     final response = await _client
         .post(
           _uri(ApiConstants.whatsAppWebValidateAuto),
           headers: {'Content-Type': 'application/json'},
-          body: jsonEncode({'states': ?states, 'collection': ?collection}),
+          body: jsonEncode({'states': ?states, 'collection': ?collection, 'category': ?category}),
         )
         .timeout(const Duration(minutes: 2));
     if (response.statusCode >= 400) {
@@ -512,9 +518,9 @@ class LeadRemoteDataSource {
     return _tryDecode(response.body)['message'] as String?;
   }
 
-  Future<UnvalidatedWhatsAppSummary> getUnvalidatedWhatsAppSummary({String? collection}) async {
+  Future<UnvalidatedWhatsAppSummary> getUnvalidatedWhatsAppSummary({String? collection, String? category}) async {
     final response = await _client
-        .get(_uri(collection == null ? ApiConstants.whatsAppWebUnvalidated : '${ApiConstants.whatsAppWebUnvalidated}?collection=$collection'))
+        .get(_uri(_withQuery(ApiConstants.whatsAppWebUnvalidated, {'collection': collection, 'category': category})))
         .timeout(const Duration(minutes: 2));
     if (response.statusCode >= 400) {
       final body = _tryDecode(response.body);
@@ -537,12 +543,12 @@ class LeadRemoteDataSource {
 
   /// Looks up the public email of the no-website leads in [states] (all when
   /// null). Returns the server's one-line summary of what started.
-  Future<String?> startEmailValidation({List<String>? states, bool recheck = false}) async {
+  Future<String?> startEmailValidation({List<String>? states, String? category, bool recheck = false}) async {
     final response = await _client
         .post(
           _uri(ApiConstants.emailValidateAuto),
           headers: {'Content-Type': 'application/json'},
-          body: jsonEncode({'collection': 'websiteLeads', 'states': ?states, if (recheck) 'recheck': true}),
+          body: jsonEncode({'collection': 'websiteLeads', 'category': ?category, 'states': ?states, if (recheck) 'recheck': true}),
         )
         .timeout(const Duration(minutes: 2));
     final body = _tryDecode(response.body);
@@ -552,9 +558,9 @@ class LeadRemoteDataSource {
     return body['message'] as String?;
   }
 
-  Future<UnvalidatedWhatsAppSummary> getEmailValidationSummary() async {
+  Future<UnvalidatedWhatsAppSummary> getEmailValidationSummary({String? category}) async {
     final response = await _client
-        .get(_uri('${ApiConstants.emailUnvalidated}?collection=websiteLeads'))
+        .get(_uri(_withQuery(ApiConstants.emailUnvalidated, {'collection': 'websiteLeads', 'category': category})))
         .timeout(const Duration(minutes: 2));
     if (response.statusCode >= 400) {
       final body = _tryDecode(response.body);

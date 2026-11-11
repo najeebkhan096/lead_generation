@@ -30,8 +30,9 @@ export const LEAD_SOURCES = {
     sourceType: 'review',
     load: getSavedLeadsByIds,
     setWhatsApp: updateLeadWhatsAppStatus,
+    // Review leads are validated across every category; only no-website leads take one.
     listUncheckedWhatsApp: ({ states } = {}) => listUnvalidatedLeads({ states }),
-    summarizeWhatsApp: summarizeWhatsAppByState,
+    summarizeWhatsApp: () => summarizeWhatsAppByState(),
     saveVerified: undefined,
   },
   websiteLeads: {
@@ -39,7 +40,7 @@ export const LEAD_SOURCES = {
     load: getWebsiteLeadsByIds,
     setWhatsApp: updateWebsiteLeadWhatsApp,
     listUncheckedWhatsApp,
-    summarizeWhatsApp: () => summarizeWebsiteLeadValidation('whatsapp'),
+    summarizeWhatsApp: ({ category } = {}) => summarizeWebsiteLeadValidation('whatsapp', { category }),
     saveVerified: async () => {},
   },
 };
