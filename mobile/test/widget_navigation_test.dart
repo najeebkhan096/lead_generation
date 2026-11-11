@@ -35,41 +35,43 @@ void main() {
 
   int shownTab(WidgetTester tester) => tester.widget<IndexedStack>(find.byType(IndexedStack)).index!;
 
-  testWidgets('the bottom bar starts with No Website, then Leads, Deals, Sales and More, and opens on No Website', (tester) async {
+  testWidgets('the bottom bar is only No Website and Profile, and opens on No Website', (tester) async {
     await pumpApp(tester);
 
     final labels = tester
         .widgetList<NavigationDestination>(find.byType(NavigationDestination))
         .map((d) => d.label)
         .toList();
-    expect(labels, ['No Website', 'Leads', 'Deals', 'Sales', 'More']);
+    expect(labels, ['No Website', 'Profile']);
     expect(shownTab(tester), 0);
     expect(find.text('WhatsApp · no website'), findsOneWidget);
-
-    // The 1-star review leads are the next tab, with New / Contacted.
-    await tapTab(tester, 'Leads');
-    expect(shownTab(tester), 1);
-    expect(find.text('WhatsApp · 1-star reviews'), findsOneWidget);
     expect(find.widgetWithText(ChoiceChip, 'New'), findsWidgets);
     expect(find.widgetWithText(ChoiceChip, 'Contacted'), findsWidgets);
     // Email leads are not part of the app.
     expect(find.widgetWithText(Tab, 'Email'), findsNothing);
   });
 
-  testWidgets('Sales is its own tab, and More holds the account with Sign out but no outreach chat', (tester) async {
+  testWidgets('Profile holds the 1-star leads, Deals and Sales, and the account with Sign out', (tester) async {
     await pumpApp(tester);
 
-    await tapTab(tester, 'Sales');
-    expect(shownTab(tester), 3);
-
-    await tapTab(tester, 'More');
-    expect(shownTab(tester), 4);
+    await tapTab(tester, 'Profile');
+    expect(shownTab(tester), 1);
+    expect(find.text('Profile'), findsWidgets);
+    expect(find.text('1-star review leads'), findsOneWidget);
+    expect(find.text('Deals'), findsOneWidget);
+    expect(find.text('Sales'), findsOneWidget);
     expect(find.text('Sign Out'), findsOneWidget);
     expect(find.text('Outreach chat'), findsNothing);
-    expect(find.text('My sales'), findsNothing);
 
-    await tapTab(tester, 'Leads');
-    expect(shownTab(tester), 1);
+    // The 1-star leads open from here, with New / Contacted and a way back.
+    await tester.tap(find.text('1-star review leads'));
+    await animate(tester);
     expect(find.text('WhatsApp · 1-star reviews'), findsOneWidget);
+    expect(find.widgetWithText(ChoiceChip, 'New'), findsWidgets);
+    expect(find.byType(BackButton), findsOneWidget);
+
+    await tester.tap(find.byType(BackButton));
+    await animate(tester);
+    expect(find.text('Sign Out'), findsOneWidget);
   });
 }

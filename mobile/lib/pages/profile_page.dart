@@ -4,7 +4,10 @@ import '../services/auth_service.dart';
 import '../services/open_links.dart';
 import '../theme/app_theme.dart';
 import '../widgets/page_header.dart';
+import 'deals_page.dart';
+import 'sales_page.dart';
 import 'search_history_page.dart';
+import 'verified_leads_screen.dart';
 import 'whatsapp_verified_leads_page.dart';
 import 'settings_page.dart';
 
@@ -26,8 +29,8 @@ class ProfilePage extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const PageHeader(
-                title: 'More',
-                subtitle: 'Your account and extra tools',
+                title: 'Profile',
+                subtitle: 'Your account, leads, deals and sales',
               ),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -36,6 +39,23 @@ class ProfilePage extends StatelessWidget {
                   children: [
                     _IdentityCard(user: user),
                     const SizedBox(height: 28),
+                    // The salesman's work. The bottom bar is only No Website
+                    // and Profile; the rest lives here.
+                    _ProfileItem(
+                      icon: AppIcons.chat,
+                      label: '1-star review leads',
+                      onTap: () => _open(context, const VerifiedLeadsScreen()),
+                    ),
+                    _ProfileItem(
+                      icon: AppIcons.handshake,
+                      label: 'Deals',
+                      onTap: () => _open(context, const DealsPage()),
+                    ),
+                    _ProfileItem(
+                      icon: AppIcons.wallet,
+                      label: 'Sales',
+                      onTap: () => _open(context, const SalesPage()),
+                    ),
                     _ProfileItem(
                       icon: AppIcons.shieldCheck,
                       label: 'WhatsApp archive leads',
@@ -89,6 +109,19 @@ class ProfilePage extends StatelessWidget {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  /// Opens [page] as its own screen with a back button. The pages carry their
+  /// own header, so the app bar is just the way back.
+  void _open(BuildContext context, Widget page) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => Scaffold(
+          appBar: AppBar(),
+          body: page,
         ),
       ),
     );

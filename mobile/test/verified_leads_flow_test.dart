@@ -11,6 +11,7 @@ import 'package:lead_mobile/models/lead.dart';
 import 'package:lead_mobile/pages/deals_page.dart';
 import 'package:lead_mobile/pages/verified_lead_detail_page.dart';
 import 'package:lead_mobile/pages/verified_leads_screen.dart';
+import 'package:lead_mobile/pages/website_leads_screen.dart';
 import 'package:lead_mobile/services/daily_contact_repository.dart';
 import 'package:lead_mobile/services/verified_lead_repository.dart';
 import 'package:lead_mobile/theme/app_theme.dart';
@@ -171,6 +172,27 @@ class _FakeRepo extends VerifiedLeadRepository {
   }
 
   @override
+  Future<void> setWebsiteContacted(String leadId, {required bool contacted}) async {
+    final refused = refusal;
+    if (refused != null) {
+      refusal = null;
+      throw refused;
+    }
+    store.writes.add('websiteLeads/$leadId contacted=$contacted');
+    final doc = store.col('websiteLeads')[leadId]!;
+    if (contacted) {
+      doc['status'] = 'contacted';
+      doc['contactedAt'] = Timestamp.now();
+      doc['contactedBy'] = me;
+    } else {
+      doc['status'] = 'lead';
+      doc.remove('contactedAt');
+      doc.remove('contactedBy');
+    }
+    store.changed();
+  }
+
+  @override
   Future<void> setDealDone(String leadId, {required bool done}) async {
     store.writes.add('whatsappLeads/$leadId dealDone=$done');
     final doc = store.col('whatsappLeads')[leadId]!;
@@ -209,6 +231,23 @@ Map<String, dynamic> _verified(String business, DateTime verified,
       'location': 'Texas',
       'phone': phone,
       'sourceType': sourceType,
+      'updatedAt': Timestamp.fromDate(verified),
+      'createdAt': Timestamp.fromDate(verified),
+      'whatsAppCheckedAt': Timestamp.fromDate(verified),
+      if (contacted != null) ...{'status': 'contacted', 'contactedAt': Timestamp.fromDate(contacted)},
+      'contactedBy': ?contactedBy,
+    };
+
+Map<String, dynamic> _site(String business, DateTime verified,
+        {String phone = '+97455500001', DateTime? contacted, String? contactedBy, bool whatsApp = true, String status = 'missing'}) =>
+    {
+      'business': business,
+      'category': 'Salon USA',
+      'location': 'Texas',
+      'phone': phone,
+      'mapsUrl': 'https://maps.example/$business',
+      'websiteStatus': status,
+      'hasWhatsApp': whatsApp,
       'updatedAt': Timestamp.fromDate(verified),
       'createdAt': Timestamp.fromDate(verified),
       'whatsAppCheckedAt': Timestamp.fromDate(verified),
@@ -665,6 +704,125 @@ void main() {
 
       expect(find.text('Lead details'), findsOneWidget);
       expect(find.widgetWithText(FilledButton, 'Mark as deal done'), findsOneWidget);
+    });
+  });
+
+  group('no-website leads', () {
+    Future<void> pumpSites(WidgetTester tester) async {
+      tester.view.physicalSize = const Size(900, 2000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(MaterialApp(
+        theme: AppTheme.light(),
+        home: Scaffold(
+          body: WebsiteLeadsScreen(
+            repository: repo,
+            daily: daily,
+            collectionQuery: (c) => _Query(store, c),
+            actions: LeadActions(whatsapp: (url) async {
+              opened.add('whatsapp $url');
+              return true;
+            }),
+          ),
+        ),
+      ));
+      await tester.pumpAndSettle();
+    }
+
+    setUp(() {
+      store.col('websiteLeads')
+        ..['a'] = _site('Alpha Salon', at(0, 9))
+        ..['b'] = _site('Bravo Salon', at(1), phone: '+97455500002')
+        ..['c'] = _site('Charlie Salon', at(2), phone: '+97455500003', contacted: at(0, 8), contactedBy: _FakeRepo.me)
+        ..['g'] = _site('Golf Salon', at(4), phone: '+97455500007', contacted: at(0, 10), contactedBy: 'other')
+        // Not validated on WhatsApp, or has a website after all: never listed.
+        ..['x'] = _site('Xray Salon', at(5), whatsApp: false)
+        ..['y'] = _site('Yankee Salon', at(5), status: 'available');
+    });
+
+    testWidgets('a New lead has WhatsApp and a Contacted button — no Map button', (tester) async {
+      await pumpSites(tester);
+
+      expect(find.text('WhatsApp · no website'), findsOneWidget);
+      expect(find.text('Alpha Salon'), findsOneWidget);
+      expect(find.text('Charlie Salon'), findsNothing); // contacted: in the other list
+      expect(find.text('Xray Salon'), findsNothing);
+      expect(find.text('Yankee Salon'), findsNothing);
+      expect(find.widgetWithText(FilledButton, 'WhatsApp'), findsWidgets);
+      expect(find.widgetWithText(FilledButton, 'Contacted'), findsWidgets);
+      expect(find.widgetWithText(FilledButton, 'Map'), findsNothing);
+      // The banner is the daily limit, the same one the 1-star leads show.
+      expect(find.textContaining('contacted'), findsWidgets);
+    });
+
+    testWidgets('WhatsApp only opens the chat; it does not mark the lead contacted', (tester) async {
+      await pumpSites(tester);
+
+      await tester.tap(find.widgetWithText(FilledButton, 'WhatsApp').first);
+      await tester.pumpAndSettle();
+
+      expect(opened, ['whatsapp https://wa.me/97455500001']);
+      expect(store.writes, isEmpty);
+      expect(find.text('Alpha Salon'), findsOneWidget);
+    });
+
+    testWidgets('pressing Contacted moves the lead to my Contacted list, with Undo', (tester) async {
+      await pumpSites(tester);
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Contacted').first);
+      await tester.pumpAndSettle();
+
+      expect(store.writes, ['websiteLeads/a contacted=true']);
+      expect(store.col('websiteLeads')['a']!['contactedBy'], _FakeRepo.me);
+      expect(find.text('Alpha Salon'), findsNothing); // gone from New
+      expect(find.text('Bravo Salon'), findsOneWidget);
+      expect(find.text('Moved to Contacted'), findsOneWidget);
+      expect(store.writes.where((w) => w.startsWith('whatsappLeads')), isEmpty);
+
+      await openTab(tester, 'Contacted');
+      expect(find.text('Alpha Salon'), findsOneWidget);
+      expect(find.text('Charlie Salon'), findsOneWidget);
+      expect(find.text('Golf Salon'), findsNothing); // another salesman's
+      // A contacted lead offers the way back, not a second Contacted button.
+      expect(find.widgetWithText(FilledButton, 'Contacted'), findsNothing);
+      expect(find.widgetWithText(TextButton, 'Move to New'), findsWidgets);
+    });
+
+    testWidgets('Move to New puts a contacted lead back in New', (tester) async {
+      await pumpSites(tester);
+      await openTab(tester, 'Contacted');
+
+      await tester.tap(find.widgetWithText(TextButton, 'Move to New').first);
+      await tester.pumpAndSettle();
+
+      expect(store.writes, ['websiteLeads/c contacted=false']);
+      await openTab(tester, 'New');
+      expect(find.text('Charlie Salon'), findsOneWidget);
+    });
+
+    testWidgets('when the daily limit refuses, the server\'s message is shown and nothing moves', (tester) async {
+      repo.refusal = FirebaseFunctionsException(
+        code: 'resource-exhausted',
+        message: 'Daily limit reached: you have contacted 10 of 10 new leads today.',
+      );
+      await pumpSites(tester);
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Contacted').first);
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('Daily limit reached: you have contacted 10 of 10'), findsOneWidget);
+      expect(store.col('websiteLeads')['a']!['status'], isNull);
+      expect(find.text('Alpha Salon'), findsOneWidget);
+    });
+
+    testWidgets('at the limit New leads are hidden, exactly as for 1-star leads', (tester) async {
+      daily.status = const DailyContactStatus(used: 10, limit: 10);
+      await pumpSites(tester);
+
+      expect(find.text('Daily limit reached'), findsWidgets);
+      expect(find.text('Alpha Salon'), findsNothing);
+      await openTab(tester, 'Contacted');
+      expect(find.text('Charlie Salon'), findsOneWidget); // contacted ones stay reachable
     });
   });
 }

@@ -787,6 +787,38 @@
           "order": "DESCENDING"
         }
       ]
+    },
+    {
+      "collectionGroup": "websiteLeads",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "contactedBy",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "contactedAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "websiteLeads",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "category",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "contactedBy",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "contactedAt",
+          "order": "DESCENDING"
+        }
+      ]
     }
   ],
   "fieldOverrides": []

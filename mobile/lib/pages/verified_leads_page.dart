@@ -11,8 +11,19 @@ import '../widgets/lead_collection_page.dart';
 import '../widgets/verified_lead_card.dart';
 import 'verified_lead_detail_page.dart';
 
-/// The WhatsApp-validated 1-star review leads (`whatsappLeads` documents with
-/// `sourceType == 'review'`) — the only leads the phone shows.
+/// Which WhatsApp-validated leads a [VerifiedLeadsPage] lists.
+enum LeadKind {
+  /// The 1-star review leads: `whatsappLeads` documents with `sourceType == 'review'`.
+  review,
+
+  /// The no-website leads: `websiteLeads` documents whose number a WhatsApp
+  /// check confirmed (`hasWhatsApp`) and that really have no website.
+  noWebsite,
+}
+
+/// The WhatsApp-validated leads of one [LeadKind] — the 1-star review leads
+/// (`whatsappLeads` documents with `sourceType == 'review'`), or the no-website
+/// leads (`websiteLeads`). Both work the same way, and share one daily limit.
 ///
 /// Two lists behind a small switch. **New** holds the leads nobody has
 /// contacted yet. **Contacted** holds only the leads *this* salesman
@@ -24,14 +35,23 @@ import 'verified_lead_detail_page.dart';
 /// Opening WhatsApp on a New lead marks it Contacted, within the salesman's
 /// daily limit; "Move to New" puts it back. A banner shows today's count. When
 /// the limit is reached, New leads are hidden until the next day.
+///
+/// The limit is ONE number for both kinds of lead: a salesman may contact that
+/// many new leads a day in total, so the banner and the refusal are the same on
+/// the 1-star and the no-website lists. Only the 1-star leads can be marked a
+/// deal done (a lead's own page); a no-website lead is New or Contacted.
 class VerifiedLeadsPage extends StatefulWidget {
   const VerifiedLeadsPage({
     super.key,
+    this.kind = LeadKind.review,
     this.repository,
     this.daily,
     this.collectionQuery,
     this.actions = const LeadActions(),
   });
+
+  /// Which leads this page lists.
+  final LeadKind kind;
 
   /// For tests; defaults to the Firestore-backed one.
   final VerifiedLeadRepository? repository;
@@ -58,9 +78,10 @@ class _VerifiedLeadsPageState extends State<VerifiedLeadsPage> {
   late final Stream<DailyContactStatus>? _today =
       _repo.currentUid == null ? null : _daily.watchToday(_repo.currentUid!);
 
-  static const _collection = 'whatsappLeads';
-  static const _sourceType = 'review';
   static const _contacted = 'contacted';
+
+  bool get _review => widget.kind == LeadKind.review;
+  String get _collection => _review ? 'whatsappLeads' : 'websiteLeads';
 
   void _say(String text, {SnackBarAction? action}) {
     if (!mounted) return;
@@ -74,7 +95,11 @@ class _VerifiedLeadsPageState extends State<VerifiedLeadsPage> {
   /// through their listeners.
   Future<bool> _save(VerifiedLead item, {required bool contacted}) async {
     try {
-      await _repo.setContacted(item.lead.id, contacted: contacted);
+      if (_review) {
+        await _repo.setContacted(item.lead.id, contacted: contacted);
+      } else {
+        await _repo.setWebsiteContacted(item.lead.id, contacted: contacted);
+      }
       return true;
     } on FirebaseFunctionsException catch (e) {
       const refused = {'resource-exhausted', 'failed-precondition', 'permission-denied'};
@@ -147,9 +172,9 @@ class _VerifiedLeadsPageState extends State<VerifiedLeadsPage> {
       // A new key when the limit is reached, so the page starts again with
       // New hidden.
       key: ValueKey('daily-limit-reached-$reached'),
-      title: 'WhatsApp · 1-star reviews',
+      title: _review ? 'WhatsApp · 1-star reviews' : 'WhatsApp · no website',
       noun: 'business',
-      headerIcon: AppIcons.chat,
+      headerIcon: _review ? AppIcons.chat : AppIcons.globe,
       banner: daily != null
           ? _DailyBanner(status: daily)
           : unavailable
@@ -157,12 +182,18 @@ class _VerifiedLeadsPageState extends State<VerifiedLeadsPage> {
               : null,
       // The size of the pool stays on the web console, not on the salesman's phone.
       showCounts: false,
-      searchHint: 'Search WhatsApp leads...',
-      emptyIcon: AppIcons.chat,
-      emptyTitle: reached ? 'Daily limit reached' : 'No WhatsApp leads here yet',
+      searchHint: _review ? 'Search WhatsApp leads...' : 'Search no-website leads...',
+      emptyIcon: _review ? AppIcons.chat : AppIcons.globe,
+      emptyTitle: reached
+          ? 'Daily limit reached'
+          : _review
+              ? 'No WhatsApp leads here yet'
+              : 'No validated no-website leads yet',
       emptyBody: reached && daily != null
           ? 'You have contacted ${daily.used} of ${daily.limit} new leads today. New leads come back tomorrow.'
-          : 'Leads you validate in the web console appear here, and move to Contacted once you reach out.',
+          : _review
+              ? 'Leads you validate in the web console appear here, and move to Contacted once you reach out.'
+              : 'Businesses with no website whose WhatsApp number is confirmed appear here, and move to Contacted once you reach out.',
       emptySubtitle: 'Validated leads will land here',
       filters: const [
         (label: 'New', value: null),
@@ -172,10 +203,18 @@ class _VerifiedLeadsPageState extends State<VerifiedLeadsPage> {
         final contactedList = status == _contacted;
         // Today's limit reached: New leads are hidden. Contacted still shows.
         final hideNew = reached && !contactedList;
-        Query<Map<String, dynamic>> base(String? category) {
-          Query<Map<String, dynamic>> q =
-              (widget.collectionQuery ?? FirebaseFirestore.instance.collection)(_collection)
-                  .where('sourceType', isEqualTo: _sourceType);
+        // What counts as one of this page's leads. A review lead is a
+        // `whatsappLeads` document of the review kind. A no-website lead is a
+        // validated, confirmed-missing `websiteLeads` one — but only for the
+        // New list: a contacted one is already both, and asking only for
+        // `contactedBy` keeps it on the same index the daily count reads.
+        Query<Map<String, dynamic>> base(String? category, {bool forNew = true}) {
+          Query<Map<String, dynamic>> q = (widget.collectionQuery ?? FirebaseFirestore.instance.collection)(_collection);
+          if (_review) {
+            q = q.where('sourceType', isEqualTo: 'review');
+          } else if (forNew) {
+            q = q.where('hasWhatsApp', isEqualTo: true).where('websiteStatus', isEqualTo: 'missing');
+          }
           if (category != null) q = q.where('category', isEqualTo: category);
           return q;
         }
@@ -189,7 +228,7 @@ class _VerifiedLeadsPageState extends State<VerifiedLeadsPage> {
         // out has no `contactedBy`, so the empty fallback matches none.
         final owner = _repo.currentUid ?? '';
         Query<Map<String, dynamic>> myContacted(String? category) =>
-            base(category).where('contactedBy', isEqualTo: owner).orderBy('contactedAt', descending: true);
+            base(category, forNew: false).where('contactedBy', isEqualTo: owner).orderBy('contactedAt', descending: true);
 
         Future<int> countOf(Query<Map<String, dynamic>> q) async => (await q.count().get()).count ?? 0;
 
@@ -197,14 +236,17 @@ class _VerifiedLeadsPageState extends State<VerifiedLeadsPage> {
           // The list's true size, so the header says "125 businesses" and not
           // "58+" while only the first pages have loaded. New is everything
           // minus the leads anyone has contacted (`status` can be unset, which
-          // Firestore cannot filter for).
-          counter: (category) async {
-            if (contactedList) return countOf(myContacted(category));
-            if (hideNew) return 0;
-            final all = await countOf(base(category));
-            final contacted = await countOf(contactedByAnyone(category));
-            return all > contacted ? all - contacted : 0;
-          },
+          // Firestore cannot filter for). Only the 1-star list is counted: the
+          // no-website pool's size stays on the web console.
+          counter: !_review
+              ? null
+              : (category) async {
+                  if (contactedList) return countOf(myContacted(category));
+                  if (hideNew) return 0;
+                  final all = await countOf(base(category));
+                  final contacted = await countOf(contactedByAnyone(category));
+                  return all > contacted ? all - contacted : 0;
+                },
           segments: [
             // New: by verified date, with contacted leads dropped.
             (category) => contactedList ? myContacted(category) : base(category).orderBy('updatedAt', descending: true),
@@ -223,9 +265,16 @@ class _VerifiedLeadsPageState extends State<VerifiedLeadsPage> {
         key: ValueKey(row.lead.id),
         item: row,
         actions: widget.actions,
-        onWhatsApp: () => _openWhatsApp(row),
+        // 1-star: opening WhatsApp on a New lead marks it Contacted. No-website:
+        // WhatsApp only opens the chat, and the salesman presses **Contacted**
+        // when they have reached out — which is what moves the lead to their
+        // Contacted list (and counts against the daily limit).
+        onWhatsApp: _review ? () => _openWhatsApp(row) : null,
+        onMarkContacted: _review ? null : () => _moveTo(row, contacted: true),
+        showMap: _review,
         onMoveToNew: row.isContacted ? () => _moveTo(row, contacted: false) : null,
-        onOpen: () => _openDetail(row),
+        // The lead's own page is where a deal is marked done: 1-star leads only.
+        onOpen: _review ? () => _openDetail(row) : null,
       ),
     );
   }

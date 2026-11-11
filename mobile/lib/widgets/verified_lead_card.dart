@@ -78,6 +78,8 @@ class VerifiedLeadCard extends StatelessWidget {
     required this.item,
     this.onWhatsApp,
     this.onMoveToNew,
+    this.onMarkContacted,
+    this.showMap = true,
     this.onOpen,
     this.actions = const LeadActions(),
   });
@@ -92,6 +94,14 @@ class VerifiedLeadCard extends StatelessWidget {
 
   /// Moves a contacted lead back to New (button shown only when set).
   final Future<void> Function()? onMoveToNew;
+
+  /// Marks a New lead Contacted — a **Contacted** button the salesman presses
+  /// by hand, shown in the Map button's place on a New lead (no-website leads).
+  /// Without it the card has no such button.
+  final Future<void> Function()? onMarkContacted;
+
+  /// Whether the card offers a Google Maps button. The no-website leads do not.
+  final bool showMap;
 
   /// Opens the lead's detail page. Tapping the business name does it.
   final VoidCallback? onOpen;
@@ -294,7 +304,17 @@ class VerifiedLeadCard extends StatelessWidget {
                   label: const Text('WhatsApp'),
                 ),
               ),
-              if (l.mapsUrl != null && l.mapsUrl!.isNotEmpty) ...[
+              if (onMarkContacted != null && !item.isContacted) ...[
+                const SizedBox(width: 8),
+                Expanded(
+                  child: FilledButton.icon(
+                    style: FilledButton.styleFrom(backgroundColor: t.sage, foregroundColor: t.onFill),
+                    onPressed: () => onMarkContacted!(),
+                    icon: const Icon(AppIcons.circleCheck, size: 17),
+                    label: const Text('Contacted'),
+                  ),
+                ),
+              ] else if (showMap && l.mapsUrl != null && l.mapsUrl!.isNotEmpty) ...[
                 const SizedBox(width: 8),
                 Expanded(
                   child: FilledButton.icon(

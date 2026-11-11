@@ -1,23 +1,18 @@
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
-import 'deals_page.dart';
 import 'profile_page.dart';
-import 'sales_page.dart';
-import 'verified_leads_screen.dart';
 import 'website_leads_screen.dart';
 
-/// The salesman's app, in five tabs:
+/// The salesman's app, in two tabs:
 ///
 ///   No Website — the WhatsApp-validated leads for businesses with no website
-///            (see [WebsiteLeadsScreen]); the first tab.
-///   Leads  — the WhatsApp-validated 1-star review leads, New and Contacted
-///            (see [VerifiedLeadsScreen]); the daily limit is shown here.
-///   Deals  — the contacted leads this salesman has marked a deal done.
-///   Sales  — the salesman's own orders and earnings.
-///   More   — the account, settings and Sign out.
+///            (see [WebsiteLeadsScreen]); the first tab. The daily limit is
+///            shown here.
+///   Profile — the account, and everything else: the 1-star review Leads, Deals
+///            and Sales, the archive, settings and Sign out (see [ProfilePage]).
 ///
-/// Every tab stays built (IndexedStack), so each keeps its scroll position and
+/// Both tabs stay built (IndexedStack), so each keeps its scroll position and
 /// loaded pages when you switch.
 class MainNavigationPage extends StatefulWidget {
   const MainNavigationPage({super.key});
@@ -36,9 +31,6 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
         index: _selectedIndex,
         children: const [
           WebsiteLeadsScreen(),
-          VerifiedLeadsScreen(),
-          DealsPage(),
-          SalesPage(),
           ProfilePage(),
         ],
       ),
@@ -47,10 +39,7 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
         onDestinationSelected: (index) => setState(() => _selectedIndex = index),
         destinations: const [
           NavigationDestination(icon: Icon(AppIcons.globe), label: 'No Website'),
-          NavigationDestination(icon: Icon(AppIcons.chat), label: 'Leads'),
-          NavigationDestination(icon: Icon(AppIcons.handshake), label: 'Deals'),
-          NavigationDestination(icon: Icon(AppIcons.wallet), label: 'Sales'),
-          NavigationDestination(icon: Icon(AppIcons.user), label: 'More'),
+          NavigationDestination(icon: Icon(AppIcons.user), label: 'Profile'),
         ],
       ),
     );

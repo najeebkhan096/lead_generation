@@ -65,19 +65,15 @@ service cloud.firestore {
       allow write: if false;
     }
 
-    // "Website leads" — businesses found during a scan with no website at
-    // all, saved automatically alongside `leads`. Same read/update shape as
-    // `leads` (mobile can favorite/status/assign but not create/delete).
+    // "Website leads" — businesses with no website, saved by the scan and
+    // validated by the console. Approved salespeople read them; nothing else
+    // is writable from a phone. Contacting one goes through the
+    // setWebsiteLeadContacted function, which enforces the salesman's daily
+    // limit (shared with the 1-star leads) — so a client must not be able to
+    // set `status` / `contactedBy` itself.
     match /websiteLeads/{leadId} {
       allow read: if isApproved();
-      allow update: if isApproved()
-                    && request.resource.data.diff(resource.data).affectedKeys()
-                       .hasOnly([
-                         'isFavorite', 'status', 'reputationStatus',
-                         'hasWhatsApp', 'whatsAppCheckedAt',
-                         'assignedTo', 'updatedAt'
-                       ]);
-      allow create, delete: if false;
+      allow create, update, delete: if false;
     }
 
     // Verified leads — the output of the two validators, written by the

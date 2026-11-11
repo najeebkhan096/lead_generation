@@ -38,9 +38,10 @@ DateTime dailyDayStart(String dayKey) {
 /// Watches the signed-in salesman's daily limit and how many new leads they
 /// have contacted today.
 ///
-/// The count is the number of 1-star WhatsApp leads this salesman contacted
-/// since the day began. That is what the server counts against the limit,
-/// read from the leads themselves, so it needs no extra Firestore rule.
+/// ONE limit covers both kinds of lead, so the count is the 1-star WhatsApp
+/// leads plus the no-website leads this salesman contacted since the day began.
+/// That is what the server counts against the limit, read from the leads
+/// themselves, so it needs no extra Firestore rule.
 class DailyContactRepository {
   DailyContactRepository({FirebaseFirestore? firestore, DateTime Function()? clock})
       : _firestore = firestore,
@@ -56,48 +57,64 @@ class DailyContactRepository {
   Stream<DailyContactStatus> watchToday(String uid) {
     final user = _db.collection('users').doc(uid);
     final todayStart = Timestamp.fromDate(dailyDayStart(dailyDayKey(_clock())));
-    final contactedToday = _db
+    // Newest first matches the deployed indexes; without it Firestore wants others.
+    final reviewToday = _db
         .collection('whatsappLeads')
         .where('sourceType', isEqualTo: 'review')
         .where('contactedBy', isEqualTo: uid)
         .where('contactedAt', isGreaterThanOrEqualTo: todayStart)
-        // Newest first matches the deployed index; without it Firestore wants another one.
+        .orderBy('contactedAt', descending: true);
+    final websiteToday = _db
+        .collection('websiteLeads')
+        .where('contactedBy', isEqualTo: uid)
+        .where('contactedAt', isGreaterThanOrEqualTo: todayStart)
         .orderBy('contactedAt', descending: true);
 
-    StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? limitSub;
-    StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? usedSub;
+    final subs = <StreamSubscription<dynamic>>[];
     int? limit;
-    int? used;
+    int? reviewUsed;
+    int? websiteUsed;
     late final StreamController<DailyContactStatus> controller;
 
+    // Nothing is shown until the limit and both counts are known, so the
+    // banner never flashes a count that is only half of today's.
     void emit() {
-      if (limit == null || used == null || controller.isClosed) return;
-      controller.add(DailyContactStatus(used: used!, limit: limit!));
+      if (limit == null || reviewUsed == null || websiteUsed == null || controller.isClosed) return;
+      controller.add(DailyContactStatus(used: reviewUsed! + websiteUsed!, limit: limit!));
     }
+
+    StreamSubscription<QuerySnapshot<Map<String, dynamic>>> count(
+      Query<Map<String, dynamic>> query,
+      String what,
+      void Function(int n) set,
+    ) =>
+        query.snapshots().listen(
+          (snap) {
+            set(snap.size);
+            emit();
+          },
+          onError: (Object e, StackTrace s) {
+            debugPrint('[daily limit] could not count today\'s $what contacts: $e');
+            controller.addError(e, s);
+          },
+        );
 
     controller = StreamController<DailyContactStatus>(
       onListen: () {
-        limitSub = user.snapshots().listen(
+        subs.add(user.snapshots().listen(
           (snap) {
             limit = (snap.data()?['dailyLeadLimit'] as num?)?.toInt() ?? SalesUser.defaultDailyLeadLimit;
             emit();
           },
           onError: controller.addError,
-        );
-        usedSub = contactedToday.snapshots().listen(
-          (snap) {
-            used = snap.size;
-            emit();
-          },
-          onError: (Object e, StackTrace s) {
-            debugPrint('[daily limit] could not count today\'s contacts: $e');
-            controller.addError(e, s);
-          },
-        );
+        ));
+        subs.add(count(reviewToday, '1-star', (n) => reviewUsed = n));
+        subs.add(count(websiteToday, 'no-website', (n) => websiteUsed = n));
       },
       onCancel: () async {
-        await limitSub?.cancel();
-        await usedSub?.cancel();
+        for (final sub in subs) {
+          await sub.cancel();
+        }
       },
     );
     return controller.stream;

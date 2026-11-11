@@ -1,7 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { FieldValue, Timestamp } from 'firebase-admin/firestore';
-import { DEFAULT_DAILY_LEAD_LIMIT, dayKey, dayStart, setWhatsAppLeadContacted, setWhatsAppLeadDealDone } from './leadContact.js';
+import {
+  DEFAULT_DAILY_LEAD_LIMIT, dayKey, dayStart, setWhatsAppLeadContacted, setWebsiteLeadContacted, setWhatsAppLeadDealDone,
+} from './leadContact.js';
 
 // An in-memory stand-in for the parts of Firestore the module uses: documents,
 // subcollections, and transactions that read before they write.
@@ -242,4 +244,85 @@ test('a contact made late at night in Qatar counts toward that day, not the next
 test('a day starts at midnight in its own zone', () => {
   assert.equal(dayStart('2026-10-21', 'Asia/Qatar').toISOString(), '2026-10-20T21:00:00.000Z');
   assert.equal(dayStart('2026-10-21', 'Asia/Dubai').toISOString(), '2026-10-20T20:00:00.000Z');
+});
+
+// ---- no-website leads: one daily limit shared with the 1-star leads ----------
+
+const sites = (n, extra = {}) => Object.fromEntries(
+  Array.from({ length: n }, (_, i) => [`websiteLeads/W${i + 1}`, { business: `Site ${i + 1}`, hasWhatsApp: true, websiteStatus: 'missing', ...extra }]),
+);
+const contactSite = (db, leadId, now, contacted = true) => {
+  db.clock.now = now;
+  return setWebsiteLeadContacted({ uid: 'me', leadId, contacted, now, db });
+};
+
+test('a no-website lead is marked contacted for the salesman, and counts', async () => {
+  const { db, docs } = fakeDb(seed({ leads: 0, others: sites(2) }), DAY1);
+  const done = await contactSite(db, 'W1', DAY1);
+  assert.equal(done.counted, true);
+  assert.equal(done.used, 1);
+  const lead = docs.get('websiteLeads/W1');
+  assert.equal(lead.status, 'contacted');
+  assert.equal(lead.contactedBy, 'me');
+  assert.ok(lead.contactedAt);
+});
+
+test('no-website leads are stopped at the same limit as 1-star leads', async () => {
+  const { db } = fakeDb(seed({ limit: 2, leads: 0, others: sites(5) }), DAY1);
+  await contactSite(db, 'W1', DAY1);
+  await contactSite(db, 'W2', DAY1);
+  const err = await failureOf(contactSite(db, 'W3', DAY1));
+  assert.equal(err.code, 'resource-exhausted');
+  assert.equal(err.details.code, 'DAILY_LIMIT');
+  assert.equal(err.details.limit, 2);
+});
+
+test('the limit is shared: 1-star contacts use up no-website slots, and the other way round', async () => {
+  const first = fakeDb(seed({ limit: 3, leads: 0, others: { 'whatsappLeads/R1': contacted('me', DAY1), 'whatsappLeads/R2': contacted('me', DAY1), ...sites(3) } }), DAY1);
+  assert.equal((await contactSite(first.db, 'W1', DAY1)).used, 3);
+  const err = await failureOf(contactSite(first.db, 'W2', DAY1));
+  assert.equal(err.details.code, 'DAILY_LIMIT');
+  assert.equal(err.details.used, 3);
+
+  const second = fakeDb(seed({ limit: 2, leads: 3, others: sites(2) }), DAY1);
+  await contactSite(second.db, 'W1', DAY1);
+  await contact(second.db, 'L1', DAY1);
+  const refused = await failureOf(contact(second.db, 'L2', DAY1));
+  assert.equal(refused.details.code, 'DAILY_LIMIT');
+});
+
+test('only today counts, and only this salesman’s own contacts', async () => {
+  const yesterday = new Date('2026-10-17T10:00:00Z');
+  const others = {
+    'websiteLeads/Y1': { status: 'contacted', contactedBy: 'me', contactedAt: Timestamp.fromDate(yesterday) },
+    'websiteLeads/O1': { status: 'contacted', contactedBy: 'other', contactedAt: Timestamp.fromDate(DAY1) },
+    ...sites(1),
+  };
+  const { db } = fakeDb(seed({ limit: 1, leads: 0, others }), DAY1);
+  assert.equal((await contactSite(db, 'W1', DAY1)).used, 1);
+});
+
+test('a no-website lead not verified on WhatsApp is refused', async () => {
+  const { db } = fakeDb(seed({ leads: 0, others: { 'websiteLeads/W1': { business: 'X', hasWhatsApp: false } } }), DAY1);
+  const err = await failureOf(contactSite(db, 'W1', DAY1));
+  assert.equal(err.code, 'failed-precondition');
+  assert.equal(err.details.code, 'NOT_VERIFIED');
+});
+
+test('a no-website lead another salesman contacted is refused, and moving back follows the 1-star rules', async () => {
+  const { db, docs } = fakeDb(seed({ limit: 1, leads: 0, others: { ...sites(2), 'websiteLeads/W1': { hasWhatsApp: true, status: 'contacted', contactedBy: 'other' } } }), DAY1);
+  assert.equal((await failureOf(contactSite(db, 'W1', DAY1))).details.code, 'TAKEN');
+  assert.equal((await failureOf(contactSite(db, 'W1', DAY1, false))).details.code, 'NOT_YOURS');
+
+  await contactSite(db, 'W2', DAY1);
+  const back = await contactSite(db, 'W2', DAY1, false);
+  assert.equal(back.counted, true);
+  assert.equal(docs.get('websiteLeads/W2').status, 'lead');
+  assert.equal(docs.get('websiteLeads/W2').contactedBy, undefined);
+  assert.equal((await contactSite(db, 'W2', DAY1)).used, 1); // the slot came back
+});
+
+test('a missing no-website lead is reported, not created', async () => {
+  const { db } = fakeDb(seed({ leads: 0 }), DAY1);
+  assert.equal((await failureOf(contactSite(db, 'nope', DAY1))).details.code, 'NOT_FOUND');
 });

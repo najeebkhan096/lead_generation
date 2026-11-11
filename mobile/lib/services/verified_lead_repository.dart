@@ -1,10 +1,11 @@
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
-/// Marks verified leads (`whatsappLeads`) contacted for the signed-in salesman,
-/// or moves them back to New.
+/// Marks verified leads (`whatsappLeads`, and the no-website `websiteLeads`)
+/// contacted for the signed-in salesman, or moves them back to New.
 ///
-/// The `setWhatsAppLeadContacted` function does the write, because it enforces
+/// The `setWhatsAppLeadContacted` / `setWebsiteLeadContacted` functions do the
+/// write, because they enforce
 /// the salesman's daily limit (set by an admin). Its refusals arrive as
 /// [FirebaseFunctionsException]: `resource-exhausted` when the limit is reached,
 /// `failed-precondition` when another salesman already contacted the lead.
@@ -22,6 +23,14 @@ class VerifiedLeadRepository {
   Future<void> setContacted(String leadId, {required bool contacted}) async {
     final callable = (_functions ?? FirebaseFunctions.instanceFor(region: 'us-central1'))
         .httpsCallable('setWhatsAppLeadContacted');
+    await callable.call<dynamic>({'leadId': leadId, 'contacted': contacted});
+  }
+
+  /// The same for a no-website lead (`websiteLeads`). It counts against the same
+  /// daily limit as the 1-star leads: one limit covers both.
+  Future<void> setWebsiteContacted(String leadId, {required bool contacted}) async {
+    final callable = (_functions ?? FirebaseFunctions.instanceFor(region: 'us-central1'))
+        .httpsCallable('setWebsiteLeadContacted');
     await callable.call<dynamic>({'leadId': leadId, 'contacted': contacted});
   }
 

@@ -3,6 +3,7 @@
  *
  *   outreachApi                 callable, called by the app (Firebase Auth + `users/{uid}.approved`)
  *   setWhatsAppLeadContacted    callable — marks a New lead contacted within the salesman's daily limit
+ *   setWebsiteLeadContacted     callable — the same for a no-website lead; one daily limit covers both kinds
  *   setWhatsAppLeadDealDone     callable — marks a contacted lead a deal done, or reopens it
  *   twilioIncoming              HTTPS webhook  — Twilio posts inbound WhatsApp messages here
  *   twilioStatus                HTTPS webhook  — Twilio posts delivery / read / failed updates here
@@ -12,7 +13,11 @@
 import { HttpsError, onCall, onRequest } from 'firebase-functions/v2/https';
 import { urlencoded } from 'express';
 import { getFirestore } from './firebase.js';
-import { setWhatsAppLeadContacted as contactLead, setWhatsAppLeadDealDone as dealDoneLead } from './leadContact.js';
+import {
+  setWhatsAppLeadContacted as contactLead,
+  setWebsiteLeadContacted as contactWebsiteLead,
+  setWhatsAppLeadDealDone as dealDoneLead,
+} from './leadContact.js';
 import {
   applyStatusCallback, backfillLead, ensureLead, importLeadsFromTwilio, ingestInbound, refreshMessageStatus,
   retryOutbound, sendOutbound, setReaction,
@@ -94,6 +99,21 @@ export const setWhatsAppLeadContacted = onCall(
       await requireApproved(request.auth.uid);
       const { leadId, contacted } = request.data ?? {};
       return await contactLead({ uid: request.auth.uid, leadId, contacted });
+    } catch (err) {
+      throw toHttpsError(err);
+    }
+  },
+);
+
+/** Marks a no-website lead contacted (or moves it back to New) for the caller, within the same daily limit. */
+export const setWebsiteLeadContacted = onCall(
+  { region: REGION, memory: '256MiB', timeoutSeconds: 30, maxInstances: 10 },
+  async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'You are signed out.', { code: 'UNAUTHENTICATED' });
+    try {
+      await requireApproved(request.auth.uid);
+      const { leadId, contacted } = request.data ?? {};
+      return await contactWebsiteLead({ uid: request.auth.uid, leadId, contacted });
     } catch (err) {
       throw toHttpsError(err);
     }
