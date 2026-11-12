@@ -165,6 +165,25 @@ test('tagging already-validated leads: only a no-website scan\'s get the tag, an
   assert.deepEqual((await get('websiteLeads', 'v3')).scanModes, ['reviews']);
 });
 
+test('a search run as a no-website scan before runs were recorded can be tagged whole, once', async () => {
+  await put('websiteLeads', 'c1', site({ category: 'Cafe USA' }));
+  await put('websiteLeads', 'c2', site({ category: 'Cafe USA', hasWhatsApp: true }));
+  await put('websiteLeads', 'c3', site({ category: 'Cafe USA', scanModes: ['reviews'] })); // already knows its origin
+  await put('websiteLeads', 'c4', site({ category: 'Cafe USA', websiteStatus: 'available' })); // not a no-website lead
+  await put('websiteLeads', 'o1', site({ category: 'Salon USA' })); // another search: untouched
+  assert.deepEqual(await store.tagNoWebsiteScanCategories({ categories: ['Cafe USA'], apply: false }), [{ category: 'Cafe USA', found: 3, tagged: 2 }]);
+  assert.equal((await get('websiteLeads', 'c1')).scanModes, undefined, 'a dry run writes nothing');
+
+  await store.tagNoWebsiteScanCategories({ categories: ['Cafe USA'], apply: true });
+  assert.deepEqual((await get('websiteLeads', 'c1')).scanModes, ['no_website']);
+  assert.deepEqual((await get('websiteLeads', 'c2')).scanModes, ['no_website']);
+  assert.deepEqual((await get('websiteLeads', 'c3')).scanModes, ['reviews']);
+  assert.equal((await get('websiteLeads', 'c4')).scanModes, undefined);
+  assert.equal((await get('websiteLeads', 'o1')).scanModes, undefined);
+  // They are now in the no-website lists and categories on their own.
+  assert.deepEqual((await store.listWebsiteScanCategories()).map((c) => [c.name, c.count]), [['Cafe USA', 2]]);
+});
+
 // ------------------------------------------- an interrupted run, and its resume
 
 /** The real WhatsApp job, with the number check faked: "valid" unless the number ends in 9. */

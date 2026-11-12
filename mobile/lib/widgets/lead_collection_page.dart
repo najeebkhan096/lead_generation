@@ -55,6 +55,7 @@ class LeadCollectionPage<T> extends StatefulWidget {
     this.groupWhen,
     this.banner,
     this.showCounts = true,
+    this.showCategoryCounts = false,
   });
 
   final String title;
@@ -68,6 +69,10 @@ class LeadCollectionPage<T> extends StatefulWidget {
   /// Whether the header shows how many leads there are. Off on the salesman
   /// app, where the size of the pool is not theirs to see.
   final bool showCounts;
+
+  /// Whether the category picker shows how many leads each category has in the
+  /// list (and the selected category's count beside its name).
+  final bool showCategoryCounts;
   final IconData headerIcon;
   final String searchHint;
   final IconData emptyIcon;
@@ -112,6 +117,10 @@ class _LeadCollectionPageState<T> extends State<LeadCollectionPage<T>> {
   /// list to itself, so it can't be re-derived then).
   final Map<String?, Set<String>> _nonEmpty = {};
 
+  /// Per signal filter: how many leads each category has in the list, counted
+  /// from the leads read (every lead once the picker has read the rest of the list).
+  final Map<String?, Map<String, int>> _counts = {};
+
   @override
   void initState() {
     super.initState();
@@ -148,15 +157,22 @@ class _LeadCollectionPageState<T> extends State<LeadCollectionPage<T>> {
     final c = _controller;
     if (c.loading) return;
     final known = _nonEmpty.putIfAbsent(_filter, () => <String>{});
+    final counts = _counts.putIfAbsent(_filter, () => <String, int>{});
     if (c.category == null) {
+      counts.clear();
+      for (final item in c.items) {
+        final name = widget.categoryOf(item).trim();
+        if (name.isNotEmpty) counts[name] = (counts[name] ?? 0) + 1;
+      }
       known
         ..clear()
-        ..addAll([
-          for (final item in c.items)
-            if (widget.categoryOf(item).trim().isNotEmpty) widget.categoryOf(item).trim(),
-        ]);
+        ..addAll(counts.keys);
     } else if (c.items.isEmpty && !c.hasMore && c.error == null) {
       known.remove(c.category);
+      counts.remove(c.category);
+    } else if (!c.hasMore && c.error == null) {
+      // The whole category is loaded: its count is exact (a lead moved out changes it).
+      counts[c.category!] = c.items.length;
     }
   }
 
@@ -173,6 +189,12 @@ class _LeadCollectionPageState<T> extends State<LeadCollectionPage<T>> {
         await c.loadMore();
       }
     }
+  }
+
+  /// How many leads [category] has in this list (every lead for "All").
+  int _countOf(String category) {
+    final counts = _counts[_filter] ?? const <String, int>{};
+    return category == allCategories ? counts.values.fold(0, (a, b) => a + b) : (counts[category] ?? 0);
   }
 
   bool get _categoriesPartial =>
@@ -396,6 +418,8 @@ class _LeadCollectionPageState<T> extends State<LeadCollectionPage<T>> {
                           liveCategories: _categories,
                           refreshOn: _controller,
                           loadingMore: () => _categoriesPartial,
+                          countFor: widget.showCategoryCounts ? _countOf : null,
+                          countsPartial: () => _categoriesPartial,
                           onOpen: _loadAllForCategories,
                           selected: selected,
                           onSelected: (value) => c.refresh(category: value == allCategories ? null : value),
@@ -465,6 +489,7 @@ class CategoryDropdown extends StatelessWidget {
     required this.selected,
     required this.onSelected,
     this.countFor,
+    this.countsPartial,
     this.compact = false,
     this.liveCategories,
     this.refreshOn,
@@ -476,6 +501,9 @@ class CategoryDropdown extends StatelessWidget {
   final String selected;
   final ValueChanged<String> onSelected;
   final int Function(String category)? countFor;
+
+  /// Whether the counts are only of what has been read so far (a '+' follows each).
+  final bool Function()? countsPartial;
 
   /// A chip-sized button for a filter row, instead of a full-width field.
   final bool compact;
@@ -502,6 +530,7 @@ class CategoryDropdown extends StatelessWidget {
           categories: liveCategories?.call() ?? categories,
           selected: selected,
           countFor: countFor,
+          countsPartial: countsPartial?.call() ?? false,
           loading: loadingMore?.call() ?? false,
         ),
       ),
@@ -546,6 +575,13 @@ class CategoryDropdown extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
+                    if (isFiltered && countFor != null) ...[
+                      const SizedBox(width: 6),
+                      Text(
+                        '${countFor!(selected)}${countsPartial?.call() == true ? '+' : ''}',
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: t.accentTextStrong),
+                      ),
+                    ],
                     const SizedBox(width: 6),
                     Icon(AppIcons.chevronDown, size: 16, color: isFiltered ? t.accentText : t.subtle),
                   ],
@@ -592,7 +628,7 @@ class CategoryDropdown extends StatelessWidget {
                     borderRadius: const BorderRadius.all(Radius.circular(8)),
                   ),
                   child: Text(
-                    '${countFor!(selected)}',
+                    '${countFor!(selected)}${countsPartial?.call() == true ? '+' : ''}',
                     style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: t.accentTextStrong),
                   ),
                 ),
@@ -612,6 +648,7 @@ class _CategoryPickerSheet extends StatefulWidget {
     required this.categories,
     required this.selected,
     this.countFor,
+    this.countsPartial = false,
     this.loading = false,
   });
 
@@ -620,6 +657,9 @@ class _CategoryPickerSheet extends StatefulWidget {
   final List<String> categories;
   final String selected;
   final int Function(String category)? countFor;
+
+  /// The counts are of what has been read so far; a '+' follows each.
+  final bool countsPartial;
 
   @override
   State<_CategoryPickerSheet> createState() => _CategoryPickerSheetState();
@@ -731,7 +771,10 @@ class _CategoryPickerSheetState extends State<_CategoryPickerSheet> {
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 if (widget.countFor != null)
-                                  Text('${widget.countFor!(category)}', style: Theme.of(context).textTheme.bodySmall),
+                                  Text(
+                                    '${widget.countFor!(category)}${widget.countsPartial ? '+' : ''}',
+                                    style: Theme.of(context).textTheme.bodySmall,
+                                  ),
                                 if (isSelected) ...[
                                   const SizedBox(width: 10),
                                   Icon(AppIcons.check, size: 20, color: t.accentDeep),

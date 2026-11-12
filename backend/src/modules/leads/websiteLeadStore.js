@@ -493,6 +493,34 @@ export async function tagVerifiedNoWebsiteLeads({ apply = false, db = getFiresto
   };
 }
 
+/**
+ * Marks every no-website lead of the given [categories] that has no `scanModes`
+ * yet as found by a no-website scan — for a search that was run as a no-website
+ * scan before scan runs were recorded, so nothing else says which kind it was.
+ * Validated or not: the whole search is one scan's leads.
+ *
+ * Only `scanModes` is written, only on leads that have none.
+ *
+ * @returns {Promise<{category: string, found: number, tagged: number}[]>}
+ */
+export async function tagNoWebsiteScanCategories({ categories, apply = false, db = getFirestore() } = {}) {
+  const out = [];
+  for (const category of [...new Set((categories || []).map((c) => String(c).trim()).filter(Boolean))]) {
+    const snap = await db.collection(COLLECTION).where('category', '==', category).where('websiteStatus', '==', 'missing').get();
+    const refs = snap.docs.filter((d) => !Array.isArray(d.data().scanModes)).map((d) => d.ref);
+    if (apply) {
+      for (let i = 0; i < refs.length; i += 400) {
+        const batch = db.batch();
+        for (const ref of refs.slice(i, i + 400)) batch.update(ref, { scanModes: FieldValue.arrayUnion('no_website') });
+        await batch.commit();
+      }
+    }
+    out.push({ category, found: snap.size, tagged: refs.length });
+  }
+  if (apply) _resetScopeCaches();
+  return out;
+}
+
 /** Test seam: forgets the short-lived tallies and the no-website scans' categories. */
 export function _resetScopeCaches() {
   runCategoryCache = { at: 0, value: new Set() };

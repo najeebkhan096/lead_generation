@@ -15,6 +15,7 @@ import 'package:lead_mobile/pages/website_leads_screen.dart';
 import 'package:lead_mobile/services/daily_contact_repository.dart';
 import 'package:lead_mobile/services/verified_lead_repository.dart';
 import 'package:lead_mobile/theme/app_theme.dart';
+import 'package:lead_mobile/widgets/lead_collection_page.dart' show CategoryDropdown;
 import 'package:lead_mobile/widgets/verified_lead_card.dart';
 
 import 'support/memory_firestore.dart';
@@ -138,10 +139,11 @@ Map<String, dynamic> _site(String business, DateTime verified,
         String? contactedBy,
         bool whatsApp = true,
         String status = 'missing',
+        String category = 'Salon USA',
         List<String>? scanModes = const ['no_website']}) =>
     {
       'business': business,
-      'category': 'Salon USA',
+      'category': category,
       'location': 'Texas',
       'phone': phone,
       'mapsUrl': 'https://maps.example/$business',
@@ -641,6 +643,34 @@ void main() {
         // Validated, but filed by a 1-star scan (tagged, or from before tags): not a no-website scan's lead.
         ..['s1'] = _site('Side Find Salon', at(0, 8), scanModes: ['reviews'])
         ..['s2'] = _site('Untagged Salon', at(0, 7), scanModes: null);
+    });
+
+    testWidgets('the category picker shows how many leads each category has in this list', (tester) async {
+      store.col('websiteLeads')
+        ..['p1'] = _site('Spa One', at(0, 6), category: 'Spa USA', phone: '+97455500011')
+        ..['p2'] = _site('Spa Two', at(0, 5), category: 'Spa USA', phone: '+97455500012')
+        ..['p3'] = _site('Spa Three', at(0, 4), category: 'Spa USA', phone: '+97455500013')
+        // Contacted by me: counted in the Contacted list, not in New.
+        ..['p4'] = _site('Spa Done', at(2), category: 'Spa USA', phone: '+97455500014', contacted: at(0, 3), contactedBy: _FakeRepo.me);
+      await pumpSites(tester);
+
+      await tester.tap(find.text('All categories'));
+      await tester.pumpAndSettle();
+      Finder count(String category, String n) => find.descendant(
+            of: find.widgetWithText(ListTile, category),
+            matching: find.text(n),
+          );
+      // New: Salon has Alpha and Bravo; Spa has three (its contacted one is in the other list).
+      expect(count('Salon USA', '2'), findsOneWidget);
+      expect(count('Spa USA', '3'), findsOneWidget);
+      expect(count('All categories', '5'), findsOneWidget);
+
+      await tester.tap(find.widgetWithText(ListTile, 'Spa USA'));
+      await tester.pumpAndSettle();
+      expect(find.text('Spa One'), findsOneWidget);
+      expect(find.text('Alpha Salon'), findsNothing);
+      // The selected category's count sits beside its name.
+      expect(find.descendant(of: find.byType(CategoryDropdown), matching: find.text('3')), findsOneWidget);
     });
 
     testWidgets('a New lead has WhatsApp and a Contacted button — no Map button', (tester) async {

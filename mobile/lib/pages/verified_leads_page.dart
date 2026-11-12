@@ -182,6 +182,9 @@ class _VerifiedLeadsPageState extends State<VerifiedLeadsPage> {
               : null,
       // The size of the pool stays on the web console, not on the salesman's phone.
       showCounts: false,
+      // Per category, so a salesman can see how many leads each search has — the
+      // size of the whole pool still stays on the web console.
+      showCategoryCounts: true,
       searchHint: _review ? 'Search WhatsApp leads...' : 'Search no-website leads...',
       emptyIcon: _review ? AppIcons.chat : AppIcons.globe,
       emptyTitle: reached
