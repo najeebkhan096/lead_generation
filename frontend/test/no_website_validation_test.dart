@@ -25,6 +25,9 @@ class _Repo implements LeadRepository {
   final summaryCalls = <({String? collection, String? category})>[];
   final emailSummaryCategories = <String?>[];
   final leadPageCalls = <({LeadCollection collection, String? category})>[];
+
+  /// Serve a long list: a full first page of Miami leads, then one Austin lead on the second.
+  bool longList = false;
   final resumed = <String>[];
   final discarded = <String>[];
   List<ValidationRun> runs = [];
@@ -46,6 +49,20 @@ class _Repo implements LeadRepository {
     bool verifiedOnly = false,
   }) async {
     leadPageCalls.add((collection: collection, category: category));
+    if (longList) {
+      Lead at(String name, String where) => Lead(
+            id: name,
+            dbId: name,
+            business: name,
+            category: category ?? '',
+            location: where,
+            phone: '+15125550100',
+            badReview: const BadReview(stars: 1, text: '', date: 'Unknown'),
+          );
+      return cursor == null
+          ? LeadPage(leads: [for (var i = 0; i < 50; i++) at('Miami $i', 'Miami, FL')], nextCursor: 'p2', total: 51)
+          : LeadPage(leads: [at('Austin Late', 'Austin, TX')]);
+    }
     Lead lead(String name, String where, {String? email}) => Lead(
           id: name,
           dbId: name,
@@ -122,6 +139,8 @@ class _Repo implements LeadRepository {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
+Future<_Repo> _pumpWith(WidgetTester tester, {bool longList = false}) => _pump(tester, longList: longList);
+
 /// [search] is the category picked from the dropdown before anything else.
 Future<_Repo> _pump(
   WidgetTester tester, {
@@ -129,12 +148,14 @@ Future<_Repo> _pump(
   bool waReady = true,
   String? search = 'Cafe USA',
   List<ValidationRun> runs = const [],
+  bool longList = false,
 }) async {
   tester.view.physicalSize = const Size(1100, 1400);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
   final repo = _Repo()
     ..waReady = waReady
+    ..longList = longList
     ..runs = [...runs];
   await tester.pumpWidget(
     RepositoryProvider<LeadRepository>.value(
@@ -285,6 +306,18 @@ void main() {
       expect(find.text('Bravo Cafe'), findsOneWidget);
       expect(find.text('On WhatsApp'), findsNWidgets(2));
       expect(find.textContaining('"Cafe USA"'), findsWidgets);
+    });
+
+    testWidgets('a ticked state with leads only on a later page is still found', (tester) async {
+      final repo = await _pumpWith(tester, longList: true);
+      expect(find.text('Austin Late'), findsNothing); // page two is not read yet
+
+      await tester.tap(find.byType(Checkbox).at(2)); // TX
+      await tester.pumpAndSettle();
+      expect(repo.leadPageCalls, hasLength(2), reason: 'it read the next page on its own');
+      expect(find.text('Austin Late'), findsOneWidget);
+      expect(find.textContaining('None of the ticked states'), findsNothing);
+      expect(find.text('Validated on WhatsApp · 1'), findsOneWidget); // the list ended, so the count is exact
     });
 
     testWidgets('nothing is listed until a search is picked', (tester) async {

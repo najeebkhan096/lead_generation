@@ -834,6 +834,13 @@ class _ValidatedLeadsState extends State<_ValidatedLeads> {
   /// Guards against a slow answer for an old search overwriting a newer one.
   int _generation = 0;
 
+  /// With states ticked the list is filtered here, so it keeps reading pages
+  /// until it has this many matches (or the list ends, or [_maxFillPages] pages).
+  static const _fillTarget = 25;
+  static const _maxFillPages = 20;
+  int _pagesRead = 0;
+  String _statesKey = '';
+
   LeadRepository get _repo => context.read<LeadRepository>();
 
   @override
@@ -845,7 +852,36 @@ class _ValidatedLeadsState extends State<_ValidatedLeads> {
   @override
   void didUpdateWidget(covariant _ValidatedLeads old) {
     super.didUpdateWidget(old);
-    if (old.version != widget.version) _load();
+    if (old.version != widget.version) {
+      _load();
+    } else if (_statesKey != _key(widget.states)) {
+      _fill(); // other states ticked: they may be on pages not read yet
+    }
+  }
+
+  static String _key(Set<String> states) => (states.toList()..sort()).join('|');
+
+  List<Lead> get _matching => widget.states.isEmpty
+      ? _leads
+      : [for (final l in _leads) if (widget.states.contains(stateLabelOf(l.location))) l];
+
+  /// Reads more pages while the ticked states have too few leads among those read.
+  Future<void> _fill() async {
+    _statesKey = _key(widget.states);
+    final generation = _generation;
+    while (mounted &&
+        generation == _generation &&
+        widget.states.isNotEmpty &&
+        _cursor != null &&
+        _matching.length < _fillTarget &&
+        _pagesRead < _maxFillPages) {
+      if (_loadingMore) {
+        await Future<void>.delayed(const Duration(milliseconds: 40));
+        continue;
+      }
+      await _more();
+      if (_error != null) break;
+    }
   }
 
   Future<void> _load() async {
@@ -864,7 +900,9 @@ class _ValidatedLeadsState extends State<_ValidatedLeads> {
         _cursor = page.nextCursor;
         _total = page.total;
         _loading = false;
+        _pagesRead = 1;
       });
+      _fill();
     } catch (e) {
       if (!mounted || generation != _generation) return;
       setState(() {
@@ -886,6 +924,7 @@ class _ValidatedLeadsState extends State<_ValidatedLeads> {
         _leads.addAll(page.leads);
         _cursor = page.nextCursor;
         _loadingMore = false;
+        _pagesRead += 1;
       });
     } catch (e) {
       if (!mounted) return;
@@ -897,9 +936,7 @@ class _ValidatedLeadsState extends State<_ValidatedLeads> {
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
-    final shown = widget.states.isEmpty
-        ? _leads
-        : [for (final l in _leads) if (widget.states.contains(stateLabelOf(l.location))) l];
+    final shown = _matching;
     final whatsApp = widget.spec.isWhatsApp;
     final filtered = widget.states.isNotEmpty;
     final count = filtered ? '${shown.length}${_cursor != null ? '+' : ''}' : '${_total ?? _leads.length}${_total == null && _cursor != null ? '+' : ''}';
@@ -917,6 +954,9 @@ class _ValidatedLeadsState extends State<_ValidatedLeads> {
             message: _error!,
             actions: [AppButton.outlined(label: 'Retry', size: AppButtonSize.sm, onPressed: _load)],
           );
+        }
+        if (shown.isEmpty && filtered && _cursor != null && (_loadingMore || _pagesRead < _maxFillPages)) {
+          return const LoadingView(label: 'Looking through the validated leads…');
         }
         if (shown.isEmpty) {
           return Text(
